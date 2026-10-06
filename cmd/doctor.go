@@ -70,16 +70,24 @@ func mainDoctor(ctx *cli.Context) error {
 		if !isValidAlias(alias) {
 			return doctorError("doctor requires a configured alias")
 		}
-		config := mustGetHostConfig(alias)
+		_, _, config, configErr := expandAlias(alias)
+		if configErr != nil {
+			// Environment aliases can contain credentials; do not print parse errors.
+			return doctorError("unable to resolve diagnostic alias configuration")
+		}
 		if config == nil {
 			return doctorError("doctor alias is not configured")
 		}
 		admin, ca := resolveAdminSettings(alias, config)
 		report.S3Scheme, report.AdminScheme = diagnosticScheme(config.URL), diagnosticScheme(admin)
-		report.SeparateAdmin = admin != config.URL
+		report.SeparateAdmin = diagnosticSeparateAdmin(config.URL, admin)
 		report.CustomAdminCA = ca != ""
 		if report.Online {
-			client, err := newAdminClient(alias)
+			// Use the configuration already described by the report, rather than
+			// resolving the alias and management overrides a second time.
+			clientConfig := NewS3Config(admin, config)
+			clientConfig.AdminCAFile = ca
+			client, err := s3AdminNew(clientConfig)
 			if err != nil {
 				return doctorError("unable to initialize diagnostic connection")
 			}
@@ -101,6 +109,16 @@ func mainDoctor(ctx *cli.Context) error {
 	}
 	printMsg(report)
 	return nil
+}
+
+func diagnosticSeparateAdmin(s3Endpoint, adminEndpoint string) bool {
+	s3, s3Err := validateAdminEndpoint(s3Endpoint)
+	admin, adminErr := validateAdminEndpoint(adminEndpoint)
+	if s3Err != nil || adminErr != nil {
+		return s3Endpoint != adminEndpoint
+	}
+	// The admin client normalizes an optional root slash before connecting.
+	return s3.String() != admin.String()
 }
 
 func doctorError(message string) error {
