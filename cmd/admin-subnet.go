@@ -28,7 +28,7 @@ var subnetHealthSubcommands = []cli.Command{
 
 var adminSubnetCmd = cli.Command{
 	Name:            "subnet",
-	Usage:           "Subnet related commands",
+	Usage:           "local health reports (SUBNET uploads disabled)",
 	Action:          mainAdminSubnet,
 	Before:          setGlobalsFromContext,
 	Flags:           globalFlags,

@@ -1,21 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-sudo sysctl net.ipv6.conf.wlp59s0.disable_ipv6=1
-
-release=$(git describe --abbrev=0 --tags)
-
-docker buildx build --push --no-cache \
-       --build-arg RELEASE="${release}" -t "minio/mc:latest" \
-       --platform=linux/arm64,linux/amd64,linux/ppc64le,linux/s390x \
-       -f Dockerfile.release .
-
-docker buildx prune -f
-
-docker buildx build --push --no-cache \
-       --build-arg RELEASE="${release}" -t "minio/mc:${release}" \
-       --platform=linux/arm64,linux/amd64,linux/ppc64le,linux/s390x \
-       -f Dockerfile.release .
-
-docker buildx prune -f
-
-sudo sysctl net.ipv6.conf.wlp59s0.disable_ipv6=0
+# Build locally by default. Publishing requires an explicit --push argument.
+image=${OC_IMAGE:-soulteary/oc}
+release=${OC_TAG:-$(git describe --tags --always)}
+docker buildx build --platform="${OC_PLATFORMS:-linux/amd64,linux/arm64}" \
+  -t "${image}:${release}" -f Dockerfile "$@" .

@@ -11,3 +11,6 @@ stage/
 mc
 .run*
 .idea/
+
+oc
+oc.exe

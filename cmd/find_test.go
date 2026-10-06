@@ -18,8 +18,10 @@ package cmd
 
 import (
 	"context"
+	"os"
 	"os/exec"
-	"strings"
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -418,38 +420,29 @@ func TestStringReplace(t *testing.T) {
 	}
 }
 
-// Tests exit status, getExitStatus() function
+// Use a controlled child process: BSD ls and GNU ls have different exit codes.
 func TestGetExitStatus(t *testing.T) {
-	testCases := []struct {
-		command            string
-		expectedExitStatus int
-	}{
-		// Tests "No such file or directory", exit status code 2
-		{
-			command:            "ls asdf",
-			expectedExitStatus: 2,
-		},
-		{
-			command:            "cp x x",
-			expectedExitStatus: 1,
-		},
-		// expectedExitStatus for "command not found" case is 127,
-		// but exec command cannot capture anything since a process
-		// for the command could not be started at all,
-		// so the expectedExitStatus is 1
-		{
-			command:            "asdf",
-			expectedExitStatus: 1,
-		},
-	}
-	for i, testCase := range testCases {
-		commandArgs := strings.Split(testCase.command, " ")
-		cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
-		// Return exit status of the command run
-		exitStatus := getExitStatus(cmd.Run())
-		if exitStatus != testCase.expectedExitStatus {
-			t.Errorf("Test %d: Expected error status code for command \"%v\" is %v, got %v",
-				i+1, testCase.command, testCase.expectedExitStatus, exitStatus)
+	for _, expected := range []int{0, 1, 2, 127} {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestExitStatusHelper$")
+		cmd.Env = append(os.Environ(), "OC_TEST_EXIT="+strconv.Itoa(expected))
+		if actual := getExitStatus(cmd.Run()); actual != expected {
+			t.Errorf("expected exit status %d, got %d", expected, actual)
 		}
 	}
+	missing := exec.Command(filepath.Join(t.TempDir(), "missing-command"))
+	if actual := getExitStatus(missing.Run()); actual != 1 {
+		t.Errorf("expected missing-command status 1, got %d", actual)
+	}
+}
+
+func TestExitStatusHelper(t *testing.T) {
+	value := os.Getenv("OC_TEST_EXIT")
+	if value == "" {
+		return
+	}
+	code, err := strconv.Atoi(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Exit(code)
 }

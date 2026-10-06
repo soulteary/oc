@@ -1,19 +1,13 @@
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.3
 
-ARG TARGETARCH
+LABEL org.opencontainers.image.title="OC" \
+      org.opencontainers.image.source="https://github.com/soulteary/mc"
 
-ARG RELEASE
-
-LABEL maintainer="MinIO Inc <dev@min.io>"
-
+COPY oc /usr/bin/oc
 COPY CREDITS /licenses/CREDITS
 COPY LICENSE /licenses/LICENSE
+COPY NOTICE /licenses/NOTICE
 
-RUN \
-    microdnf update --nodocs && \
-    microdnf install curl ca-certificates shadow-utils --nodocs && \
-    microdnf clean all && \
-    curl -s -q https://dl.minio.io/client/mc/release/linux-${TARGETARCH}/archive/mc.${RELEASE} -o /usr/bin/mc && \
-    chmod +x /usr/bin/mc
+RUN microdnf install ca-certificates --nodocs && microdnf clean all
 
-ENTRYPOINT ["mc"]
+ENTRYPOINT ["oc"]

@@ -87,7 +87,7 @@ BUCKET_NAME="mc-test-bucket-$RANDOM"
 WATCH_OUT_FILE="$WORK_DIR/watch.out-$RANDOM"
 
 MC_CONFIG_DIR="/tmp/.mc-$RANDOM"
-MC="$PWD/mc"
+MC="${OC_BINARY:-$PWD/oc}"
 declare -a MC_CMD
 
 function get_md5sum()

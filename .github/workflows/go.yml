@@ -24,8 +24,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: [1.26.x]
-        os: [ubuntu-latest, windows-latest]
+        go-version: [1.27.1]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Check out code into the Go module directory
         uses: actions/checkout@v6
@@ -36,13 +36,23 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
+      - name: Verify dependency and release boundaries
+        shell: bash
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          go mod download
+          go mod verify
+          python3 buildscripts/verify-release-boundaries.py
+
       - name: Build and test on Windows
         if: matrix.os == 'windows-latest'
         shell: bash
         env:
           GO111MODULE: on
+          GOTOOLCHAIN: local
         run: |
-          go build --ldflags="-s -w" -o "${GOPATH}/bin/mc.exe" .
+          go build --ldflags="-s -w" -o "${GOPATH}/bin/oc.exe" .
           go test -v -race --timeout 30m ./...
 
       - name: Build, verify and test on Linux
@@ -50,6 +60,7 @@ jobs:
         shell: bash
         env:
           GO111MODULE: on
+          GOTOOLCHAIN: local
         run: |
           make
           diff -au <(gofmt -d *.go) <(printf "")
@@ -58,6 +69,15 @@ jobs:
           make test-race
           make verify
           make crosscompile
+
+      - name: Build and test on macOS
+        if: matrix.os == 'macos-latest'
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          make build
+          go vet ./...
+          go test -race --timeout 30m ./...
 
       - name: Lint on Linux
         if: matrix.os == 'ubuntu-latest'

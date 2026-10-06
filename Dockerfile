@@ -1,27 +1,20 @@
-FROM golang:1.15-alpine as builder
-
-LABEL maintainer="MinIO Inc <dev@min.io>"
-
-ENV GOPATH /go
-ENV CGO_ENABLED 0
-ENV GO111MODULE on
-
-RUN  \
-     apk add --no-cache git && \
-     git clone https://github.com/soulteary/mc && cd mc && \
-     go install -v -ldflags "$(go run buildscripts/gen-ldflags.go)"
+FROM golang:1.27.1-alpine AS builder
+WORKDIR /src
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
+RUN apk add --no-cache git
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG TARGETOS=linux
+ARG TARGETARCH
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags "$(go run buildscripts/gen-ldflags.go)" -o /out/oc .
 
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.3
-
-ARG TARGETARCH
-
-COPY --from=builder /go/bin/mc /usr/bin/mc
-COPY --from=builder /go/mc/CREDITS /licenses/CREDITS
-COPY --from=builder /go/mc/LICENSE /licenses/LICENSE
-
-RUN  \
-     microdnf update --nodocs && \
-     microdnf install ca-certificates --nodocs && \
-     microdnf clean all
-
-ENTRYPOINT ["mc"]
+LABEL org.opencontainers.image.title="OC" \
+      org.opencontainers.image.source="https://github.com/soulteary/mc"
+COPY --from=builder /out/oc /usr/bin/oc
+COPY --from=builder /src/CREDITS /licenses/CREDITS
+COPY --from=builder /src/LICENSE /licenses/LICENSE
+COPY --from=builder /src/NOTICE /licenses/NOTICE
+RUN microdnf install ca-certificates --nodocs && microdnf clean all
+ENTRYPOINT ["oc"]

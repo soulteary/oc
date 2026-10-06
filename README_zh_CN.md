@@ -1,4 +1,7 @@
 # MinIO客户端快速入门指南
+
+> OC 阶段一构建与发布基线见[验证与边界说明](docs/oc-phase-one.md)。自更新和 MinIO SUBNET 上传已禁用。使用 Go 1.27.1 执行 `make build`，产物为 `oc`。
+
 [![Slack](https://slack.min.io/slack?type=svg)](https://slack.min.io) [![Go Report Card](https://goreportcard.com/badge/minio/mc)](https://goreportcard.com/report/minio/mc) [![Docker Pulls](https://img.shields.io/docker/pulls/minio/mc.svg?maxAge=604800)](https://hub.docker.com/r/minio/mc/)
 
 MinIO Client (mc)为ls，cat，cp，mirror，diff，find等UNIX命令提供了一种替代方案。它支持文件系统和兼容Amazon S3的云存储服务（AWS Signature v2和v4）。

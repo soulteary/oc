@@ -57,7 +57,7 @@ func validateTranExpDate(rule lifecycle.Rule) error {
 	transitionSet := !rule.Transition.IsNull()
 	transitionDateSet := transitionSet && !rule.Transition.IsDateNull()
 	transitionDaySet := transitionSet && !rule.Transition.IsDaysNull()
-	errMsg := "Error in Transition/Expiration Date/days compatibility. Transition should happen before Expiration"
+	errMsg := "error in transition/expiration date/days compatibility: transition should happen before expiration"
 	if transitionDateSet && expiryDateSet {
 		if rule.Expiration.Date.Before(rule.Transition.Date.Time) {
 			return errors.New(errMsg)

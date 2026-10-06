@@ -17,6 +17,8 @@
 package cmd
 
 import (
+	"net/url"
+
 	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
@@ -80,6 +82,7 @@ type aliasMessage struct {
 // is activated, fields contents are cut and '...' will be added to
 // show a pretty table of all aliases configurations
 func (h aliasMessage) String() string {
+	h = h.redacted()
 	switch h.op {
 	case "list":
 		// Create a new pretty table with cols configuration
@@ -110,9 +113,25 @@ func (h aliasMessage) String() string {
 
 // JSON jsonified host message
 func (h aliasMessage) JSON() string {
+	h = h.redacted()
 	h.Status = "success"
 	jsonMessageBytes, e := json.MarshalIndent(h, "", " ")
 	fatalIf(probe.NewError(e), "Unable to marshal into JSON.")
 
 	return string(jsonMessageBytes)
+}
+
+// Export commands retain their explicit backup contract; normal status output
+// must not reveal credentials, including the JSON response to alias set.
+func (h aliasMessage) redacted() aliasMessage {
+	if h.AccessKey != "" {
+		h.AccessKey = traceRedacted
+	}
+	if h.SecretKey != "" {
+		h.SecretKey = traceRedacted
+	}
+	if u, err := url.Parse(h.URL); err == nil {
+		h.URL = redactTraceURL(u).String()
+	}
+	return h
 }

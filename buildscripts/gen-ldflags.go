@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -67,5 +68,20 @@ func commitID() string {
 }
 
 func main() {
-	fmt.Println(genLDFlags(time.Now().UTC().Format(time.RFC3339)))
+	// Prefer the commit timestamp so rebuilding the same tree has stable metadata.
+	timestamp := os.Getenv("SOURCE_DATE_EPOCH")
+	if timestamp == "" {
+		output, err := exec.Command("git", "log", "-1", "--format=%ct").Output()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		timestamp = strings.TrimSpace(string(output))
+	}
+	epoch, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Invalid SOURCE_DATE_EPOCH:", err)
+		os.Exit(1)
+	}
+	fmt.Println(genLDFlags(time.Unix(epoch, 0).UTC().Format(time.RFC3339)))
 }

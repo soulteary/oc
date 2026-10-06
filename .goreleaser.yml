@@ -1,167 +1,68 @@
-project_name: mc
+version: 2
+project_name: oc
 
+# Release publication remains disabled until the OC channel is provisioned.
 release:
-   name_template: "Version {{.Version}}"
-   disable: true
-   github:
-    owner: minio
-    name: mc
+  disable: true
 
 env:
   - CGO_ENABLED=0
-  - GO111MODULE=on
+  - GOTOOLCHAIN=local
 
 before:
   hooks:
-    - make clean
-    - go generate ./...
-    - go mod tidy
     - go mod download
 
 builds:
-  -
-    goos:
-      - linux
-      - darwin
-      - windows
-      - freebsd
-
-    goarch:
-      - amd64
-      - arm64
-      - arm
-      - ppc64le
-      - s390x
-
-    goarm:
-      - 7
-
+  - id: oc
+    binary: oc
+    goos: [linux, darwin, windows, freebsd]
+    goarch: [amd64, arm64, arm, ppc64le, s390x]
+    goarm: ['7']
     ignore:
-      - goos: darwin
-        goarch: arm64
-      - goos: darwin
-        goarch: arm
-      - goos: darwin
-        goarch: ppc64le
-      - goos: darwin
-        goarch: s390x
-      - goos: windows
-        goarch: arm64
-      - goos: windows
-        goarch: arm
-      - goos: windows
-        goarch: ppc64le
-      - goos: windows
-        goarch: s390x
-      - goos: freebsd
-        goarch: arm
-      - goos: freebsd
-        goarch: arm64
-      - goos: freebsd
-        goarch: ppc64le
-      - goos: freebsd
-        goarch: s390x
-
-    flags:
-      - -tags=kqueue
-      - -trimpath
-
+      - {goos: darwin, goarch: arm}
+      - {goos: darwin, goarch: ppc64le}
+      - {goos: darwin, goarch: s390x}
+      - {goos: windows, goarch: arm64}
+      - {goos: windows, goarch: arm}
+      - {goos: windows, goarch: ppc64le}
+      - {goos: windows, goarch: s390x}
+      - {goos: freebsd, goarch: arm}
+      - {goos: freebsd, goarch: arm64}
+      - {goos: freebsd, goarch: ppc64le}
+      - {goos: freebsd, goarch: s390x}
+    flags: [-tags=kqueue, -trimpath]
     ldflags:
       - "-s -w -X github.com/soulteary/mc/cmd.Version={{.Version}} -X github.com/soulteary/mc/cmd.ReleaseTag={{.Tag}} -X github.com/soulteary/mc/cmd.CommitID={{.FullCommit}} -X github.com/soulteary/mc/cmd.ShortCommitID={{.ShortCommit}}"
 
 archives:
-  -
-    format: binary
-    name_template: "{{ .Binary }}-release/{{ .Os }}-{{ .Arch }}/{{ .Binary }}.{{ .Version }}"
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [LICENSE, NOTICE, CREDITS, README.md]
 
 nfpms:
-  -
-    id: minio
-    package_name: mc
-    vendor: MinIO, Inc.
-    homepage: https://min.io/
-    maintainer: dev@min.io
-    description: MinIO Client (mc) provides a modern alternative to UNIX commands like ls, cat, cp, mirror, diff, find etc. It supports filesystems and Amazon S3 compatible cloud storage service (AWS Signature v2 and v4).
-    license: Apache 2.0
+  - id: oc
+    package_name: oc
+    vendor: soulteary
+    homepage: https://github.com/soulteary/mc
+    maintainer: soulteary
+    description: OC command-line client for OtterIO and S3-compatible storage.
+    license: Apache-2.0
     bindir: /usr/bin
-    formats:
-      - deb
-      - rpm
-    overrides:
-      deb:
-        file_name_template: "{{ .Binary }}-release/debs/{{ .ProjectName }}-{{ .Version }}_{{ .Arch }}"
-        replacements:
-          arm: armv7
-        files:
-          "NOTICE": "/usr/share/mc/NOTICE"
-          "CREDITS": "/usr/share/mc/CREDITS"
-          "LICENSE": "/usr/share/mc/LICENSE"
-          "README.md": "/usr/share/mc/README.md"
-      rpm:
-        file_name_template: "{{ .Binary }}-release/rpms/{{ .ProjectName }}-{{ .Version }}.{{ .Arch }}"
-        replacements:
-          amd64: x86_64
-          arm64: aarch64
-          arm: armv7
-        files:
-          "NOTICE": "/usr/share/mc/NOTICE"
-          "CREDITS": "/usr/share/mc/CREDITS"
-          "LICENSE": "/usr/share/mc/LICENSE"
-          "README.md": "/usr/share/mc/README.md"
+    formats: [deb, rpm]
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/oc/LICENSE
+      - src: NOTICE
+        dst: /usr/share/doc/oc/NOTICE
+      - src: CREDITS
+        dst: /usr/share/doc/oc/CREDITS
 
 checksum:
+  name_template: checksums.txt
   algorithm: sha256
-
-signs:
-  -
-    signature: "${artifact}.asc"
-    cmd: "sh"
-    args:
-      - '-c'
-      - 'gpg --quiet --detach-sign -a ${artifact}'
-    artifacts: all
 
 changelog:
   sort: asc
-  filters:
-    exclude:
-      - '^Update yaml files'
-
-dockers:
-  -
-    goos: linux
-    goarch: amd64
-    dockerfile: Dockerfile.release
-    image_templates:
-      - minio/mc:{{ .Tag }}
-      - minio/mc:latest
-
-  -
-    goos: linux
-    goarch: ppc64le
-    dockerfile: Dockerfile.ppc64le.release
-    image_templates:
-      - minio/mc:{{ .Tag }}-ppc64le
-
-  -
-    goos: linux
-    goarch: s390x
-    dockerfile: Dockerfile.s390x.release
-    image_templates:
-      - minio/mc:{{ .Tag }}-s390x
-
-  -
-    goos: linux
-    goarch: arm64
-    goarm: ''
-    dockerfile: Dockerfile.arm64.release
-    image_templates:
-      - minio/mc:{{ .Tag }}-arm64
-
-  -
-    goos: linux
-    goarch: arm
-    goarm: '7'
-    dockerfile: Dockerfile.arm.release
-    image_templates:
-      - minio/mc:{{ .Tag }}-arm

@@ -27,14 +27,17 @@ import (
 
 func Test(t *testing.T) { TestingT(t) }
 
-type TestSuite struct{}
+type TestSuite struct{ previousConfigDir string }
 
 var _ = Suite(&TestSuite{})
 
 func (s *TestSuite) SetUpSuite(c *C) {
+	s.previousConfigDir = mcCustomConfigDir
+	setMcConfigDir(c.MkDir())
 }
 
 func (s *TestSuite) TearDownSuite(c *C) {
+	setMcConfigDir(s.previousConfigDir)
 }
 
 func (s *TestSuite) TestValidPERMS(c *C) {

@@ -1,3 +1,5 @@
+export GOTOOLCHAIN := local
+
 PWD := $(shell pwd)
 GOPATH := $(shell go env GOPATH)
 LDFLAGS := $(shell go run buildscripts/gen-ldflags.go)
@@ -8,7 +10,7 @@ GOOS := $(shell go env GOOS)
 BUILD_LDFLAGS := '$(LDFLAGS)'
 
 VERSION ?= $(shell git describe --tags)
-TAG ?= "minio/mc:$(VERSION)"
+TAG ?= "soulteary/oc:$(VERSION)"
 
 all: build
 
@@ -42,7 +44,7 @@ lint:
 	@echo "Running $@ check"
 	@GO111MODULE=on ${GOPATH}/bin/golangci-lint run --timeout=5m --config ./.golangci.yml
 
-# Builds mc, runs the verifiers then runs the tests.
+# Builds OC, runs the verifiers then runs the tests.
 check: test
 test: verifiers build
 	@echo "Running unit tests"
@@ -54,28 +56,28 @@ test-race: verifiers build
 	@echo "Running unit tests under -race"
 	@GO111MODULE=on go test -race -v --timeout 20m ./...
 
-# Verify mc binary
+# Verify OC binary
 verify:
 	@echo "Verifying build with race"
-	@GO111MODULE=on CGO_ENABLED=1 go build -race -tags kqueue -trimpath --ldflags "$(LDFLAGS)" -o $(PWD)/mc 1>/dev/null
+	@GO111MODULE=on CGO_ENABLED=1 go build -race -tags kqueue -trimpath --ldflags "$(LDFLAGS)" -o $(PWD)/oc 1>/dev/null
 	@echo "Running functional tests"
 	@(env bash $(PWD)/functional-tests.sh)
 
-# Builds mc locally.
+# Builds OC locally.
 build: checks
-	@echo "Building mc binary to './mc'"
-	@GO111MODULE=on CGO_ENABLED=0 go build -trimpath -tags kqueue --ldflags $(BUILD_LDFLAGS) -o $(PWD)/mc
+	@echo "Building OC binary to './oc'"
+	@GO111MODULE=on CGO_ENABLED=0 go build -trimpath -tags kqueue --ldflags $(BUILD_LDFLAGS) -o $(PWD)/oc
 
-# Builds MinIO and installs it to $GOPATH/bin.
+# Builds OC and installs it to $GOPATH/bin.
 install: build
-	@echo "Installing mc binary to '$(GOPATH)/bin/mc'"
-	@mkdir -p $(GOPATH)/bin && cp -f $(PWD)/mc $(GOPATH)/bin/mc
-	@echo "Installation successful. To learn more, try \"mc --help\"."
+	@echo "Installing OC binary to '$(GOPATH)/bin/oc'"
+	@mkdir -p $(GOPATH)/bin && cp -f $(PWD)/oc $(GOPATH)/bin/oc
+	@echo "Installation successful. To learn more, try \"oc --help\"."
 
 clean:
 	@echo "Cleaning up all the generated files"
 	@find . -name '*.test' | xargs rm -fv
 	@find . -name '*~' | xargs rm -fv
-	@rm -rvf mc
+	@rm -rvf oc
 	@rm -rvf build
 	@rm -rvf release

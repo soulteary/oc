@@ -19,7 +19,6 @@ package cmd
 import (
 	"net/http"
 	"net/http/httputil"
-	"strings"
 
 	"github.com/soulteary/mc/pkg/httptracer"
 	"github.com/soulteary/otterio/pkg/console"
@@ -35,38 +34,17 @@ func newTraceV2() httptracer.HTTPTracer {
 
 // Request - Trace HTTP Request
 func (t traceV2) Request(req *http.Request) (err error) {
-	origAuth := req.Header.Get("Authorization")
-
-	if strings.TrimSpace(origAuth) != "" {
-		// Authorization (S3 v2 signature) Format:
-		// Authorization: AWS AKIAJVA5BMMU2RHO6IO1:Y10YHUZ0DTUterAUI6w3XKX7Iqk=
-
-		// Set a temporary redacted auth
-		req.Header.Set("Authorization", "AWS **REDACTED**:**REDACTED**")
-
-		var reqTrace []byte
-		reqTrace, err = httputil.DumpRequestOut(req, false) // Only display header
-		if err == nil {
-			console.Debug(string(reqTrace))
-		}
-
-		// Undo
-		req.Header.Set("Authorization", origAuth)
+	reqTrace, err := httputil.DumpRequestOut(redactTraceRequest(req), false)
+	if err == nil {
+		console.Debug(string(reqTrace))
 	}
 	return err
 }
 
 // Response - Trace HTTP Response
 func (t traceV2) Response(resp *http.Response) (err error) {
-	var respTrace []byte
-	// For errors we make sure to dump response body as well.
-	if resp.StatusCode != http.StatusOK &&
-		resp.StatusCode != http.StatusPartialContent &&
-		resp.StatusCode != http.StatusNoContent {
-		respTrace, err = httputil.DumpResponse(resp, true)
-	} else {
-		respTrace, err = httputil.DumpResponse(resp, false)
-	}
+	// Bodies may include credentials or signed URLs echoed by a server.
+	respTrace, err := httputil.DumpResponse(redactTraceResponse(resp), false)
 	if err == nil {
 		console.Debug(string(respTrace))
 	}

@@ -1,14 +1,13 @@
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.3
 
-LABEL maintainer="MinIO Inc <dev@min.io>"
+LABEL org.opencontainers.image.title="OC" \
+      org.opencontainers.image.source="https://github.com/soulteary/mc"
 
-COPY mc /usr/bin/
+COPY oc /usr/bin/oc
 COPY CREDITS /licenses/CREDITS
 COPY LICENSE /licenses/LICENSE
+COPY NOTICE /licenses/NOTICE
 
-RUN  \
-     microdnf update --nodocs && \
-     microdnf install ca-certificates --nodocs && \
-     microdnf clean all
+RUN microdnf install ca-certificates --nodocs && microdnf clean all
 
-ENTRYPOINT ["mc"]
+ENTRYPOINT ["oc"]

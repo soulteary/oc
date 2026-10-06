@@ -95,14 +95,6 @@ func (c *configV10) loadDefaults() {
 		Path:      "dns",
 	})
 
-	// MinIO anonymous server for demo.
-	c.setAlias("play", aliasConfigV10{
-		URL:       "https://play.min.io",
-		AccessKey: "Q3AM3UQ867SPQQA43P2F",
-		SecretKey: "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
-		API:       "S3v4",
-		Path:      "auto",
-	})
 }
 
 // loadConfigV10 - loads a new config.
