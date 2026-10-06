@@ -18,11 +18,10 @@ package cmd
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
-	"hash/fnv"
 	"net"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
@@ -33,38 +32,52 @@ import (
 	"github.com/soulteary/otterio/pkg/madmin"
 )
 
+// Include every credential and transport setting; different identities, TLS
+// policies and session tokens must never share a cached admin client.
+type adminClientKey struct {
+	Endpoint, AccessKey, SecretKey, SessionToken, AppName, AppVersion, CAFingerprint string
+	Insecure, Debug                                                                  bool
+	RootCAs                                                                          *x509.CertPool
+}
+
 // NewAdminFactory encloses New function with client cache.
 func NewAdminFactory() func(config *Config) (*madmin.AdminClient, *probe.Error) {
-	clientCache := make(map[uint32]*madmin.AdminClient)
+	clientCache := make(map[adminClientKey]*madmin.AdminClient)
 	mutex := &sync.Mutex{}
 
 	// Return New function.
 	return func(config *Config) (*madmin.AdminClient, *probe.Error) {
 		// Creates a parsed URL.
-		targetURL, e := url.Parse(config.HostURL)
+		targetURL, e := validateAdminEndpoint(config.HostURL)
 		if e != nil {
 			return nil, probe.NewError(e)
 		}
-		// By default enable HTTPs.
-		useTLS := true
-		if targetURL.Scheme == "http" {
-			useTLS = false
-		}
-
-		// Save if target supports virtual host style.
+		useTLS := targetURL.Scheme == "https"
 		hostName := targetURL.Host
-
-		// Generate a hash out of s3Conf.
-		confHash := fnv.New32a()
-		confHash.Write([]byte(hostName + config.AccessKey + config.SecretKey))
-		confSum := confHash.Sum32()
+		roots := globalRootCAs
+		fingerprint := ""
+		if config.AdminCAFile != "" {
+			roots, fingerprint, e = loadAdminCAs(config.AdminCAFile)
+			if e != nil {
+				return nil, probe.NewError(e)
+			}
+		}
+		key := adminClientKey{Endpoint: targetURL.String(), AccessKey: config.AccessKey,
+			SecretKey: config.SecretKey, SessionToken: config.SessionToken,
+			AppName: config.AppName, AppVersion: config.AppVersion,
+			Insecure: config.Insecure, Debug: config.Debug, RootCAs: roots,
+			CAFingerprint: fingerprint}
+		// A custom CA pool is rebuilt on each call; its certificate digest is the key.
+		if config.AdminCAFile != "" {
+			key.RootCAs = nil
+		}
 
 		// Lookup previous cache by hash.
 		mutex.Lock()
 		defer mutex.Unlock()
 		var api *madmin.AdminClient
 		var found bool
-		if api, found = clientCache[confSum]; !found {
+		if api, found = clientCache[key]; !found {
 			// Admin API only supports signature v4.
 			creds := credentials.NewStaticV4(config.AccessKey, config.SecretKey, config.SessionToken)
 
@@ -80,7 +93,7 @@ func NewAdminFactory() func(config *Config) (*madmin.AdminClient, *probe.Error) 
 
 			// Keep TLS config.
 			tlsConfig := &tls.Config{
-				RootCAs: globalRootCAs,
+				RootCAs: roots,
 				// Can't use SSLv3 because of POODLE and BEAST
 				// Can't use TLSv1.0 because of POODLE and BEAST using CBC cipher
 				// Can't use TLSv1.1 because of RC4 cipher usage
@@ -115,13 +128,13 @@ func NewAdminFactory() func(config *Config) (*madmin.AdminClient, *probe.Error) 
 			}
 
 			// Set custom transport.
-			api.SetCustomTransport(transport)
+			api.SetCustomTransport(adminNoRedirectTransport{transport})
 
 			// Set app info.
 			api.SetAppInfo(config.AppName, config.AppVersion)
 
 			// Cache the new MinIO Client with hash of config as key.
-			clientCache[confSum] = api
+			clientCache[key] = api
 		}
 
 		// Store the new api object.
@@ -145,7 +158,9 @@ func newAdminClient(aliasedURL string) (*madmin.AdminClient, *probe.Error) {
 		return nil, probe.NewError(fmt.Errorf("no valid configuration found for '%s' host alias", urlStrFull))
 	}
 
-	s3Config := NewS3Config(urlStrFull, aliasCfg)
+	endpoint, caFile := resolveAdminSettings(alias, aliasCfg)
+	s3Config := NewS3Config(endpoint, aliasCfg)
+	s3Config.AdminCAFile = caFile
 
 	s3Client, err := s3AdminNew(s3Config)
 	if err != nil {

@@ -300,6 +300,12 @@ func expandAlias(aliasedURL string) (alias string, urlStr string, aliasCfg *alia
 		if err != nil {
 			return "", "", nil, err.Trace(aliasedURL)
 		}
+		// MC_HOST overrides S3 credentials/address, while explicitly configured
+		// management settings remain available unless OC_ADMIN_* overrides them.
+		if stored, storedErr := getAliasConfig(alias); storedErr == nil {
+			aliasCfg.AdminURL = stored.AdminURL
+			aliasCfg.AdminCAFile = stored.AdminCAFile
+		}
 		return alias, urlJoinPath(aliasCfg.URL, path), aliasCfg, nil
 	}
 

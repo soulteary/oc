@@ -37,6 +37,8 @@ var (
 
 // aliasConfig configuration of an alias.
 type aliasConfigV10 struct {
+	AdminURL     string `json:"adminURL,omitempty"`
+	AdminCAFile  string `json:"adminCAFile,omitempty"`
 	URL          string `json:"url"`
 	AccessKey    string `json:"accessKey"`
 	SecretKey    string `json:"secretKey"`

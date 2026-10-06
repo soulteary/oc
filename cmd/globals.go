@@ -54,6 +54,8 @@ const (
 )
 
 var (
+	globalAdminURL string
+	globalAdminCA  string
 	globalQuiet    = false // Quiet flag set via command line
 	globalJSON     = false // Json flag set via command line
 	globalDebug    = false // Debug flag set via command line
@@ -92,6 +94,19 @@ func setGlobalsFromContext(ctx *cli.Context) error {
 	json := ctx.IsSet("json") || ctx.GlobalIsSet("json")
 	noColor := ctx.IsSet("no-color") || ctx.GlobalIsSet("no-color")
 	insecure := ctx.IsSet("insecure") || ctx.GlobalIsSet("insecure")
+	globalAdminURL = commandStringOverride(ctx, "admin-url")
+	globalAdminCA = commandStringOverride(ctx, "admin-ca")
 	setGlobals(quiet, debug, json, noColor, insecure)
 	return nil
+}
+
+func commandStringOverride(ctx *cli.Context, name string) string {
+	// GlobalString stops at the nearest flag declaration, including an unset
+	// default on a nested command. Walk explicit settings instead.
+	for current := ctx; current != nil; current = current.Parent() {
+		if current.IsSet(name) {
+			return current.String(name)
+		}
+	}
+	return ""
 }

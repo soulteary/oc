@@ -85,3 +85,38 @@ jobs:
         with:
           version: v2.12.2
           args: --timeout=5m
+
+  core-integration:
+    name: OC and pinned OtterIO core integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build OC and the pinned OtterIO server
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: '0'
+        run: |
+          go mod download
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/oc" .
+          otterio_source=$(go list -m -f '{{.Dir}}' github.com/soulteary/otterio)
+          cp -R "$otterio_source" "$RUNNER_TEMP/otterio-source"
+          chmod -R u+w "$RUNNER_TEMP/otterio-source"
+          cd "$RUNNER_TEMP/otterio-source"
+          # The SDK pin remains unchanged; this explicit server fix is required
+          # until a new OtterIO release includes the query-parameter bridge.
+          git apply "$GITHUB_WORKSPACE/buildscripts/otterio-core-compat.patch"
+          go test -mod=readonly ./cmd -run 'TestAdminQueryBridge' -count=1
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio" .
+      - name: Verify single and dual ports, TLS, permissions and metrics
+        run: |
+          python3 buildscripts/test-core-integration.py --oc "$RUNNER_TEMP/oc" --otterio "$RUNNER_TEMP/otterio" --report "$RUNNER_TEMP/core-integration.json"
+      - name: Upload compatibility results
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-integration
+          path: ${{ runner.temp }}/core-integration.json

@@ -196,6 +196,7 @@ type ClientContent struct {
 
 // Config - see http://docs.amazonwebservices.com/AmazonS3/latest/dev/index.html?RESTAuthentication.html
 type Config struct {
+	AdminCAFile  string
 	AccessKey    string
 	SecretKey    string
 	SessionToken string

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -161,12 +162,14 @@ func setAlias(alias string, aliasCfgV10 aliasConfigV10) aliasMessage {
 	fatalIf(err.Trace(alias), "Unable to update hosts in config version `"+mustGetMcConfigPath()+"`.")
 
 	return aliasMessage{
-		Alias:     alias,
-		URL:       aliasCfgV10.URL,
-		AccessKey: aliasCfgV10.AccessKey,
-		SecretKey: aliasCfgV10.SecretKey,
-		API:       aliasCfgV10.API,
-		Path:      aliasCfgV10.Path,
+		Alias:       alias,
+		URL:         aliasCfgV10.URL,
+		AdminURL:    aliasCfgV10.AdminURL,
+		AdminCAFile: aliasCfgV10.AdminCAFile,
+		AccessKey:   aliasCfgV10.AccessKey,
+		SecretKey:   aliasCfgV10.SecretKey,
+		API:         aliasCfgV10.API,
+		Path:        aliasCfgV10.Path,
 	}
 }
 
@@ -308,6 +311,24 @@ func mainAliasSet(cli *cli.Context, deprecated bool) error {
 		}
 	}
 
+	adminURL := commandStringOverride(cli, "admin-url")
+	adminCA := commandStringOverride(cli, "admin-ca")
+	if adminURL != "" {
+		if _, err := validateAdminEndpoint(adminURL); err != nil {
+			return err
+		}
+	}
+	if adminCA != "" {
+		// Persist a stable path so later commands can run from another directory.
+		absoluteCA, err := filepath.Abs(adminCA)
+		if err != nil {
+			return fmt.Errorf("resolve admin CA path: %w", err)
+		}
+		adminCA = absoluteCA
+		if _, _, err := loadAdminCAs(adminCA); err != nil {
+			return err
+		}
+	}
 	accessKey, secretKey := fetchAliasKeys(args)
 	checkAliasSetSyntax(cli, accessKey, secretKey, deprecated)
 
@@ -318,11 +339,13 @@ func mainAliasSet(cli *cli.Context, deprecated bool) error {
 	fatalIf(err.Trace(cli.Args()...), "Unable to initialize new alias from the provided credentials.")
 
 	msg := setAlias(alias, aliasConfigV10{
-		URL:       s3Config.HostURL,
-		AccessKey: s3Config.AccessKey,
-		SecretKey: s3Config.SecretKey,
-		API:       s3Config.Signature,
-		Path:      path,
+		AdminURL:    adminURL,
+		AdminCAFile: adminCA,
+		URL:         s3Config.HostURL,
+		AccessKey:   s3Config.AccessKey,
+		SecretKey:   s3Config.SecretKey,
+		API:         s3Config.Signature,
+		Path:        path,
 	}) // Add an alias with specified credentials.
 
 	msg.op = "set"

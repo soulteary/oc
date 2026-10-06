@@ -70,6 +70,8 @@ type aliasMessage struct {
 	Status      string `json:"status"`
 	Alias       string `json:"alias"`
 	URL         string `json:"URL"`
+	AdminURL    string `json:"adminURL,omitempty"`
+	AdminCAFile string `json:"adminCAFile,omitempty"`
 	AccessKey   string `json:"accessKey,omitempty"`
 	SecretKey   string `json:"secretKey,omitempty"`
 	API         string `json:"api,omitempty"`
@@ -89,6 +91,8 @@ func (h aliasMessage) String() string {
 		t := newPrettyRecord(2,
 			Row{"Alias", "Alias"},
 			Row{"URL", "URL"},
+			Row{"AdminURL", "URL"},
+			Row{"AdminCA", "Path"},
 			Row{"AccessKey", "AccessKey"},
 			Row{"SecretKey", "SecretKey"},
 			Row{"API", "API"},
@@ -99,7 +103,7 @@ func (h aliasMessage) String() string {
 		if path == "" {
 			path = h.Lookup
 		}
-		return t.buildRecord(h.Alias, h.URL, h.AccessKey, h.SecretKey, h.API, path)
+		return t.buildRecord(h.Alias, h.URL, h.AdminURL, h.AdminCAFile, h.AccessKey, h.SecretKey, h.API, path)
 	case "remove":
 		return console.Colorize("AliasMessage", "Removed `"+h.Alias+"` successfully.")
 	case "add": // add is deprecated
@@ -132,6 +136,9 @@ func (h aliasMessage) redacted() aliasMessage {
 	}
 	if u, err := url.Parse(h.URL); err == nil {
 		h.URL = redactTraceURL(u).String()
+	}
+	if u, err := url.Parse(h.AdminURL); err == nil {
+		h.AdminURL = redactTraceURL(u).String()
 	}
 	return h
 }

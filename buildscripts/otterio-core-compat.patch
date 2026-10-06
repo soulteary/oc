@@ -1,0 +1,111 @@
+diff --git a/cmd/fiber_admin_router.go b/cmd/fiber_admin_router.go
+index 95c5b22..74870f5 100644
+--- a/cmd/fiber_admin_router.go
++++ b/cmd/fiber_admin_router.go
+@@ -298,7 +298,7 @@ func adminRule(method string, h func(http.ResponseWriter, *http.Request), traceH
+ 	return routeRule{
+ 		methods:      []string{method},
+ 		queries:      queries,
+-		handler:      toOtterioHandler(h),
++		handler:      toOtterioHandler(bridgeAdminQueryVars(h, queries)),
+ 		traceHeaders: traceHdrs,
+ 	}
+ }
+@@ -312,7 +312,23 @@ func adminStreamRule(method string, h func(http.ResponseWriter, *http.Request),
+ 	return routeRule{
+ 		methods:   []string{method},
+ 		queries:   queries,
+-		handler:   toOtterioStreamHandler(h),
++		handler:   toOtterioStreamHandler(bridgeAdminQueryVars(h, queries)),
+ 		skipTrace: true,
+ 	}
+ }
++
++// Legacy mux handlers read route-declared query captures through urlVar.
++// Fiber validates those query rules but does not expose them as path params.
++// Bridge only the declared keys, without overriding a captured path variable.
++func bridgeAdminQueryVars(h func(http.ResponseWriter, *http.Request), queries map[string]string) func(http.ResponseWriter, *http.Request) {
++	return func(w http.ResponseWriter, r *http.Request) {
++		vars := urlVars(r)
++		values := r.URL.Query()
++		for key := range queries {
++			if _, exists := vars[key]; !exists {
++				vars[key] = values.Get(key)
++			}
++		}
++		h(w, setURLVarsOnRequest(r, vars))
++	}
++}
+diff --git a/cmd/admin_query_bridge_test.go b/cmd/admin_query_bridge_test.go
+new file mode 100644
+index 0000000..4918134
+--- /dev/null
++++ b/cmd/admin_query_bridge_test.go
+@@ -0,0 +1,67 @@
++package cmd
++
++import (
++	"net/http"
++	"net/http/httptest"
++	"testing"
++
++	"github.com/gofiber/fiber/v3"
++)
++
++func TestAdminQueryBridgeDeclaredKeys(t *testing.T) {
++	for _, stream := range []bool{false, true} {
++		app := fiber.New()
++		handler := func(w http.ResponseWriter, r *http.Request) {
++			if urlVar(r, "policyName") != "readonly" || urlVar(r, "userOrGroup") != "user-one" || urlVar(r, "isGroup") != "false" {
++				t.Error("declared query captures missing")
++			}
++			if urlVar(r, "unexpected") != "" {
++				t.Error("undeclared query was bridged")
++			}
++			w.WriteHeader(http.StatusOK)
++		}
++		queries := map[string]string{"policyName": ".*", "userOrGroup": ".*", "isGroup": "true|false"}
++		rule := adminRule(http.MethodPut, handler, true, queries)
++		if stream {
++			rule = adminStreamRule(http.MethodPut, handler, queries)
++		}
++		registerAdminRoute(app, "/admin-test", []routeRule{rule})
++		response, err := app.Test(httptest.NewRequest(http.MethodPut, "/admin-test?policyName=readonly&userOrGroup=user-one&isGroup=false&unexpected=ignored", nil))
++		if err != nil {
++			t.Fatal(err)
++		}
++		response.Body.Close()
++		if response.StatusCode != http.StatusOK {
++			t.Fatal(response.StatusCode)
++		}
++	}
++}
++
++func TestAdminQueryBridgePreservesPathAndValidation(t *testing.T) {
++	app := fiber.New()
++	calls := 0
++	handler := func(w http.ResponseWriter, r *http.Request) {
++		calls++
++		if urlVar(r, "bucket") != "path-bucket" {
++			t.Error("query overwrote path capture")
++		}
++		w.WriteHeader(http.StatusOK)
++	}
++	registerAdminRoute(app, "/admin-test/:bucket", []routeRule{adminRule(http.MethodPut, handler, true, map[string]string{"bucket": ".*", "isGroup": "true|false"})})
++	for _, value := range []string{"false", "invalid"} {
++		response, err := app.Test(httptest.NewRequest(http.MethodPut, "/admin-test/path-bucket?bucket=query-bucket&isGroup="+value, nil))
++		if err != nil {
++			t.Fatal(err)
++		}
++		response.Body.Close()
++		if value == "false" && response.StatusCode != http.StatusOK {
++			t.Fatal(response.StatusCode)
++		}
++		if value == "invalid" && response.StatusCode == http.StatusOK {
++			t.Fatal("invalid query reached handler")
++		}
++	}
++	if calls != 1 {
++		t.Fatal("query validation bypassed")
++	}
++}

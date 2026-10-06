@@ -61,5 +61,11 @@ func validateConfigHost(host aliasConfigV10) (bool, []string) {
 		validationSuccessful = false
 		hostErrors = append(hostErrors, errInvalidURL(host.URL).ToGoError().Error())
 	}
+	if host.AdminURL != "" {
+		if _, err := validateAdminEndpoint(host.AdminURL); err != nil {
+			validationSuccessful = false
+			hostErrors = append(hostErrors, fmt.Sprintf("invalid admin URL for %s: %v", host.URL, err))
+		}
+	}
 	return validationSuccessful, hostErrors
 }

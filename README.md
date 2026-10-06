@@ -2,6 +2,8 @@
 
 > OC stage-one build and release baseline: [verification and boundaries](docs/oc-phase-one.md). Self-update and MinIO SUBNET uploads are disabled. Build with Go 1.27.1 using `make build`; the output is `oc`.
 
+> OC stage-two core integration: [admin endpoints, TLS, metrics and compatibility tests](docs/oc-phase-two.md). Includes a required OtterIO management query bridge fix.
+
 [![Slack](https://slack.min.io/slack?type=svg)](https://slack.min.io) [![Go Report Card](https://goreportcard.com/badge/minio/mc)](https://goreportcard.com/report/minio/mc) [![Docker Pulls](https://img.shields.io/docker/pulls/minio/mc.svg?maxAge=604800)](https://hub.docker.com/r/minio/mc/)
 
 MinIO Client (mc) provides a modern alternative to UNIX commands like ls, cat, cp, mirror, diff, find etc. It supports filesystems and Amazon S3 compatible cloud storage service (AWS Signature v2 and v4).
