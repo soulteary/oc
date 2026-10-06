@@ -268,6 +268,7 @@ func differenceInternal(ctx context.Context, sourceClnt, targetClnt Client, sour
 				}
 				continue
 			}
+			reportedDifference := true
 			if srcSize != tgtSize {
 				// Regular files differing in size.
 				diffCh <- diffMessage{
@@ -297,10 +298,12 @@ func differenceInternal(ctx context.Context, sourceClnt, targetClnt Client, sour
 					firstContent:  srcCtnt,
 					secondContent: tgtCtnt,
 				}
+			} else {
+				reportedDifference = false
 			}
 
 			// No differ
-			if returnSimilar {
+			if returnSimilar && !reportedDifference {
 				diffCh <- diffMessage{
 					FirstURL:      srcCtnt.URL.String(),
 					SecondURL:     tgtCtnt.URL.String(),

@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/fatih/color"
@@ -166,53 +165,38 @@ func mainWatch(cliCtx *cli.Context) error {
 	// Start watching on events
 	wo, err := s3Client.Watch(ctx, options)
 	fatalIf(err, "Unable to watch on the specified bucket.")
+	defer finishWatch(cancelWatch, wo)
 
-	// Initialize.. waitgroup to track the go-routine.
-	var wg sync.WaitGroup
+	return watchNotifications(ctx, wo)
+}
 
-	// Increment wait group to wait subsequent routine.
-	wg.Add(1)
-
-	// Start routine to watching on events.
-	go func() {
-		defer wg.Done()
-
-		// Wait for all events.
-		for {
-			select {
-			case <-globalContext.Done():
-				// Signal received we are done.
-				close(wo.DoneChan)
-				return
-			case events, ok := <-wo.Events():
-				if !ok {
-					return
-				}
-				for _, event := range events {
-					msg := watchMessage{}
-					msg.Event.Path = event.Path
-					msg.Event.Size = event.Size
-					msg.Event.Time = event.Time
-					msg.Event.Type = event.Type
-					msg.Source.Host = event.Host
-					msg.Source.Port = event.Port
-					msg.Source.UserAgent = event.UserAgent
-					printMsg(msg)
-				}
-			case err, ok := <-wo.Errors():
-				if !ok {
-					return
-				}
-				if err != nil {
-					errorIf(err, "Unable to watch for events.")
-					return
-				}
+func watchNotifications(ctx context.Context, wo *WatchObject) error {
+	eventsCh, errorsCh := wo.Events(), wo.Errors()
+	for eventsCh != nil || errorsCh != nil {
+		select {
+		case <-ctx.Done():
+			return nil
+		case events, ok := <-eventsCh:
+			if !ok {
+				eventsCh = nil
+				continue
+			}
+			for _, event := range events {
+				msg := watchMessage{}
+				msg.Event.Path, msg.Event.Size, msg.Event.Time, msg.Event.Type = event.Path, event.Size, event.Time, event.Type
+				msg.Source.Host, msg.Source.Port, msg.Source.UserAgent = event.Host, event.Port, event.UserAgent
+				printMsg(msg)
+			}
+		case err, ok := <-errorsCh:
+			if !ok {
+				errorsCh = nil
+				continue
+			}
+			if err != nil {
+				errorIf(err, "Unable to watch for events.")
+				return exitStatus(globalErrorExitStatus)
 			}
 		}
-	}()
-
-	// Wait on the routine to be finished or exit.
-	wg.Wait()
-
+	}
 	return nil
 }

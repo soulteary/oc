@@ -136,28 +136,32 @@ func execFind(command string) {
 // watchFind - enables listening on the input path, listens for all file/object
 // created actions. Asynchronously executes the input command line, also allows
 // formatting for the command line in accordance with subsititution arguments.
-func watchFind(ctxCtx context.Context, ctx *findContext) {
+func watchFind(ctxCtx context.Context, ctx *findContext) error {
 	// Watch is not enabled, return quickly.
 	if !ctx.watch {
-		return
+		return nil
 	}
 	options := WatchOptions{
 		Recursive: true,
 		Events:    []string{"put"},
 	}
+	ctxCtx, cancel := context.WithCancel(ctxCtx)
+	defer cancel()
 	watchObj, err := ctx.clnt.Watch(ctxCtx, options)
 	fatalIf(err.Trace(ctx.targetAlias), "Unable to watch with given options.")
+	defer finishWatch(cancel, watchObj)
 
+	eventsCh, errorsCh := watchObj.Events(), watchObj.Errors()
 	// Loop until user CTRL-C the command line.
-	for {
+	for eventsCh != nil || errorsCh != nil {
 		select {
-		case <-globalContext.Done():
+		case <-ctxCtx.Done():
 			console.Println()
-			close(watchObj.DoneChan)
-			return
-		case events, ok := <-watchObj.Events():
+			return nil
+		case events, ok := <-eventsCh:
 			if !ok {
-				return
+				eventsCh = nil
+				continue
 			}
 
 			for _, event := range events {
@@ -173,14 +177,18 @@ func watchFind(ctxCtx context.Context, ctx *findContext) {
 					Size: event.Size,
 				})
 			}
-		case err, ok := <-watchObj.Errors():
+		case err, ok := <-errorsCh:
 			if !ok {
-				return
+				errorsCh = nil
+				continue
 			}
-			errorIf(err, "Unable to watch for events.")
-			return
+			if err != nil {
+				errorIf(err, "Unable to watch for events.")
+				return exitStatus(globalErrorExitStatus)
+			}
 		}
 	}
+	return nil
 }
 
 // Descend at most (a non-negative integer) levels of files
@@ -244,11 +252,15 @@ func find(ctxCtx context.Context, ctx *findContext, fileContent contentMessage) 
 
 // doFind - find is main function body which interprets and executes
 // all the input parameters.
-func doFind(ctxCtx context.Context, ctx *findContext) error {
+func doFind(ctxCtx context.Context, ctx *findContext) (result error) {
 	// If watch is enabled we will wait on the prefix perpetually
 	// for all I/O events until canceled by user, if watch is not enabled
 	// following defer is a no-op.
-	defer watchFind(ctxCtx, ctx)
+	defer func() {
+		if err := watchFind(ctxCtx, ctx); result == nil {
+			result = err
+		}
+	}()
 
 	var prevKeyName string
 

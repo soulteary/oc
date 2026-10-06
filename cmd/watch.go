@@ -38,6 +38,17 @@ type EventInfo struct {
 	Type         notification.EventType
 }
 
+// fsWatchOverflow means the bounded native queue saturated. notify cannot
+// count dropped events, so conservatively require reconciliation on saturation.
+type fsWatchOverflow struct{ native bool }
+
+func (e fsWatchOverflow) Error() string {
+	if e.native {
+		return "native file watch reported incomplete events; rescan required"
+	}
+	return "local watch queue saturated; event history may be incomplete; rescan required"
+}
+
 // WatchOptions contains watch configuration options
 type WatchOptions struct {
 	Prefix    string
@@ -66,8 +77,19 @@ func (w *WatchObject) Errors() chan *probe.Error {
 	return w.ErrorChan
 }
 
+// finishWatch cancels the producer and waits for both channels to close, so a
+// command/retry does not leave its native subscription or metadata child behind.
+func finishWatch(cancel context.CancelFunc, wo *WatchObject) {
+	cancel()
+	for range wo.Events() {
+	}
+	for range wo.Errors() {
+	}
+}
+
 // Watcher can be used to have one or multiple clients watch for notifications
 type Watcher struct {
+	localFilesystem  bool
 	sessionStartTime time.Time
 
 	// all error will be added to this chan
@@ -114,15 +136,20 @@ func (w *Watcher) Wait() {
 
 // Join the watcher with client
 func (w *Watcher) Join(ctx context.Context, client Client, recursive bool) *probe.Error {
+	ctx, cancel := context.WithCancel(ctx)
 	wo, err := client.Watch(ctx, WatchOptions{
 		Recursive: recursive,
 		Events:    []string{"put", "delete", "bucket-creation", "bucket-removal"},
 	})
 	if err != nil {
+		cancel()
 		return err
 	}
 
 	w.o = append(w.o, wo)
+	if _, local := client.(*fsClient); local {
+		w.localFilesystem = true
+	}
 
 	// join monitoring waitgroup
 	w.wg.Add(1)
@@ -131,23 +158,27 @@ func (w *Watcher) Join(ctx context.Context, client Client, recursive bool) *prob
 	// and sent then to eventsChan and errorsChan
 	go func() {
 		defer w.wg.Done()
+		defer finishWatch(cancel, wo)
 
-		for {
+		eventsCh, errorsCh := wo.Events(), wo.Errors()
+		for eventsCh != nil || errorsCh != nil {
 			select {
 			case <-ctx.Done():
 				return
-			case events, ok := <-wo.Events():
+			case events, ok := <-eventsCh:
 				if !ok {
-					return
+					eventsCh = nil
+					continue
 				}
 				select {
 				case w.EventInfoChan <- events:
 				case <-ctx.Done():
 					return
 				}
-			case err, ok := <-wo.Errors():
+			case err, ok := <-errorsCh:
 				if !ok {
-					return
+					errorsCh = nil
+					continue
 				}
 
 				select {

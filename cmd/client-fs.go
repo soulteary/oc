@@ -136,11 +136,14 @@ func (f *fsClient) Select(ctx context.Context, expression string, sse encrypt.Se
 
 // Watches for all fs events on an input path.
 func (f *fsClient) Watch(ctx context.Context, options WatchOptions) (*WatchObject, *probe.Error) {
+	if err := ctx.Err(); err != nil {
+		return nil, probe.NewError(err)
+	}
 	eventChan := make(chan []EventInfo)
-	errorChan := make(chan *probe.Error)
+	errorChan := make(chan *probe.Error, 1)
 	doneChan := make(chan struct{})
-	// Make the channel buffered to ensure no event is dropped. Notify will drop
-	// an event if the receiver is not able to keep up the sending pace.
+	// Bound queued notifications. Like the OS watcher, notify may drop events
+	// when a consumer cannot keep up; this is a live stream, not a durable log.
 	in, out := PipeChan(1000)
 
 	var fsEvents []notify.Event
@@ -158,6 +161,7 @@ func (f *fsClient) Watch(ctx context.Context, options WatchOptions) (*WatchObjec
 		}
 	}
 
+	fsEvents = append(fsEvents, extraFSWatchEvents()...)
 	// Set up a watchpoint listening for events within a directory tree rooted
 	// at current working directory. Dispatch remove events to c.
 	recursivePath := f.PathURL.Path
@@ -165,70 +169,132 @@ func (f *fsClient) Watch(ctx context.Context, options WatchOptions) (*WatchObjec
 		recursivePath = f.PathURL.Path + "..."
 	}
 	if e := notify.Watch(recursivePath, in, fsEvents...); e != nil {
+		notify.Stop(in)
 		return nil, probe.NewError(e)
 	}
 
-	// wait for doneChan to close the watcher, eventChan and errorChan
+	wo := &WatchObject{EventInfoChan: eventChan, ErrorChan: errorChan, DoneChan: doneChan}
+	go forwardFSWatchEvents(ctx, wo, out, func() { notify.Stop(in) })
+	return wo, nil
+}
+
+// Only the forwarding goroutine closes its output channels, after stopping the
+// native watcher. Both context cancellation and the legacy DoneChan stop it.
+func forwardFSWatchEvents(ctx context.Context, wo *WatchObject, events <-chan notify.EventInfo, stop func()) {
+	worker := &fsWatchStatWorker{}
+	forwardFSWatchEventsWithStat(ctx, wo, events, func() { worker.close(); stop() }, worker.stat)
+}
+
+func forwardFSWatchEventsWithStat(ctx context.Context, wo *WatchObject, events <-chan notify.EventInfo, stop func(), stat func(context.Context, string) (fsWatchFileState, error)) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	finished := make(chan struct{})
 	go func() {
-		<-doneChan
-
-		close(eventChan)
-		close(errorChan)
-		notify.Stop(in)
-	}()
-
-	timeFormatFS := "2006-01-02T15:04:05.000Z"
-
-	// Get fsnotify notifications for events and errors, and sent them
-	// using eventChan and errorChan
-	go func() {
-		for event := range out {
-			if isIgnoredFile(event.Path()) {
-				continue
-			}
-			var i os.FileInfo
-			if IsPutEvent(event.Event()) {
-				// Look for any writes, send a response to indicate a full copy.
-				var e error
-				i, e = os.Stat(event.Path())
-				if e != nil {
-					if os.IsNotExist(e) {
-						continue
-					}
-					errorChan <- probe.NewError(e)
-					continue
+		defer close(finished)
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-wo.DoneChan:
+				cancel(context.Canceled)
+				return
+			case <-ticker.C:
+				if cap(events) > 0 && len(events) == cap(events) {
+					cancel(fsWatchOverflow{})
+					return
 				}
-				if i.IsDir() {
-					// we want files
-					continue
-				}
-				eventChan <- []EventInfo{{
-					Time: UTCNow().Format(timeFormatFS),
-					Size: i.Size(),
-					Path: event.Path(),
-					Type: notification.ObjectCreatedPut,
-				}}
-			} else if IsDeleteEvent(event.Event()) {
-				eventChan <- []EventInfo{{
-					Time: UTCNow().Format(timeFormatFS),
-					Path: event.Path(),
-					Type: notification.ObjectRemovedDelete,
-				}}
-			} else if IsGetEvent(event.Event()) {
-				eventChan <- []EventInfo{{
-					Time: UTCNow().Format(timeFormatFS),
-					Path: event.Path(),
-					Type: notification.ObjectAccessedGet,
-				}}
 			}
 		}
 	}()
-
-	return &WatchObject{
-		EventInfoChan: eventChan,
-		ErrorChan:     errorChan,
-		DoneChan:      doneChan,
-	}, nil
+	defer func() {
+		cause := context.Cause(ctx)
+		cancel(context.Canceled)
+		<-finished
+		stop()
+		if _, ok := cause.(fsWatchOverflow); ok {
+			// Production error channels have one reserved slot. Never let a
+			// stalled consumer prevent cleanup.
+			select {
+			case <-wo.ErrorChan:
+			default:
+			}
+			select {
+			case wo.ErrorChan <- probe.NewError(cause):
+			default:
+			}
+		}
+		close(wo.EventInfoChan)
+		close(wo.ErrorChan)
+	}()
+	const timeFormatFS = "2006-01-02T15:04:05.000Z"
+	for {
+		if cap(events) > 0 && len(events) == cap(events) {
+			cancel(fsWatchOverflow{})
+			return
+		}
+		var event notify.EventInfo
+		select {
+		case <-ctx.Done():
+			return
+		case <-wo.DoneChan:
+			return
+		case value, ok := <-events:
+			if !ok {
+				return
+			}
+			event = value
+			if cap(events) > 0 && len(events) >= cap(events)-1 {
+				cancel(fsWatchOverflow{})
+				return
+			}
+		}
+		if fsWatchNeedsRescan(event) {
+			cancel(fsWatchOverflow{native: true})
+			return
+		}
+		if isIgnoredFile(event.Path()) {
+			continue
+		}
+		info := EventInfo{Time: UTCNow().Format(timeFormatFS), Path: event.Path()}
+		switch {
+		case IsPutEvent(event.Event()):
+			state, err := stat(ctx, event.Path())
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				if os.IsNotExist(err) {
+					continue
+				}
+				select {
+				case wo.ErrorChan <- probe.NewError(err):
+				case <-ctx.Done():
+					return
+				case <-wo.DoneChan:
+					return
+				}
+				continue
+			}
+			if state.Directory {
+				continue
+			}
+			info.Size, info.Type = state.Size, notification.ObjectCreatedPut
+		case IsDeleteEvent(event.Event()):
+			info.Type = notification.ObjectRemovedDelete
+		case IsGetEvent(event.Event()):
+			info.Type = notification.ObjectAccessedGet
+		default:
+			continue
+		}
+		select {
+		case wo.EventInfoChan <- []EventInfo{info}:
+		case <-ctx.Done():
+			return
+		case <-wo.DoneChan:
+			return
+		}
+	}
 }
 
 func preserveAttributes(fd *os.File, attr map[string]string) *probe.Error {

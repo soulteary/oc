@@ -137,3 +137,27 @@ func BenchmarkRegular1K(b *testing.B) {
 func BenchmarkPipeChan1K(b *testing.B) {
 	benchmarkPipeChan(b, 1*1000)
 }
+
+// Slow consumers apply backpressure rather than allocating a growing queue.
+func TestPipeChannelBoundedFIFO(t *testing.T) {
+	input, output := PipeChan(2)
+	first := fsWatchTestEvent{path: "first"}
+	second := fsWatchTestEvent{path: "second"}
+	input <- first
+	input <- second
+	select {
+	case input <- fsWatchTestEvent{path: "overflow"}:
+		t.Fatal("queue accepted an event beyond its capacity")
+	default:
+	}
+	close(input)
+	for _, expected := range []string{"first", "second"} {
+		event, ok := <-output
+		if !ok || event.Path() != expected {
+			t.Fatalf("FIFO mismatch: %v", event)
+		}
+	}
+	if _, ok := <-output; ok {
+		t.Fatal("closed queue did not finish")
+	}
+}

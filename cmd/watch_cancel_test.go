@@ -19,7 +19,8 @@ type stalledWatchClient struct {
 	watch *WatchObject
 }
 
-func (c stalledWatchClient) Watch(context.Context, WatchOptions) (*WatchObject, *probe.Error) {
+func (c stalledWatchClient) Watch(ctx context.Context, _ WatchOptions) (*WatchObject, *probe.Error) {
+	go func() { <-ctx.Done(); close(c.watch.EventInfoChan); close(c.watch.ErrorChan) }()
 	return c.watch, nil
 }
 

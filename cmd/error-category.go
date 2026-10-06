@@ -11,6 +11,13 @@ import (
 
 // Additive machine-readable fields; original SDK errors and messages remain intact.
 func classifyClientError(err error) (string, string) {
+	var overflow fsWatchOverflow
+	if errors.As(err, &overflow) {
+		if overflow.native {
+			return "WatchEventsLost", "watch"
+		}
+		return "WatchQueueSaturated", "watch"
+	}
 	var admin madmin.ErrorResponse
 	var s3 minio.ErrorResponse
 	code := ""

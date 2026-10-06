@@ -127,7 +127,8 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 	}
 
 	// List both source and target, compare and return values through channel.
-	for diffMsg := range objectDifference(ctx, sourceClnt, targetClnt, sourceURL, targetURL, opts.isMetadata) {
+	diffs := difference(ctx, sourceClnt, targetClnt, sourceURL, targetURL, opts.isMetadata, true, opts.reconcile && !opts.activeActive, DirNone)
+	for diffMsg := range diffs {
 		if diffMsg.Error != nil {
 			// Send all errors through the channel
 			URLsCh <- URLs{Error: diffMsg.Error, ErrorCond: differInUnknown}
@@ -148,9 +149,12 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 
 		switch diffMsg.Diff {
 		case differInNone:
-			// No difference, continue.
-		case differInType:
-			URLsCh <- URLs{Error: errInvalidTarget(diffMsg.SecondURL)}
+			if !opts.reconcile || opts.activeActive {
+				continue
+			}
+			// Recopy even equal-size/equal-time files after event loss: a
+			// metadata comparison cannot prove their bytes are unchanged.
+			fallthrough
 		case differInSize, differInMetadata, differInAASourceMTime:
 			if !opts.isOverwrite && !opts.isFake && !opts.activeActive {
 				// Size or time or etag differs but --overwrite not set.
@@ -172,6 +176,8 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 				TargetAlias:   targetAlias,
 				TargetContent: targetContent,
 			}
+		case differInType:
+			URLsCh <- URLs{Error: errInvalidTarget(diffMsg.SecondURL)}
 		case differInFirst:
 			// Only in first, always copy.
 			sourceSuffix := strings.TrimPrefix(diffMsg.FirstURL, sourceURL)
@@ -202,6 +208,8 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 }
 
 type mirrorOptions struct {
+	watchRescanInterval               time.Duration
+	reconcile                         bool
 	isFake, isOverwrite, activeActive bool
 	isWatch, isRemove, isMetadata     bool
 	excludeOptions                    []string

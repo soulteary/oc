@@ -61,6 +61,11 @@ var (
 			Name:  "watch, w",
 			Usage: "watch and synchronize changes",
 		},
+		cli.DurationFlag{
+			Name:  "watch-rescan-interval",
+			Value: time.Minute,
+			Usage: "periodically reconcile local watch sources to recover missed notifications (minimum 1s)",
+		},
 		cli.BoolFlag{
 			Name:  "remove",
 			Usage: "remove extraneous object(s) on target",
@@ -221,7 +226,8 @@ var (
 const uaMirrorAppName = "mc-mirror"
 
 type mirrorJob struct {
-	stopCh chan struct{}
+	rescanRequired bool
+	stopCh         chan struct{}
 
 	// mutex for shutdown, this prevents the shutdown
 	// to be initiated multiple times
@@ -603,6 +609,13 @@ func (mj *mirrorJob) watchMirrorEvents(ctx context.Context, events []EventInfo) 
 
 // this goroutine will watch for notifications, and add modified objects to the queue
 func (mj *mirrorJob) watchMirror(ctx context.Context, stopParallel func()) {
+	var periodic <-chan time.Time
+	if mj.watcher.localFilesystem && mj.opts.watchRescanInterval > 0 {
+		ticker := time.NewTicker(mj.opts.watchRescanInterval)
+		defer ticker.Stop()
+		periodic = ticker.C
+	}
+
 	for {
 		select {
 		case events, ok := <-mj.watcher.Events():
@@ -616,10 +629,26 @@ func (mj *mirrorJob) watchMirror(ctx context.Context, stopParallel func()) {
 				stopParallel()
 				return
 			}
+			if err == nil {
+				continue
+			}
+			if _, saturated := err.ToGoError().(fsWatchOverflow); saturated {
+				mj.rescanRequired = true
+				// Surface the loss before restarting the run and reconciling the
+				// full source/target state under a fresh native subscription.
+				select {
+				case mj.statusCh <- URLs{Error: err}:
+				case <-ctx.Done():
+					return
+				}
+				stopParallel()
+				return
+			}
 			switch err.ToGoError().(type) {
 			case APINotImplemented:
 				errorIf(err.Trace(),
 					"Unable to Watch on source, perhaps source doesn't support Watching for events")
+				stopParallel()
 				return
 			}
 			if err != nil {
@@ -627,7 +656,15 @@ func (mj *mirrorJob) watchMirror(ctx context.Context, stopParallel func()) {
 					return URLs{Error: err}
 				})
 			}
-		case <-globalContext.Done():
+		case <-periodic:
+			// Native backends can coalesce or lose events before our queue.
+			mj.rescanRequired = true
+			stopParallel()
+			return
+		case <-mj.stopCh:
+			stopParallel()
+			return
+		case <-ctx.Done():
 			stopParallel()
 			return
 		}
@@ -688,7 +725,7 @@ func (mj *mirrorJob) startMirror(ctx context.Context, cancelMirror context.Cance
 					return mj.doRemove(ctx, sURLs)
 				})
 			}
-		case <-globalContext.Done():
+		case <-ctx.Done():
 			stopParallel()
 			return
 		case <-mj.stopCh:
@@ -702,6 +739,7 @@ func (mj *mirrorJob) startMirror(ctx context.Context, cancelMirror context.Cance
 func (mj *mirrorJob) mirror(ctx context.Context, cancelMirror context.CancelFunc) bool {
 
 	var wg sync.WaitGroup
+	initialScanDone := make(chan struct{})
 
 	// Starts watcher loop for watching for new events.
 	if mj.opts.isWatch {
@@ -709,6 +747,9 @@ func (mj *mirrorJob) mirror(ctx context.Context, cancelMirror context.CancelFunc
 		go func() {
 			defer wg.Done()
 			stopParallel := func() {
+				// Initial scanning also queues tasks. Wait for it to finish before
+				// closing the task queue during an overflow restart.
+				<-initialScanDone
 				mj.parallel.stopAndWait()
 				cancelMirror()
 			}
@@ -726,6 +767,7 @@ func (mj *mirrorJob) mirror(ctx context.Context, cancelMirror context.CancelFunc
 				cancelMirror()
 			}
 		}
+		defer close(initialScanDone)
 		// startMirror locks and blocks itself.
 		mj.startMirror(ctx, cancelMirror, stopParallel)
 	}()
@@ -817,7 +859,9 @@ func getEventPathURLWin(srcURL, eventPath string) string {
 }
 
 // runMirror - mirrors all buckets to another S3 server
-func runMirror(ctx context.Context, cancelMirror context.CancelFunc, srcURL, dstURL string, cli *cli.Context, encKeyDB map[string][]prefixSSEPair) bool {
+func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Context, encKeyDB map[string][]prefixSSEPair, recovery *bool) bool {
+	ctx, cancelMirror := context.WithCancel(ctx)
+	defer cancelMirror()
 	// Parse metadata.
 	userMetadata := make(map[string]string)
 	if cli.String("attr") != "" {
@@ -838,7 +882,8 @@ func runMirror(ctx context.Context, cancelMirror context.CancelFunc, srcURL, dst
 		isOverwrite = cli.Bool("overwrite")
 	}
 
-	isWatch := cli.Bool("watch") || cli.Bool("multi-master") || cli.Bool("active-active")
+	activeActive := cli.Bool("multi-master") || cli.Bool("active-active")
+	isWatch := cli.Bool("watch") || activeActive
 	isRemove := cli.Bool("remove")
 
 	// preserve is also expected to be overwritten if necessary
@@ -846,24 +891,27 @@ func runMirror(ctx context.Context, cancelMirror context.CancelFunc, srcURL, dst
 	isOverwrite = isOverwrite || isMetadata
 
 	mopts := mirrorOptions{
-		isFake:           cli.Bool("fake"),
-		isRemove:         isRemove,
-		isOverwrite:      isOverwrite,
-		isWatch:          isWatch,
-		isMetadata:       isMetadata,
-		md5:              cli.Bool("md5"),
-		disableMultipart: cli.Bool("disable-multipart"),
-		excludeOptions:   cli.StringSlice("exclude"),
-		olderThan:        cli.String("older-than"),
-		newerThan:        cli.String("newer-than"),
-		storageClass:     cli.String("storage-class"),
-		userMetadata:     userMetadata,
-		encKeyDB:         encKeyDB,
-		activeActive:     isWatch,
+		watchRescanInterval: cli.Duration("watch-rescan-interval"),
+		reconcile:           *recovery,
+		isFake:              cli.Bool("fake"),
+		isRemove:            isRemove,
+		isOverwrite:         isOverwrite,
+		isWatch:             isWatch,
+		isMetadata:          isMetadata,
+		md5:                 cli.Bool("md5"),
+		disableMultipart:    cli.Bool("disable-multipart"),
+		excludeOptions:      cli.StringSlice("exclude"),
+		olderThan:           cli.String("older-than"),
+		newerThan:           cli.String("newer-than"),
+		storageClass:        cli.String("storage-class"),
+		userMetadata:        userMetadata,
+		encKeyDB:            encKeyDB,
+		activeActive:        activeActive,
 	}
 
 	// Create a new mirror job and execute it
 	mj := newMirrorJob(srcURL, dstURL, mopts)
+	defer func() { cancelMirror(); mj.watcher.Wait() }()
 
 	preserve := cli.Bool("preserve")
 
@@ -950,7 +998,9 @@ func runMirror(ctx context.Context, cancelMirror context.CancelFunc, srcURL, dst
 		}
 	}
 
-	return mj.mirror(ctx, cancelMirror)
+	result := mj.mirror(ctx, cancelMirror)
+	*recovery = mj.rescanRequired
+	return result
 }
 
 // Main entry point for mirror command.
@@ -965,6 +1015,9 @@ func mainMirror(cliCtx *cli.Context) error {
 	encKeyDB, err := getEncKeys(cliCtx)
 	fatalIf(err, "Unable to parse encryption keys.")
 
+	if cliCtx.Duration("watch-rescan-interval") < time.Second {
+		return fmt.Errorf("watch-rescan-interval must be at least 1s")
+	}
 	// check 'mirror' cli arguments.
 	srcURL, tgtURL := checkMirrorSyntax(ctx, cliCtx, encKeyDB)
 
@@ -979,15 +1032,22 @@ func mainMirror(cliCtx *cli.Context) error {
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	recovery := false
 	for {
 		select {
 		case <-ctx.Done():
 			return exitStatus(globalErrorExitStatus)
 		default:
-			errorDetected := runMirror(ctx, cancelMirror, srcURL, tgtURL, cliCtx, encKeyDB)
+			errorDetected := runMirror(ctx, srcURL, tgtURL, cliCtx, encKeyDB, &recovery)
 			if cliCtx.Bool("watch") || cliCtx.Bool("multi-master") || cliCtx.Bool("active-active") {
 				s3mirrorRestarts.Inc()
-				time.Sleep(time.Duration(r.Float64() * float64(2*time.Second)))
+				timer := time.NewTimer(time.Duration(r.Float64() * float64(2*time.Second)))
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return exitStatus(globalErrorExitStatus)
+				case <-timer.C:
+				}
 				continue
 			}
 			if errorDetected {
