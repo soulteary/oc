@@ -20,10 +20,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"net"
 	"net/http"
@@ -88,9 +88,20 @@ const (
 
 var timeSentinel = time.Unix(0, 0).UTC()
 
+// Keep identities and SDK connection settings separate without lossy hashing
+// or ambiguous credential concatenation. Object paths belong to S3Client and
+// intentionally do not prevent sharing the underlying SDK connection.
+type s3ClientKey struct {
+	Host, AccessKey, SecretKey, SessionToken, Signature, Region, AppName, AppVersion string
+	Secure, Insecure, Debug, Accelerated                                             bool
+	Lookup                                                                           minio.BucketLookupType
+	RootCAs                                                                          *x509.CertPool
+	Transport                                                                        *http.Transport
+}
+
 // newFactory encloses New function with client cache.
 func newFactory() func(config *Config) (Client, *probe.Error) {
-	clientCache := make(map[uint32]*minio.Client)
+	clientCache := make(map[s3ClientKey]*minio.Client)
 	var mutex sync.Mutex
 
 	// Return New function.
@@ -119,17 +130,23 @@ func newFactory() func(config *Config) (Client, *probe.Error) {
 				hostName = googleHostName
 			}
 		}
-		// Generate a hash out of s3Conf.
-		confHash := fnv.New32a()
-		confHash.Write([]byte(hostName + config.AccessKey + config.SecretKey + config.SessionToken))
-		confSum := confHash.Sum32()
+		region := clientEnv("MC_REGION")
+		roots := globalRootCAs
+		key := s3ClientKey{
+			Host: hostName, AccessKey: config.AccessKey, SecretKey: config.SecretKey,
+			SessionToken: config.SessionToken, Signature: strings.ToUpper(config.Signature),
+			Region: region, AppName: config.AppName, AppVersion: config.AppVersion,
+			Secure: useTLS, Insecure: config.Insecure, Debug: config.Debug,
+			Accelerated: isS3AcceleratedEndpoint, Lookup: config.Lookup,
+			RootCAs: roots, Transport: config.Transport,
+		}
 
-		// Lookup previous cache by hash.
+		// Lookup only clients with the same identity and connection settings.
 		mutex.Lock()
 		defer mutex.Unlock()
 		var api *minio.Client
 		var found bool
-		if api, found = clientCache[confSum]; !found {
+		if api, found = clientCache[key]; !found {
 			// if Signature version '4' use NewV4 directly.
 			creds := credentials.NewStaticV4(config.AccessKey, config.SecretKey, config.SessionToken)
 			// if Signature version '2' use NewV2 directly.
@@ -163,7 +180,7 @@ func newFactory() func(config *Config) (Client, *probe.Error) {
 				if useTLS {
 					// Keep TLS config.
 					tlsConfig := &tls.Config{
-						RootCAs: globalRootCAs,
+						RootCAs: roots,
 						// Can't use SSLv3 because of POODLE and BEAST
 						// Can't use TLSv1.0 because of POODLE and BEAST using CBC cipher
 						// Can't use TLSv1.1 because of RC4 cipher usage
@@ -200,7 +217,7 @@ func newFactory() func(config *Config) (Client, *probe.Error) {
 			options := minio.Options{
 				Creds:        creds,
 				Secure:       useTLS,
-				Region:       clientEnv("MC_REGION"),
+				Region:       region,
 				BucketLookup: config.Lookup,
 				Transport:    uploadSessionTransport{base: transport},
 			}
@@ -218,8 +235,7 @@ func newFactory() func(config *Config) (Client, *probe.Error) {
 			// Set app info.
 			api.SetAppInfo(config.AppName, config.AppVersion)
 
-			// Cache the new OC client with hash of config as key.
-			clientCache[confSum] = api
+			clientCache[key] = api
 		}
 
 		// Store the new api object.
@@ -1093,11 +1109,6 @@ func (c *S3Client) removeIncompleteObjects(ctx context.Context, bucket string, o
 	}()
 
 	return removeObjectErrorCh
-}
-
-// AddUserAgent - add custom user agent.
-func (c *S3Client) AddUserAgent(app string, version string) {
-	c.api.SetAppInfo(app, version)
 }
 
 // Remove - remove object or bucket(s).

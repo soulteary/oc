@@ -139,8 +139,6 @@ type Client interface {
 	// GetURL returns back internal url
 	GetURL() ClientURL
 
-	AddUserAgent(app, version string)
-
 	// Tagging operations
 	GetTags(ctx context.Context, versionID string) (map[string]string, *probe.Error)
 	SetTags(ctx context.Context, versionID, tags string) *probe.Error

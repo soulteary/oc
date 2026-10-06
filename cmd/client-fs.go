@@ -1156,9 +1156,6 @@ func (f *fsClient) fsStat(isIncomplete bool) (os.FileInfo, *probe.Error) {
 	return st, nil
 }
 
-func (f *fsClient) AddUserAgent(_, _ string) {
-}
-
 // Get Object Tags
 func (f *fsClient) GetTags(ctx context.Context, _ string) (map[string]string, *probe.Error) {
 	return nil, probe.NewError(APINotImplemented{

@@ -579,6 +579,11 @@ func uploadSourceToTargetURL(ctx context.Context, urls URLs, progress io.Reader,
 // alias entry in the mc config file. If no matching host config entry
 // is found, fs client is returned.
 func newClientFromAlias(alias, urlStr string) (Client, *probe.Error) {
+	return newClientFromAliasWithAppInfo(alias, urlStr, "", "")
+}
+
+// Select application information before looking up a shared SDK client.
+func newClientFromAliasWithAppInfo(alias, urlStr, app, version string) (Client, *probe.Error) {
 	alias, _, hostCfg, err := expandAlias(alias)
 	if err != nil {
 		return nil, err.Trace(alias, urlStr)
@@ -595,6 +600,9 @@ func newClientFromAlias(alias, urlStr string) (Client, *probe.Error) {
 	}
 
 	s3Config := NewS3Config(urlStr, hostCfg)
+	if app != "" && version != "" {
+		s3Config.AppName, s3Config.AppVersion = app, version
+	}
 
 	s3Client, err := S3New(s3Config)
 	if err != nil {
@@ -608,6 +616,10 @@ var urlRgx = regexp.MustCompile("^https?://")
 
 // newClient gives a new client interface
 func newClient(aliasedURL string) (Client, *probe.Error) {
+	return newClientWithAppInfo(aliasedURL, "", "")
+}
+
+func newClientWithAppInfo(aliasedURL, app, version string) (Client, *probe.Error) {
 	alias, urlStrFull, hostCfg, err := expandAlias(aliasedURL)
 	if err != nil {
 		return nil, err.Trace(aliasedURL)
@@ -617,5 +629,5 @@ func newClient(aliasedURL string) (Client, *probe.Error) {
 	if hostCfg == nil && urlRgx.MatchString(aliasedURL) {
 		return nil, errInvalidAliasedURL(aliasedURL).Trace(aliasedURL)
 	}
-	return newClientFromAlias(alias, urlStrFull)
+	return newClientFromAliasWithAppInfo(alias, urlStrFull, app, version)
 }

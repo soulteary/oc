@@ -323,11 +323,10 @@ func (mj *mirrorJob) doRemove(ctx context.Context, sURLs URLs) URLs {
 
 	// Construct proper path with alias.
 	targetWithAlias := filepath.Join(sURLs.TargetAlias, sURLs.TargetContent.URL.Path)
-	clnt, pErr := newClient(targetWithAlias)
+	clnt, pErr := newClientWithAppInfo(targetWithAlias, uaMirrorAppName, ReleaseTag)
 	if pErr != nil {
 		return sURLs.WithError(pErr)
 	}
-	clnt.AddUserAgent(uaMirrorAppName, ReleaseTag)
 	contentCh := make(chan *ClientContent, 1)
 	contentCh <- &ClientContent{URL: *newClientURL(sURLs.TargetContent.URL.Path)}
 	close(contentCh)
