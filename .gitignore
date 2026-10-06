@@ -14,3 +14,5 @@ mc
 
 oc
 oc.exe
+
+__pycache__/

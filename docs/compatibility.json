@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "goToolchain": "1.27.1",
+  "otterioSDK": "v0.0.0-20261004215341-be8596f0d69d",
+  "requiredServerPatches": [
+    "buildscripts/otterio-core-compat.patch",
+    "buildscripts/otterio-runtime-compat.patch"
+  ],
+  "coreDeployments": [
+    "single-http",
+    "dual-http",
+    "single-tls",
+    "dual-tls",
+    "dual-http-public"
+  ],
+  "stabilityDeployment": "dual-tls",
+  "crossCompileTargets": [
+    "linux/amd64",
+    "linux/ppc64le",
+    "linux/arm64",
+    "linux/s390x",
+    "darwin/amd64",
+    "darwin/arm64",
+    "freebsd/amd64",
+    "linux/arm",
+    "linux/386",
+    "windows/amd64",
+    "windows/arm64"
+  ],
+  "integrationCIPlatforms": [
+    "linux",
+    "darwin"
+  ],
+  "unitTestCIPlatforms": [
+    "linux",
+    "darwin",
+    "windows"
+  ],
+  "stabilityBudgets": {
+    "transferSeconds": 120,
+    "sampledProcessRSSMiB": 512,
+    "cancellationSeconds": 5,
+    "soakGrowthMiB": 64,
+    "minimumMiBPerSecond": 5,
+    "maximumThroughputDropFraction": 0.5
+  },
+  "notValidated": [
+    "distributed-topology",
+    "gateway",
+    "external-kms",
+    "external-notification-targets",
+    "cross-instance-replication",
+    "third-party-s3",
+    "historical-otterio-versions",
+    "long-duration-soak",
+    "disk-full-recovery"
+  ],
+  "deferredByUser": [
+    "sdk-stream-fixes",
+    "sdk-extraction",
+    "sdk-independent-release"
+  ],
+  "policy": {
+    "compatibilityClaim": "Only versions, deployments and operations with recorded passing tests are supported.",
+    "historicalVersions": "Add a pinned baseline and passing matrix before extending support; API presence is not sufficient.",
+    "externalS3": "Object APIs require provider-specific acceptance; OtterIO admin commands are not generic S3 APIs.",
+    "streamDelivery": "Live notifications have no durable replay cursor; reconnect does not guarantee disconnected-event delivery.",
+    "legacyEnvironment": "MC_* remains supported throughout OC 0.x; removal requires at least one minor-release notice."
+  }
+}

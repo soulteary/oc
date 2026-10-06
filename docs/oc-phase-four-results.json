@@ -1,0 +1,698 @@
+{
+  "testContext": {
+    "platform": "Darwin",
+    "architecture": "arm64",
+    "ocSHA256": "db67f5193879375985b3f91459453f3071d884606e35002b04035d58a066b2da",
+    "otterioSHA256": "6cab0484b25219284ee742771f2e8e99425418d6c057bcda177c0593a1b75bf6",
+    "asyncPreemptionDisabled": false
+  },
+  "results": [
+    {
+      "scenario": "migration",
+      "checks": 22,
+      "status": "passed"
+    },
+    {
+      "scenario": "single-http",
+      "status": "passed",
+      "checks": 58,
+      "lastCommand": [
+        "rb",
+        "test/core-check"
+      ]
+    },
+    {
+      "scenario": "dual-http",
+      "status": "passed",
+      "checks": 59,
+      "lastCommand": [
+        "rb",
+        "test/core-check"
+      ]
+    },
+    {
+      "scenario": "single-tls",
+      "status": "passed",
+      "checks": 61,
+      "lastCommand": [
+        "rb",
+        "test/core-check"
+      ]
+    },
+    {
+      "scenario": "dual-tls",
+      "status": "passed",
+      "checks": 62,
+      "lastCommand": [
+        "rb",
+        "test/core-check"
+      ]
+    },
+    {
+      "scenario": "dual-http-public",
+      "status": "passed",
+      "checks": 58,
+      "lastCommand": [
+        "rb",
+        "test/core-check"
+      ]
+    },
+    {
+      "scenario": "dual-tls",
+      "status": "passed",
+      "checks": 346,
+      "lastCommand": [
+        "rb",
+        "test/core-check"
+      ],
+      "stability": {
+        "checks": 31,
+        "transferMetrics": [
+          {
+            "operation": "upload",
+            "concurrency": 1,
+            "objectBytes": 68157440,
+            "transferredBytes": 68157440,
+            "wallSeconds": 0.115,
+            "aggregateMiBPerSecond": 563.63,
+            "processSamples": [
+              {
+                "elapsedSeconds": 0.115,
+                "sampledPeakRSSMiB": 32.3
+              }
+            ],
+            "referenceMiBPerSecond": 560.34,
+            "requiredMiBPerSecond": 280.17
+          },
+          {
+            "operation": "download",
+            "concurrency": 1,
+            "objectBytes": 68157440,
+            "transferredBytes": 68157440,
+            "wallSeconds": 0.119,
+            "aggregateMiBPerSecond": 547.11,
+            "processSamples": [
+              {
+                "elapsedSeconds": 0.119,
+                "sampledPeakRSSMiB": 29.73
+              }
+            ],
+            "referenceMiBPerSecond": 570.18,
+            "requiredMiBPerSecond": 285.09
+          },
+          {
+            "operation": "upload",
+            "concurrency": 4,
+            "objectBytes": 68157440,
+            "transferredBytes": 272629760,
+            "wallSeconds": 0.285,
+            "aggregateMiBPerSecond": 913.73,
+            "processSamples": [
+              {
+                "elapsedSeconds": 0.284,
+                "sampledPeakRSSMiB": 32.3
+              },
+              {
+                "elapsedSeconds": 0.283,
+                "sampledPeakRSSMiB": 31.95
+              },
+              {
+                "elapsedSeconds": 0.282,
+                "sampledPeakRSSMiB": 32.02
+              },
+              {
+                "elapsedSeconds": 0.278,
+                "sampledPeakRSSMiB": 31.47
+              }
+            ],
+            "referenceMiBPerSecond": 541.67,
+            "requiredMiBPerSecond": 270.83
+          },
+          {
+            "operation": "download",
+            "concurrency": 4,
+            "objectBytes": 68157440,
+            "transferredBytes": 272629760,
+            "wallSeconds": 0.204,
+            "aggregateMiBPerSecond": 1272.22,
+            "processSamples": [
+              {
+                "elapsedSeconds": 0.204,
+                "sampledPeakRSSMiB": 30.19
+              },
+              {
+                "elapsedSeconds": 0.198,
+                "sampledPeakRSSMiB": 30.28
+              },
+              {
+                "elapsedSeconds": 0.2,
+                "sampledPeakRSSMiB": 30.19
+              },
+              {
+                "elapsedSeconds": 0.191,
+                "sampledPeakRSSMiB": 30.66
+              }
+            ],
+            "referenceMiBPerSecond": 555.56,
+            "requiredMiBPerSecond": 277.78
+          }
+        ],
+        "cancellation": [
+          {
+            "command": "watch test/core-check",
+            "iteration": 1,
+            "exitCode": 143,
+            "seconds": 0.001
+          },
+          {
+            "command": "watch test/core-check",
+            "iteration": 2,
+            "exitCode": 143,
+            "seconds": 0.001
+          },
+          {
+            "command": "watch test/core-check",
+            "iteration": 3,
+            "exitCode": 143,
+            "seconds": 0.001
+          },
+          {
+            "command": "admin trace",
+            "iteration": 1,
+            "exitCode": 143,
+            "seconds": 0.001
+          },
+          {
+            "command": "admin trace",
+            "iteration": 2,
+            "exitCode": 143,
+            "seconds": 0.001
+          },
+          {
+            "command": "admin trace",
+            "iteration": 3,
+            "exitCode": 143,
+            "seconds": 0.001
+          },
+          {
+            "command": "admin console",
+            "iteration": 1,
+            "exitCode": 143,
+            "seconds": 0.001
+          },
+          {
+            "command": "admin console",
+            "iteration": 2,
+            "exitCode": 143,
+            "seconds": 0.001
+          },
+          {
+            "command": "admin console",
+            "iteration": 3,
+            "exitCode": 143,
+            "seconds": 0.001
+          }
+        ],
+        "interruptions": [
+          {
+            "command": "cat",
+            "exitCode": 143,
+            "seconds": 0.002
+          },
+          {
+            "command": "multipart-upload",
+            "sessionObserved": true,
+            "uploadedPartBytes": 50331648,
+            "residualSessions": 0,
+            "exitCode": 143
+          }
+        ],
+        "networkFaults": [
+          {
+            "fault": "8-MiB/s-TCP-throttle",
+            "seconds": 9.749,
+            "hashVerified": true
+          },
+          {
+            "fault": "one-TCP-disconnect-after-1-MiB",
+            "firstExitCode": 1,
+            "hashVerified": true
+          },
+          {
+            "fault": "upload-TCP-disconnect",
+            "firstExitCode": 0,
+            "hashVerified": true,
+            "residualSessions": 0
+          }
+        ],
+        "soak": {
+          "seconds": 30.01,
+          "samples": 96,
+          "initialRSSMiB": 29.09,
+          "peakRSSMiB": 29.8,
+          "maxGrowthBudgetMiB": 64,
+          "stdoutConsumed": false
+        },
+        "methodology": "65 MiB objects; concurrency 1 and 4; local disposable server; wall time includes CLI startup; OC RSS sampled every 100 ms; 512 MiB RSS and 120 s per-transfer budgets; subscription cancellation budget 5 s; no disconnected-event replay claim"
+      }
+    },
+    {
+      "scenario": "dual-tls-erasure-extended",
+      "status": "passed",
+      "checks": 189,
+      "lastCommand": [
+        "admin",
+        "service"
+      ]
+    }
+  ],
+  "validation": {
+    "raceTests": "passed",
+    "goVet": "passed",
+    "golangciLint": "passed",
+    "releaseBoundaries": "passed",
+    "crossCompilation": {
+      "status": "passed",
+      "targetCount": 11
+    },
+    "compiledModuleInventory": {
+      "status": "passed",
+      "moduleCount": 69,
+      "dirtyReleaseRejected": true,
+      "missingVCSReleaseRejected": true
+    },
+    "govulncheck": {
+      "status": "unverified",
+      "reason": "vuln.go.dev TLS handshake timeout on two attempts"
+    },
+    "SDK": "unchanged per user instruction",
+    "remoteCI": "not executed locally"
+  },
+  "reviewFixValidation": {
+    "fullCompatibilityChecks": 855,
+    "finalStabilityRun": {
+      "testContext": {
+        "platform": "Darwin",
+        "architecture": "arm64",
+        "ocSHA256": "f49442107fcb1298adcc15e9862ed8843705e468f5a8ccffa23ab57f45b3811c",
+        "otterioSHA256": "6cab0484b25219284ee742771f2e8e99425418d6c057bcda177c0593a1b75bf6",
+        "asyncPreemptionDisabled": false
+      },
+      "results": [
+        {
+          "scenario": "migration",
+          "checks": 22,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-tls",
+          "status": "passed",
+          "checks": 346,
+          "lastCommand": [
+            "rb",
+            "test/core-check"
+          ],
+          "stability": {
+            "checks": 31,
+            "transferMetrics": [
+              {
+                "operation": "upload",
+                "concurrency": 1,
+                "objectBytes": 68157440,
+                "transferredBytes": 68157440,
+                "wallSeconds": 0.12,
+                "aggregateMiBPerSecond": 539.52,
+                "processSamples": [
+                  {
+                    "elapsedSeconds": 0.12,
+                    "sampledPeakRSSMiB": 31.81
+                  }
+                ],
+                "referenceMiBPerSecond": 601.85,
+                "requiredMiBPerSecond": 300.93
+              },
+              {
+                "operation": "download",
+                "concurrency": 1,
+                "objectBytes": 68157440,
+                "transferredBytes": 68157440,
+                "wallSeconds": 0.175,
+                "aggregateMiBPerSecond": 371.18,
+                "processSamples": [
+                  {
+                    "elapsedSeconds": 0.175,
+                    "sampledPeakRSSMiB": 30.08
+                  }
+                ],
+                "referenceMiBPerSecond": 242.54,
+                "requiredMiBPerSecond": 121.27
+              },
+              {
+                "operation": "upload",
+                "concurrency": 4,
+                "objectBytes": 68157440,
+                "transferredBytes": 272629760,
+                "wallSeconds": 0.512,
+                "aggregateMiBPerSecond": 508.06,
+                "processSamples": [
+                  {
+                    "elapsedSeconds": 0.5,
+                    "sampledPeakRSSMiB": 32.3
+                  },
+                  {
+                    "elapsedSeconds": 0.508,
+                    "sampledPeakRSSMiB": 31.55
+                  },
+                  {
+                    "elapsedSeconds": 0.505,
+                    "sampledPeakRSSMiB": 32.23
+                  },
+                  {
+                    "elapsedSeconds": 0.503,
+                    "sampledPeakRSSMiB": 32.53
+                  }
+                ],
+                "referenceMiBPerSecond": 474.45,
+                "requiredMiBPerSecond": 237.23
+              },
+              {
+                "operation": "download",
+                "concurrency": 4,
+                "objectBytes": 68157440,
+                "transferredBytes": 272629760,
+                "wallSeconds": 0.241,
+                "aggregateMiBPerSecond": 1077.8,
+                "processSamples": [
+                  {
+                    "elapsedSeconds": 0.237,
+                    "sampledPeakRSSMiB": 29.08
+                  },
+                  {
+                    "elapsedSeconds": 0.216,
+                    "sampledPeakRSSMiB": 30.11
+                  },
+                  {
+                    "elapsedSeconds": 0.241,
+                    "sampledPeakRSSMiB": 29.48
+                  },
+                  {
+                    "elapsedSeconds": 0.22,
+                    "sampledPeakRSSMiB": 29.92
+                  }
+                ],
+                "referenceMiBPerSecond": 427.63,
+                "requiredMiBPerSecond": 213.82
+              }
+            ],
+            "transferAttempts": [
+              {
+                "operation": "cp",
+                "arguments": [
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/files/large",
+                  "test/core-check/stability-1-0"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.12,
+                "sampledPeakRSSMiB": 31.81
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/files/large",
+                  "test/core-check/stability-1-0"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.108,
+                "sampledPeakRSSMiB": 4.08
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "test/core-check/stability-1-0",
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/stability-1-0.download"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.175,
+                "sampledPeakRSSMiB": 30.08
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "test/core-check/stability-1-0",
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/stability-1-0.download"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.268,
+                "sampledPeakRSSMiB": 29.33
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/files/large",
+                  "test/core-check/stability-4-0"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.5,
+                "sampledPeakRSSMiB": 32.3
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/files/large",
+                  "test/core-check/stability-4-1"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.508,
+                "sampledPeakRSSMiB": 31.55
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/files/large",
+                  "test/core-check/stability-4-2"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.505,
+                "sampledPeakRSSMiB": 32.23
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/files/large",
+                  "test/core-check/stability-4-3"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.503,
+                "sampledPeakRSSMiB": 32.53
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/files/large",
+                  "test/core-check/stability-4-0"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.137,
+                "sampledPeakRSSMiB": 31.81
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "test/core-check/stability-4-0",
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/stability-4-0.download"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.237,
+                "sampledPeakRSSMiB": 29.08
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "test/core-check/stability-4-1",
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/stability-4-1.download"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.216,
+                "sampledPeakRSSMiB": 30.11
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "test/core-check/stability-4-2",
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/stability-4-2.download"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.241,
+                "sampledPeakRSSMiB": 29.48
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "test/core-check/stability-4-3",
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/stability-4-3.download"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.22,
+                "sampledPeakRSSMiB": 29.92
+              },
+              {
+                "operation": "cp",
+                "arguments": [
+                  "test/core-check/stability-4-0",
+                  "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-lpo82bbu/stability-4-0.download"
+                ],
+                "status": "complete",
+                "exitCode": 0,
+                "elapsedSeconds": 0.152,
+                "sampledPeakRSSMiB": 29.31
+              }
+            ],
+            "cancellation": [
+              {
+                "command": "watch test/core-check",
+                "iteration": 1,
+                "exitCode": 143,
+                "seconds": 0.001,
+                "eventReceived": true
+              },
+              {
+                "command": "watch test/core-check",
+                "iteration": 2,
+                "exitCode": 143,
+                "seconds": 0.001,
+                "eventReceived": true
+              },
+              {
+                "command": "watch test/core-check",
+                "iteration": 3,
+                "exitCode": 143,
+                "seconds": 0.001,
+                "eventReceived": true
+              },
+              {
+                "command": "admin trace",
+                "iteration": 1,
+                "exitCode": 143,
+                "seconds": 0.001,
+                "eventReceived": true
+              },
+              {
+                "command": "admin trace",
+                "iteration": 2,
+                "exitCode": 143,
+                "seconds": 0.001,
+                "eventReceived": true
+              },
+              {
+                "command": "admin trace",
+                "iteration": 3,
+                "exitCode": 143,
+                "seconds": 0.001,
+                "eventReceived": true
+              },
+              {
+                "command": "admin console",
+                "iteration": 1,
+                "exitCode": 143,
+                "seconds": 0.001,
+                "eventReceived": true
+              },
+              {
+                "command": "admin console",
+                "iteration": 2,
+                "exitCode": 143,
+                "seconds": 0.001,
+                "eventReceived": true
+              },
+              {
+                "command": "admin console",
+                "iteration": 3,
+                "exitCode": 143,
+                "seconds": 0.001,
+                "eventReceived": true
+              }
+            ],
+            "interruptions": [
+              {
+                "command": "cat",
+                "exitCode": 143,
+                "seconds": 0.003
+              },
+              {
+                "command": "multipart-upload",
+                "sessionObserved": true,
+                "uploadedPartBytes": 33554432,
+                "residualSessions": 0,
+                "exitCode": 143
+              }
+            ],
+            "networkFaults": [
+              {
+                "fault": "8-MiB/s-TCP-throttle",
+                "seconds": 9.756,
+                "hashVerified": true
+              },
+              {
+                "fault": "one-TCP-disconnect-after-1-MiB",
+                "firstExitCode": 1,
+                "hashVerified": true
+              },
+              {
+                "fault": "upload-TCP-disconnect",
+                "firstExitCode": 0,
+                "hashVerified": true,
+                "residualSessions": 0
+              }
+            ],
+            "soak": {
+              "seconds": 30.23,
+              "samples": 96,
+              "initialRSSMiB": 28.59,
+              "peakRSSMiB": 29.55,
+              "maxGrowthBudgetMiB": 64,
+              "stdoutConsumed": false
+            },
+            "budgets": {
+              "transferSeconds": 120,
+              "sampledProcessRSSMiB": 512,
+              "cancellationSeconds": 5,
+              "soakGrowthMiB": 64,
+              "minimumMiBPerSecond": 5,
+              "maximumThroughputDropFraction": 0.5
+            },
+            "activeUpload": {
+              "sessions": 1,
+              "uploadedPartBytes": 33554432
+            },
+            "methodology": "65 MiB objects; concurrency 1 and 4; local disposable server; wall time includes CLI startup; OC RSS sampled every 100 ms; budgets read from compatibility.json; same-run throughput reference; subscriptions receive an event before pausing output; cancellation drains pending output; no disconnected-event replay claim"
+          }
+        }
+      ]
+    },
+    "maintenanceTests": {
+      "status": "passed",
+      "tests": 3
+    },
+    "realBuildVCSFalseRejected": true,
+    "forcedThroughputFailure": {
+      "status": "passed",
+      "partialTransferMetricsRetained": true,
+      "sanitizedServerDiagnosticRetained": true,
+      "failureSummaryRetained": true
+    },
+    "SDK": "unchanged; no go.mod/go.sum changes"
+  }
+}

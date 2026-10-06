@@ -19,10 +19,14 @@ package cmd
 import (
 	"os"
 	"os/signal"
+	"sync/atomic"
+	"time"
 )
 
 // trapSignals traps the registered signals and cancel the global context.
-func trapSignals(sig ...os.Signal) {
+var signalExitCode atomic.Int32
+
+func trapSignals(done <-chan struct{}, sig ...os.Signal) {
 	// channel to receive signals.
 	sigCh := make(chan os.Signal, 1)
 	defer close(sigCh)
@@ -32,13 +36,16 @@ func trapSignals(sig ...os.Signal) {
 	signal.Notify(sigCh, sig...)
 
 	// Wait for the signal.
-	s := <-sigCh
+	var s os.Signal
+	select {
+	case s = <-sigCh:
+	case <-done:
+		signal.Stop(sigCh)
+		return
+	}
 
 	// Once signal has been received stop signal Notify handler.
 	signal.Stop(sigCh)
-
-	// Cancel the global context
-	globalCancel()
 
 	var exitCode int
 	switch s.String() {
@@ -51,5 +58,23 @@ func trapSignals(sig ...os.Signal) {
 	default:
 		exitCode = globalErrorExitStatus
 	}
-	os.Exit(exitCode)
+	signalExitCode.Store(int32(exitCode))
+	globalCancel()
+	// Let command defers and stream cancellation run before Main exits. A stuck
+	// consumer gets an explicit failure, never a false graceful-cancellation pass.
+	if !awaitCommandCleanup(done, 3*time.Second) {
+		os.Exit(1)
+	}
+
+}
+
+func awaitCommandCleanup(done <-chan struct{}, timeout time.Duration) bool {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	}
 }

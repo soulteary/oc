@@ -46,6 +46,8 @@ jobs:
           GOTOOLCHAIN: local
         run: |
           go mod download
+          python3 buildscripts/test-maintenance.py
+          python3 buildscripts/verify-release-boundaries.py
           go mod verify
           python3 buildscripts/verify-release-boundaries.py
 
@@ -124,12 +126,54 @@ jobs:
           go test -mod=readonly ./cmd/http -run TestShutdownBoundsActiveFiberRequest -count=1
           go test -mod=readonly ./cmd -run 'TestAdminQueryBridge|TestDarwinRestartSupervisor' -count=3
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio" .
-      - name: Verify single and dual ports, TLS, permissions and metrics
+      - name: Verify ports, TLS, permissions, streams and performance budgets
         run: |
-          python3 buildscripts/test-core-integration.py --oc "$RUNNER_TEMP/oc" --otterio "$RUNNER_TEMP/otterio" --extended --report "$RUNNER_TEMP/core-integration.json"
+          python3 buildscripts/test-core-integration.py --oc "$RUNNER_TEMP/oc" --otterio "$RUNNER_TEMP/otterio" --extended --stability --soak-seconds 30 --report "$RUNNER_TEMP/core-integration.json" --artifacts-dir "$RUNNER_TEMP/core-evidence"
       - name: Upload compatibility results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: core-integration-${{ matrix.os }}-cgo-${{ matrix.cgo }}
-          path: ${{ runner.temp }}/core-integration.json
+          path: |
+            ${{ runner.temp }}/core-integration.json
+            ${{ runner.temp }}/core-evidence/
+
+  inventory:
+    name: Binary dependency inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build and inventory the compiled modules
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: '0'
+        run: |
+          python3 buildscripts/test-maintenance.py
+          python3 buildscripts/verify-release-boundaries.py
+          go mod verify
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/oc" .
+          python3 buildscripts/generate-sbom.py --binary "$RUNNER_TEMP/oc" --output "$RUNNER_TEMP/oc.cdx.json" --require-clean
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oc-compiled-module-inventory
+          path: ${{ runner.temp }}/oc.cdx.json
+
+  vulnerability-check:
+    name: Go reachable vulnerability check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Scan current source with the Go vulnerability database
+        env:
+          GOTOOLCHAIN: local
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...

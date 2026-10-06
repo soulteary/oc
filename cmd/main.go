@@ -76,6 +76,12 @@ VERSION:
 
 // Main starts mc application
 func Main(args []string) {
+	if code := runMain(args); code != 0 {
+		os.Exit(code)
+	}
+}
+
+func runMain(args []string) (exitCode int) {
 
 	if len(args) > 1 {
 		switch args[1] {
@@ -116,14 +122,21 @@ func Main(args []string) {
 	}
 
 	// Monitor OS exit signals and cancel the global context in such case
-	go trapSignals(os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
+	done := make(chan struct{})
+	defer close(done)
+	go trapSignals(done, os.Interrupt, syscall.SIGTERM)
 
 	// Run the app - exit on error.
 	runArgs := append([]string(nil), args...)
 	runArgs[0] = appName
-	if err := registerApp(appName).Run(runArgs); err != nil {
-		os.Exit(1)
+	err := registerApp(appName).Run(runArgs)
+	if code := signalExitCode.Load(); code != 0 {
+		return int(code)
 	}
+	if err != nil {
+		return 1
+	}
+	return 0
 }
 
 // Function invoked when invalid flag is passed
@@ -415,6 +428,7 @@ var appCmds = []cli.Command{
 	replicateCmd,
 	adminCmd,
 	configCmd,
+	doctorCmd,
 	updateCmd,
 }
 

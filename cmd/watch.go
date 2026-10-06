@@ -134,17 +134,27 @@ func (w *Watcher) Join(ctx context.Context, client Client, recursive bool) *prob
 
 		for {
 			select {
+			case <-ctx.Done():
+				return
 			case events, ok := <-wo.Events():
 				if !ok {
 					return
 				}
-				w.EventInfoChan <- events
+				select {
+				case w.EventInfoChan <- events:
+				case <-ctx.Done():
+					return
+				}
 			case err, ok := <-wo.Errors():
 				if !ok {
 					return
 				}
 
-				w.ErrorChan <- err
+				select {
+				case w.ErrorChan <- err:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}()

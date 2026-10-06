@@ -202,7 +202,7 @@ func newFactory() func(config *Config) (Client, *probe.Error) {
 				Secure:       useTLS,
 				Region:       clientEnv("MC_REGION"),
 				BucketLookup: config.Lookup,
-				Transport:    transport,
+				Transport:    uploadSessionTransport{base: transport},
 			}
 
 			api, e = minio.New(hostName, &options)
@@ -769,30 +769,50 @@ func (c *S3Client) Watch(ctx context.Context, options WatchOptions) (*WatchObjec
 		eventsCh = c.api.ListenNotification(ctx, "", "", events)
 	}
 
-	go func() {
-		// Start listening on all bucket events.
-		for notificationInfo := range eventsCh {
-			if notificationInfo.Err != nil {
-				var perr *probe.Error
-				if minio.ToErrorResponse(notificationInfo.Err).Code == "NotImplemented" {
-					perr = probe.NewError(APINotImplemented{
-						API:     "Watch",
-						APIType: c.GetURL().String(),
-					})
-				} else {
-					perr = probe.NewError(notificationInfo.Err)
-				}
-				wo.Errors() <- perr
-			} else {
-				wo.Events() <- c.notificationToEventsInfo(notificationInfo)
-			}
-		}
-
-		close(wo.EventInfoChan)
-		close(wo.ErrorChan)
-	}()
+	go c.forwardWatchNotifications(ctx, wo, eventsCh)
 
 	return wo, nil
+}
+
+// forwardWatchNotifications releases blocked consumers when the subscription is canceled.
+func (c *S3Client) forwardWatchNotifications(ctx context.Context, wo *WatchObject, eventsCh <-chan notification.Info) {
+	defer close(wo.EventInfoChan)
+	defer close(wo.ErrorChan)
+	// Start listening on all bucket events.
+	for {
+		var notificationInfo notification.Info
+		select {
+		case <-ctx.Done():
+			return
+		case notificationInfoValue, ok := <-eventsCh:
+			if !ok {
+				return
+			}
+			notificationInfo = notificationInfoValue
+		}
+		if notificationInfo.Err != nil {
+			var perr *probe.Error
+			if minio.ToErrorResponse(notificationInfo.Err).Code == "NotImplemented" {
+				perr = probe.NewError(APINotImplemented{
+					API:     "Watch",
+					APIType: c.GetURL().String(),
+				})
+			} else {
+				perr = probe.NewError(notificationInfo.Err)
+			}
+			select {
+			case wo.Errors() <- perr:
+			case <-ctx.Done():
+				return
+			}
+		} else {
+			select {
+			case wo.Events() <- c.notificationToEventsInfo(notificationInfo):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
 }
 
 // Get - get object with GET options.
@@ -1015,7 +1035,7 @@ func (c *S3Client) Put(ctx context.Context, reader io.Reader, size int64, progre
 		opts.SendContentMd5 = true
 	}
 
-	ui, e := c.api.PutObject(ctx, bucket, object, reader, size, opts)
+	ui, e := putWithCleanup(ctx, c.api, bucket, object, reader, size, opts)
 	if e != nil {
 		errResponse := minio.ToErrorResponse(e)
 		if errResponse.Code == "UnexpectedEOF" || e == io.EOF {

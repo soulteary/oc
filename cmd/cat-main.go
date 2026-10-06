@@ -281,7 +281,11 @@ func mainCat(cliCtx *cli.Context) error {
 
 	// Convert arguments to URLs: expand alias, fix format.
 	for _, url := range args {
-		fatalIf(catURL(ctx, url, versionID, rewind, encKeyDB).Trace(url), "Unable to read from `"+url+"`.")
+		err := catURL(ctx, url, versionID, rewind, encKeyDB)
+		if ctx.Err() != nil {
+			return nil
+		}
+		fatalIf(err.Trace(url), "Unable to read from `"+url+"`.")
 	}
 
 	return nil

@@ -203,6 +203,9 @@ func mainAdminConsole(ctx *cli.Context) error {
 	// Start listening on all console log activity.
 	logCh := client.GetLogs(ctxt, node, limit, logType)
 	for logInfo := range logCh {
+		if ctxt.Err() != nil {
+			return nil
+		}
 		if logInfo.Err != nil {
 			fatalIf(probe.NewError(logInfo.Err), "Unable to listen to console logs")
 		}

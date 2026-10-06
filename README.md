@@ -48,3 +48,7 @@ python3 buildscripts/test-core-integration.py \
 ```
 
 Tests use disposable local servers and credentials. The pinned server needs the phase-two query bridge and phase-three shutdown/restart patches. See the phase-three guide for the Darwin restart supervisor and platform validation. JSON errors keep existing fields and add `error.code` and `error.category`; each error is one JSON line. Error exit status remains 1, with existing cancellation/signal statuses preserved.
+
+## Stability and diagnostics
+
+Use `oc --json doctor [ALIAS]` for offline credential-free diagnostics and add `--online` for a read-only management connectivity check. See [phase four stability and support policy](docs/oc-phase-four.md) for fault injection, memory budgets, platform coverage and compiled-module inventories. SDK changes are deferred.

@@ -349,7 +349,7 @@ func doPrepareCopyURLs(ctx context.Context, session *sessionV8, cancelCopy conte
 				console.Eraseline()
 			}
 			session.Delete() // If we are interrupted during the URL scanning, we drop the session.
-			os.Exit(0)
+			return
 		}
 	}
 
@@ -416,7 +416,12 @@ func doCopySession(ctx context.Context, cancelCopy context.CancelFunc, cli *cli.
 					continue
 				}
 
-				cpURLsCh <- cpURLs
+				select {
+				case cpURLsCh <- cpURLs:
+				case <-ctx.Done():
+					close(cpURLsCh)
+					return
+				}
 			}
 		}()
 	} else {
@@ -451,7 +456,12 @@ func doCopySession(ctx context.Context, cancelCopy context.CancelFunc, cli *cli.
 					pg.SetTotal(totalBytes)
 					totalObjects++
 				}
-				cpURLsCh <- cpURLs
+				select {
+				case cpURLsCh <- cpURLs:
+				case <-ctx.Done():
+					close(cpURLsCh)
+					return
+				}
 			}
 			close(cpURLsCh)
 		}()
@@ -547,12 +557,15 @@ loop:
 		case <-globalContext.Done():
 			close(quitCh)
 			cancelCopy()
+			// Drain worker results until all uploads and their cleanup finish.
+			for range statusCh {
+			}
 			// Receive interrupt notification.
 			if !globalQuiet && !globalJSON {
 				console.Eraseline()
 			}
 			if session != nil {
-				session.CloseAndDie()
+				session.Close()
 			}
 			break loop
 		case cpURLs, ok := <-statusCh:
@@ -814,7 +827,7 @@ func mainCopy(cliCtx *cli.Context) error {
 	}
 
 	e := doCopySession(ctx, cancelCopy, cliCtx, session, encKeyDB, false)
-	if session != nil {
+	if session != nil && ctx.Err() == nil {
 		session.Delete()
 	}
 

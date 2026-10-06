@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run OC against disposable real OtterIO servers; never use a user's aliases."""
 import argparse
+from stability_checks import stability_checks
 import hashlib
 import hmac
 import datetime
@@ -103,11 +104,14 @@ def migration_checks(oc):
     return {'scenario': 'migration', 'checks': checks, 'status': 'passed'}
 
 
-def scenario(oc, otterio, split, tls, public, extended=False):
+def scenario(oc, otterio, split, tls, public, extended=False, stability=False, soak_seconds=0, record=None, artifacts=None):
+    record = record if record is not None else {}
     name = ('dual' if split else 'single') + ('-tls' if tls else '-http') + ('-public' if public else '')
     if extended:
         name += '-erasure-extended'
+    record.update(scenario=name, status="running", checks=0)
     checks = 0
+    stability_result = None
     with tempfile.TemporaryDirectory(prefix='oc-core-') as temp:
         root = Path(temp)
         config = root / 'config'
@@ -168,6 +172,7 @@ def scenario(oc, otterio, split, tls, public, extended=False):
 
                 def run(*args, failure=False, extra_env=None, output=None, working_dir=None, input_data=None, command_timeout=45):
                     nonlocal checks
+                    record["lastCommand"] = list(args[:2])
                     child_env = dict(env)
                     child_env.update(extra_env or {})
                     try:
@@ -178,9 +183,10 @@ def scenario(oc, otterio, split, tls, public, extended=False):
                         diagnostic = log_path.read_text(errors='replace')
                         for credential in secrets_to_redact:
                             diagnostic = diagnostic.replace(credential, 'REDACTED')
-                        Path(tempfile.gettempdir(), 'oc-integration-timeout.log').write_text(diagnostic)
+                        Path(artifacts or tempfile.gettempdir(), name + '-timeout.log').write_text(diagnostic)
                         raise RuntimeError(f'{name}: {args[:2]} timed out; sanitized server diagnostic saved') from None
                     checks += 1
+                    record["checks"] = checks
                     if (completed.returncode != 0) != failure:
                         message = completed.stderr.decode(errors='replace')
                         if completed.stdout and isinstance(completed.stdout, bytes):
@@ -190,9 +196,37 @@ def scenario(oc, otterio, split, tls, public, extended=False):
                         diagnostic = log_path.read_text(errors='replace')
                         for credential in secrets_to_redact:
                             diagnostic = diagnostic.replace(credential, 'REDACTED')
-                        Path(tempfile.gettempdir(), 'oc-integration-failure.log').write_text(diagnostic)
+                        Path(artifacts or tempfile.gettempdir(), name + '-failure.log').write_text(diagnostic)
                         raise RuntimeError(f'{name}: {args[:2]} returned {completed.returncode}: {message[:2000]}')
                     return completed.stdout
+
+                def emit_console_error():
+                    # A signed malformed encrypted body generates a real
+                    # OtterIO log without creating or changing a user.
+                    payload = b'console-compatibility-invalid-ciphertext'
+                    now = datetime.datetime.now(datetime.timezone.utc)
+                    stamp, day = now.strftime('%Y%m%dT%H%M%SZ'), now.strftime('%Y%m%d')
+                    endpoint = urllib.parse.urlsplit(admin)
+                    path, query = '/otterio/admin/v3/add-user', 'accessKey=console-probe'
+                    body_hash = hashlib.sha256(payload).hexdigest()
+                    headers = {'host': endpoint.netloc, 'x-amz-content-sha256': body_hash, 'x-amz-date': stamp}
+                    signed = ';'.join(sorted(headers))
+                    canonical = '\n'.join(['PUT', path, query, ''.join(key + ':' + headers[key] + '\n' for key in sorted(headers)), signed, body_hash])
+                    scope = day + '/us-east-1/s3/aws4_request'
+                    to_sign = '\n'.join(['AWS4-HMAC-SHA256', stamp, scope, hashlib.sha256(canonical.encode()).hexdigest()])
+                    key = ('AWS4' + secret).encode()
+                    for part in [day, 'us-east-1', 's3', 'aws4_request']:
+                        key = hmac.new(key, part.encode(), hashlib.sha256).digest()
+                    headers['Authorization'] = 'AWS4-HMAC-SHA256 Credential=' + access + '/' + scope + ', SignedHeaders=' + signed + ', Signature=' + hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest()
+                    request = urllib.request.Request(admin + path + '?' + query, data=payload, headers=headers, method='PUT')
+                    try:
+                        urllib.request.urlopen(request, context=ssl.create_default_context(cafile=str(adminca)) if tls else None, timeout=5)
+                    except urllib.error.HTTPError as error:
+                        result = json.loads(error.read())
+                        assert error.code == 400 and 'BadJSON' in result['Code'], 'console probe did not reach decryption validation'
+                    else:
+                        raise AssertionError('malformed admin payload was accepted')
+
 
                 options = ['--api', 's3v4', '--path', 'on']
                 if split:
@@ -201,6 +235,22 @@ def scenario(oc, otterio, split, tls, public, extended=False):
                     options += ['--admin-ca', os.path.relpath(adminca)]
                 run('alias', 'set', 'test', s3, access, secret, *options)
                 run('admin', 'info', 'test', working_dir=root)
+                for doctor_options in ([], ['--online']):
+                    diagnostic = json.loads(run('--json', 'doctor', *doctor_options, 'test'))
+                    assert diagnostic['status'] == 'success'
+                    assert diagnostic['separateAdmin'] == split
+                    assert diagnostic['s3Scheme'] == scheme
+                    assert all(credential not in json.dumps(diagnostic) for credential in secrets_to_redact)
+                    if doctor_options:
+                        assert diagnostic['serverCount'] >= 1
+                    checks += 1
+                run('doctor', '--online', failure=True)
+                offline = json.loads(run('--json', '--admin-url', 'http://127.0.0.1:1', 'doctor', 'test'))
+                assert offline['status'] == 'success' and not offline['online']
+                failed = json.loads(run('--json', '--admin-url', 'http://127.0.0.1:1', 'doctor', '--online', 'test', failure=True))
+                assert failed['status'] == 'error' and failed['errorCategory'] == 'network'
+                assert all(credential not in json.dumps(failed) for credential in secrets_to_redact)
+                checks += 2
                 run('ls', 'test')
                 run('mb', 'test/core-check')
                 files = root / 'files'
@@ -469,33 +519,6 @@ def scenario(oc, otterio, split, tls, public, extended=False):
                             watcher.wait()
                         watcher.stdout.close()
                         watcher.stderr.close()
-                    def emit_console_error():
-                        # A signed malformed encrypted body generates a real
-                        # OtterIO log without creating or changing a user.
-                        payload = b'console-compatibility-invalid-ciphertext'
-                        now = datetime.datetime.now(datetime.timezone.utc)
-                        stamp, day = now.strftime('%Y%m%dT%H%M%SZ'), now.strftime('%Y%m%d')
-                        endpoint = urllib.parse.urlsplit(admin)
-                        path, query = '/otterio/admin/v3/add-user', 'accessKey=console-probe'
-                        body_hash = hashlib.sha256(payload).hexdigest()
-                        headers = {'host': endpoint.netloc, 'x-amz-content-sha256': body_hash, 'x-amz-date': stamp}
-                        signed = ';'.join(sorted(headers))
-                        canonical = '\n'.join(['PUT', path, query, ''.join(key + ':' + headers[key] + '\n' for key in sorted(headers)), signed, body_hash])
-                        scope = day + '/us-east-1/s3/aws4_request'
-                        to_sign = '\n'.join(['AWS4-HMAC-SHA256', stamp, scope, hashlib.sha256(canonical.encode()).hexdigest()])
-                        key = ('AWS4' + secret).encode()
-                        for part in [day, 'us-east-1', 's3', 'aws4_request']:
-                            key = hmac.new(key, part.encode(), hashlib.sha256).digest()
-                        headers['Authorization'] = 'AWS4-HMAC-SHA256 Credential=' + access + '/' + scope + ', SignedHeaders=' + signed + ', Signature=' + hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest()
-                        request = urllib.request.Request(admin + path + '?' + query, data=payload, headers=headers, method='PUT')
-                        try:
-                            urllib.request.urlopen(request, context=ssl.create_default_context(cafile=str(adminca)) if tls else None, timeout=5)
-                        except urllib.error.HTTPError as error:
-                            result = json.loads(error.read())
-                            assert error.code == 400 and 'BadJSON' in result['Code'], 'console probe did not reach decryption validation'
-                        else:
-                            raise AssertionError('malformed admin payload was accepted')
-
                     decoder = json.JSONDecoder()
                     def json_records(data):
                         records = []
@@ -581,6 +604,9 @@ def scenario(oc, otterio, split, tls, public, extended=False):
                     # Environment override works without losing separate admin settings.
                     run('admin', 'info', 'test', extra_env={'OC_HOST_test': f'{scheme}://{access}:{secret}@127.0.0.1:{ports[0]}',
                                                            'MC_HOST_test': 'http://bad:bad@127.0.0.1:1'})
+                if stability:
+                    stability_result = stability_checks(oc, config, env, root, run, files, soak_seconds, record.setdefault("stability", {}), emit_console_error)
+                    checks += stability_result['checks']
                 run('admin', 'user', 'remove', 'test', 'restricted-user')
                 run('admin', 'policy', 'remove', 'test', 'core-readonly')
                 run('rm', '--recursive', '--force', 'test/core-check')
@@ -610,6 +636,15 @@ def scenario(oc, otterio, split, tls, public, extended=False):
                     run('admin', 'service', 'stop', 'test')
                     server.wait(timeout=10)
                     checks += 1
+            except Exception as error:
+                diagnostic = log_path.read_text(errors='replace')
+                message = str(error)
+                for credential in secrets_to_redact:
+                    diagnostic = diagnostic.replace(credential, 'REDACTED')
+                    message = message.replace(credential, 'REDACTED')
+                (artifacts / (name + '-server.log')).write_text(diagnostic)
+                record.update(errorMessage=message, diagnosticLog=name + '-server.log')
+                raise
             finally:
                 server.terminate()
                 try:
@@ -618,7 +653,11 @@ def scenario(oc, otterio, split, tls, public, extended=False):
                     server.kill()
                     server.wait()
     print(f'{name}: {checks} checks passed', flush=True)
-    return {'scenario': name, 'checks': checks, 'status': 'passed'}
+    result = record
+    result.update(scenario=name, checks=checks, status='passed')
+    if stability_result is not None:
+        result['stability'] = stability_result
+    return result
 
 
 def main():
@@ -626,26 +665,46 @@ def main():
     parser.add_argument('--oc', required=True)
     parser.add_argument('--otterio', required=True)
     parser.add_argument('--report')
+    parser.add_argument('--artifacts-dir')
     parser.add_argument('--extended', action='store_true', help='also run management and advanced S3 checks on four-drive erasure storage')
     parser.add_argument('--extended-only', action='store_true')
+    parser.add_argument('--stability', action='store_true', help='run sampled memory/concurrency and slow-consumer cancellation checks')
+    parser.add_argument('--stability-only', action='store_true', help='run core plus stability on a dual-port TLS server')
+    parser.add_argument('--soak-seconds', type=int, default=0, help='watch slow-consumer memory sampling duration (requires stability)')
     args = parser.parse_args()
+    if args.soak_seconds < 0 or args.soak_seconds > 3600 or args.soak_seconds and not (args.stability or args.stability_only):
+        parser.error('--soak-seconds must be 0..3600 and requires --stability or --stability-only')
     oc = str(Path(args.oc).resolve())
     otterio = str(Path(args.otterio).resolve())
     results = []
+    artifacts = Path(args.artifacts_dir or ((args.report + '.artifacts') if args.report else tempfile.mkdtemp(prefix='oc-evidence-')))
+    artifacts.mkdir(parents=True, exist_ok=True)
+    def execute(*scenario_args, **kwargs):
+        record = {}
+        results.append(record)
+        try:
+            scenario(*scenario_args, record=record, artifacts=artifacts, **kwargs)
+        except Exception as error:
+            record.update(status='failed', errorType=type(error).__name__)
+            (artifacts / 'failure-summary.json').write_text(json.dumps({'scenario': record.get('scenario'), 'lastCommand': record.get('lastCommand'), 'errorType': type(error).__name__, 'errorMessage': record.get('errorMessage'), 'diagnosticLog':record.get('diagnosticLog')}, indent=2)+'\n')
+            raise
     try:
         results.append(migration_checks(oc))
-        if not args.extended_only:
+        if not args.extended_only and not args.stability_only:
             for split, tls, public in [(False, False, False), (True, False, False),
                                        (False, True, False), (True, True, False), (True, False, True)]:
-                results.append(scenario(oc, otterio, split, tls, public))
+                execute(oc, otterio, split, tls, public)
+        if args.stability or args.stability_only:
+            execute(oc, otterio, True, True, False, stability=True, soak_seconds=args.soak_seconds)
         if args.extended or args.extended_only:
-            results.append(scenario(oc, otterio, True, True, False, extended=True))
+            execute(oc, otterio, True, True, False, extended=True)
     except Exception as error:
         results.append({'scenario': 'incomplete', 'status': 'failed', 'errorType': type(error).__name__})
         raise
     finally:
         if args.report:
-            context_info = {'platform': platform.system(),
+            context_info = {'platform': platform.system(), 'architecture': platform.machine(),
+                            'ocSHA256': digest(Path(oc)), 'otterioSHA256': digest(Path(otterio)),
                             'asyncPreemptionDisabled': 'asyncpreemptoff=1' in os.environ.get('GODEBUG', '').split(',')}
             Path(args.report).write_text(json.dumps({'testContext': context_info, 'results': results}, indent=2) + '\n')
 

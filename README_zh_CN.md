@@ -55,3 +55,7 @@ python3 buildscripts/test-core-integration.py \
 ```
 
 脚本只使用临时实例和临时凭据；固定服务端版本需要阶段二的参数桥接补丁和阶段三的关闭超时与重启补丁。Darwin 的监督重启机制和完整平台验证记录见阶段三文档。输出 `--json` 的错误保留 `status`、`error.message`、`error.cause` 等字段，并新增 `error.code` 与 `error.category`，错误对象单行输出。错误退出码为 1，取消及信号退出码沿用既有约定。
+
+## 稳定性与诊断
+
+使用 `oc --json doctor [别名]` 查看不含凭据的离线诊断，添加 `--online` 进行只读管理连接检查。详见[阶段四稳定性与兼容边界](docs/oc-phase-four.md)，包括故障注入、内存预算、平台覆盖及二进制依赖清单。SDK 改造暂缓。

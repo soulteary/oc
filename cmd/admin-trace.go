@@ -292,6 +292,9 @@ func mainAdminTrace(ctx *cli.Context) error {
 	// Start listening on all trace activity.
 	traceCh := client.ServiceTrace(ctxt, opts)
 	for traceInfo := range traceCh {
+		if ctxt.Err() != nil {
+			return nil
+		}
 		if traceInfo.Err != nil {
 			fatalIf(probe.NewError(traceInfo.Err), "Unable to listen to http trace")
 		}
