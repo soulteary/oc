@@ -43,7 +43,7 @@ USAGE:
   {{.HelpName}} TARGET POLICYNAME POLICYFILE
 
 POLICYNAME:
-  Name of the canned policy on MinIO server.
+  Name of the canned policy on OtterIO server.
 
 POLICYFILE:
   Name of the policy file associated with the policy name.
@@ -53,7 +53,7 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Add a new canned policy 'writeonly'.
-     {{.Prompt}} {{.HelpName}} myminio writeonly /tmp/writeonly.json
+     {{.Prompt}} {{.HelpName}} store writeonly /tmp/writeonly.json
  `,
 }
 

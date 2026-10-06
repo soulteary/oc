@@ -52,7 +52,7 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Reset MQTT notifcation target 'name1' settings to default values.
-     {{.Prompt}} {{.HelpName}} myminio/ notify_mqtt:name1
+     {{.Prompt}} {{.HelpName}} store/ notify_mqtt:name1
 `,
 }
 

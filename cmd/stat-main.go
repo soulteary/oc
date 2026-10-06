@@ -66,7 +66,7 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 ENVIRONMENT VARIABLES:
-  MC_ENCRYPT_KEY:  list of comma delimited prefix=secret values
+  OC_ENCRYPT_KEY (MC_ENCRYPT_KEY):  list of comma delimited prefix=secret values
 
 EXAMPLES:
   1. Stat all contents of mybucket on Amazon S3 cloud storage.

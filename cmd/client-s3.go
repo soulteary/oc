@@ -200,7 +200,7 @@ func newFactory() func(config *Config) (Client, *probe.Error) {
 			options := minio.Options{
 				Creds:        creds,
 				Secure:       useTLS,
-				Region:       os.Getenv("MC_REGION"),
+				Region:       clientEnv("MC_REGION"),
 				BucketLookup: config.Lookup,
 				Transport:    transport,
 			}
@@ -218,7 +218,7 @@ func newFactory() func(config *Config) (Client, *probe.Error) {
 			// Set app info.
 			api.SetAppInfo(config.AppName, config.AppVersion)
 
-			// Cache the new MinIO Client with hash of config as key.
+			// Cache the new OC client with hash of config as key.
 			clientCache[confSum] = api
 		}
 

@@ -46,14 +46,14 @@ func mainAdminSubnet(ctx *cli.Context) error {
 // Deprecated - to be removed in a future release
 // mainAdminSubnet is the handle for "mc admin subnet" command.
 func mainAdminOBD(ctx *cli.Context) error {
-	color.Yellow("Deprecated - please use 'mc admin subnet health'")
+	color.Yellow("Deprecated - please use 'oc admin subnet health'")
 	return nil
 }
 
 var adminHealthCmd = cli.Command{
 	Name:               "health",
 	Aliases:            []string{"obd"},
-	Usage:              "Deprecated - please use 'mc admin subnet health'",
+	Usage:              "Deprecated - please use 'oc admin subnet health'",
 	Action:             mainAdminOBD,
 	CustomHelpTemplate: `{{.Usage}}`,
 	Hidden:             true,

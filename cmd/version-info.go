@@ -46,7 +46,7 @@ FLAGS:
   {{end}}
 EXAMPLES:
    1. Display bucket versioning status for bucket "mybucket".
-      {{.Prompt}} {{.HelpName}} myminio/mybucket
+      {{.Prompt}} {{.HelpName}} store/mybucket
 `,
 }
 

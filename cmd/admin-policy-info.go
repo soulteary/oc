@@ -39,14 +39,14 @@ USAGE:
   {{.HelpName}} TARGET POLICYNAME
 
 POLICYNAME:
-  Name of the policy on the MinIO server.
+  Name of the policy on the OtterIO server.
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Show information on a given policy.
-     {{.Prompt}} {{.HelpName}} myminio writeonly
+     {{.Prompt}} {{.HelpName}} store writeonly
 `,
 }
 

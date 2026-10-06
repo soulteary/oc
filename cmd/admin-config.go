@@ -30,7 +30,7 @@ var adminConfigSubcommands = []cli.Command{
 
 var adminConfigCmd = cli.Command{
 	Name:            "config",
-	Usage:           "manage MinIO server configuration",
+	Usage:           "manage OtterIO server configuration",
 	Action:          mainAdminConfig,
 	Before:          setGlobalsFromContext,
 	Flags:           globalFlags,

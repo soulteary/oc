@@ -41,17 +41,17 @@ USAGE:
   {{.HelpName}} TARGET POLICYNAME [ user=username1 | group=groupname1 ]
 
 POLICYNAME:
-  Name of the policy on the MinIO server.
+  Name of the policy on the OtterIO server.
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Unset the "diagnostics" policy for user "james".
-     {{.Prompt}} {{.HelpName}} myminio diagnostics user=james
+     {{.Prompt}} {{.HelpName}} store diagnostics user=james
 
   2. Set the "diagnostics" policy for group "auditors".
-     {{.Prompt}} {{.HelpName}} myminio diagnostics group=auditors
+     {{.Prompt}} {{.HelpName}} store diagnostics group=auditors
 `,
 }
 

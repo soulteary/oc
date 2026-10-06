@@ -26,7 +26,7 @@ import (
 
 var adminServiceStopCmd = cli.Command{
 	Name:         "stop",
-	Usage:        "stop MinIO server",
+	Usage:        "stop OtterIO server",
 	Action:       mainAdminServiceStop,
 	OnUsageError: onUsageError,
 	Before:       setGlobalsFromContext,
@@ -41,8 +41,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Stop MinIO server represented by its alias 'play'.
-     {{.Prompt}} {{.HelpName}} play/
+  1. Stop OtterIO server represented by its alias 'store'.
+     {{.Prompt}} {{.HelpName}} store/
 `,
 }
 
@@ -87,7 +87,7 @@ func mainAdminServiceStop(ctx *cli.Context) error {
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
-	// Stop the specified MinIO server
+	// Stop the specified OtterIO server
 	fatalIf(probe.NewError(client.ServiceStop(globalContext)), "Unable to stop the server.")
 
 	// Success..

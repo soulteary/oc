@@ -94,20 +94,20 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-   1. List all buckets and directories on MinIO object storage server in tree format.
-      {{.Prompt}} {{.HelpName}} myminio
+   1. List all buckets and directories on OtterIO object storage server in tree format.
+      {{.Prompt}} {{.HelpName}} store
 
-   2. List all directories in "mybucket" on MinIO object storage server in tree format.
-      {{.Prompt}} {{.HelpName}} myminio/mybucket/
+   2. List all directories in "mybucket" on OtterIO object storage server in tree format.
+      {{.Prompt}} {{.HelpName}} store/mybucket/
 
-   3. List all directories in "mybucket" on MinIO object storage server hosted on Microsoft Windows in tree format.
-      {{.Prompt}} {{.HelpName}} myminio\mybucket\
+   3. List all directories in "mybucket" on OtterIO object storage server hosted on Microsoft Windows in tree format.
+      {{.Prompt}} {{.HelpName}} store\mybucket\
 
-   4. List all directories and objects in "mybucket" on MinIO object storage server in tree format.
-      {{.Prompt}} {{.HelpName}} --files myminio/mybucket/
+   4. List all directories and objects in "mybucket" on OtterIO object storage server in tree format.
+      {{.Prompt}} {{.HelpName}} --files store/mybucket/
 
    5. List all directories upto depth level '2' in tree format.
-      {{.Prompt}} {{.HelpName}} --depth 2 myminio/mybucket/
+      {{.Prompt}} {{.HelpName}} --depth 2 store/mybucket/
 `,
 }
 

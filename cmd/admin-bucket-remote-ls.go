@@ -51,14 +51,14 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Get remote bucket target for replication on MinIO server for bucket 'srcbucket'.
-     {{.Prompt}} {{.HelpName}} myminio/srcbucket --service "replication"
+  1. Get remote bucket target for replication on OtterIO server for bucket 'srcbucket'.
+     {{.Prompt}} {{.HelpName}} store/srcbucket --service "replication"
 
-  2. List all remote bucket target(s) on MinIO server for bucket 'srcbucket'.
-     {{.Prompt}} {{.HelpName}} myminio/srcbucket
+  2. List all remote bucket target(s) on OtterIO server for bucket 'srcbucket'.
+     {{.Prompt}} {{.HelpName}} store/srcbucket
 
-  3. List all remote bucket target(s) on MinIO tenant.
-     {{.Prompt}} {{.HelpName}} myminio
+  3. List all remote bucket target(s) on OtterIO tenant.
+     {{.Prompt}} {{.HelpName}} store
 `,
 }
 

@@ -64,7 +64,7 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}{{end}}
 ENVIRONMENT VARIABLES:
-  MC_ENCRYPT_KEY:  list of comma delimited prefix=secret values
+  OC_ENCRYPT_KEY (MC_ENCRYPT_KEY):  list of comma delimited prefix=secret values
 
 EXAMPLES:
   1. Stream an object from Amazon S3 cloud storage to mplayer standard input.
@@ -81,13 +81,13 @@ EXAMPLES:
 
   5. Display the content of encrypted object. In case the encryption key contains non-printable character like tab, pass the
      base64 encoded string as key.
-     {{.Prompt}} {{.HelpName}} --encrypt-key "play/my-bucket/=MzJieXRlc2xvbmdzZWNyZXRrZQltdXN0YmVnaXZlbjE="  play/my-bucket/my-object
+     {{.Prompt}} {{.HelpName}} --encrypt-key "store/my-bucket/=MzJieXRlc2xvbmdzZWNyZXRrZQltdXN0YmVnaXZlbjE="  store/my-bucket/my-object
 
   6. Display the content of an object 10 days earlier
-     {{.Prompt}} {{.HelpName}} --rewind 10d play/my-bucket/my-object
+     {{.Prompt}} {{.HelpName}} --rewind 10d store/my-bucket/my-object
 
   7. Display the content of a particular object version
-     {{.Prompt}} {{.HelpName}} --vid "3ddac055-89a7-40fa-8cd3-530a5581b6b8" play/my-bucket/my-object
+     {{.Prompt}} {{.HelpName}} --vid "3ddac055-89a7-40fa-8cd3-530a5581b6b8" store/my-bucket/my-object
 `,
 }
 

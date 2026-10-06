@@ -39,8 +39,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Disable the service account 'J123C4ZXEQN8RK6ND35I' in MinIO server.
-     {{.Prompt}} {{.HelpName}} myminio/ J123C4ZXEQN8RK6ND35I
+  1. Disable the service account 'J123C4ZXEQN8RK6ND35I' in OtterIO server.
+     {{.Prompt}} {{.HelpName}} store/ J123C4ZXEQN8RK6ND35I
 `,
 }
 

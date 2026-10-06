@@ -30,7 +30,7 @@ func validateConfigVersion(config *configV10) (bool, string) {
 	return true, ""
 }
 
-// Verifies the config file of the MinIO Client
+// Verifies the config file of the OC client
 func validateConfigFile(config *configV10) (bool, []string) {
 	ok, err := validateConfigVersion(config)
 	var validationSuccessful = true

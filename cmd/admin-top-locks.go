@@ -43,7 +43,7 @@ var topLocksFlag = []cli.Flag{
 
 var adminTopLocksCmd = cli.Command{
 	Name:         "locks",
-	Usage:        "get a list of the 10 oldest locks on a MinIO cluster.",
+	Usage:        "get a list of the 10 oldest locks on an OtterIO cluster.",
 	Before:       setGlobalsFromContext,
 	Action:       mainAdminTopLocks,
 	OnUsageError: onUsageError,
@@ -58,8 +58,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Get a list of the 10 oldest locks on a MinIO cluster.
-     {{.Prompt}} {{.HelpName}} myminio/
+  1. Get a list of the 10 oldest locks on a OtterIO cluster.
+     {{.Prompt}} {{.HelpName}} store/
 `,
 }
 

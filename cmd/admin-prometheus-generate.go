@@ -60,7 +60,7 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Generate a default prometheus config.
-     {{.Prompt}} {{.HelpName}} myminio
+     {{.Prompt}} {{.HelpName}} store
 
 `,
 }

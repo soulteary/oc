@@ -41,7 +41,7 @@ var adminBandwidthInfoCmdFlags = []cli.Flag{
 
 var adminBwInfoCmd = cli.Command{
 	Name:         "bandwidth",
-	Usage:        "Show bandwidth info for buckets on the MinIO server in bits or bytes per second. Ki,Bi,Mi,Gi represent IEC units.",
+	Usage:        "Show bandwidth info for buckets on the OtterIO server in bits or bytes per second. Ki,Bi,Mi,Gi represent IEC units.",
 	Action:       mainAdminBwInfo,
 	Before:       setGlobalsFromContext,
 	OnUsageError: onUsageError,
@@ -56,10 +56,10 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Show the bandwidth usage for all the buckets in a MinIO server setup
-     {{.Prompt}} {{.HelpName}} play/
-  2. Show the bandwidth usage for the bucket 'source-bucket' in a MinIO server setup
-     {{.Prompt}} {{.HelpName}} play/source-bucket
+  1. Show the bandwidth usage for all the buckets in a OtterIO server setup
+     {{.Prompt}} {{.HelpName}} store/
+  2. Show the bandwidth usage for the bucket 'source-bucket' in a OtterIO server setup
+     {{.Prompt}} {{.HelpName}} store/source-bucket
 `,
 }
 

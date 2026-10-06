@@ -41,8 +41,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Disable a user 'foobar' on MinIO server.
-     {{.Prompt}} {{.HelpName}} myminio foobar
+  1. Disable a user 'foobar' on OtterIO server.
+     {{.Prompt}} {{.HelpName}} store foobar
 `,
 }
 

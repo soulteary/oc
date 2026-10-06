@@ -79,7 +79,7 @@ func Main(args []string) {
 
 	if len(args) > 1 {
 		switch args[1] {
-		case "mc", filepath.Base(args[0]):
+		case "mc", "oc", filepath.Base(args[0]):
 			mainComplete()
 			return
 		}
@@ -87,7 +87,7 @@ func Main(args []string) {
 
 	// Enable profiling supported modes are [cpu, mem, block].
 	// ``MC_PROFILER`` supported options are [cpu, mem, block].
-	switch os.Getenv("MC_PROFILER") {
+	switch clientEnv("MC_PROFILER") {
 	case "cpu":
 		defer profile.Start(profile.CPUProfile, profile.ProfilePath(mustGetProfileDir())).Stop()
 	case "mem":
@@ -109,7 +109,7 @@ func Main(args []string) {
 	}
 
 	// Set the mc app name.
-	appName := filepath.Base(args[0])
+	appName := "oc"
 	if runtime.GOOS == "windows" && strings.HasSuffix(strings.ToLower(appName), ".exe") {
 		// Trim ".exe" from Windows executable.
 		appName = appName[:strings.LastIndex(appName, ".")]
@@ -119,7 +119,9 @@ func Main(args []string) {
 	go trapSignals(os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
 
 	// Run the app - exit on error.
-	if err := registerApp(appName).Run(args); err != nil {
+	runArgs := append([]string(nil), args...)
+	runArgs[0] = appName
+	if err := registerApp(appName).Run(runArgs); err != nil {
 		os.Exit(1)
 	}
 }
@@ -449,9 +451,9 @@ func registerApp(name string) *cli.App {
 	}
 
 	app.HideHelpCommand = true
-	app.Usage = "MinIO Client for cloud storage and filesystems."
+	app.Usage = "OC client for cloud storage and filesystems."
 	app.Commands = appCmds
-	app.Author = "MinIO, Inc."
+	app.Author = "OtterIO contributors"
 	app.Version = ReleaseTag
 	app.Flags = append(mcFlags, globalFlags...)
 	app.CustomAppHelpTemplate = mcHelpTemplate

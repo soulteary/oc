@@ -70,7 +70,7 @@ func (c *configV10) setAlias(alias string, cfg aliasConfigV10) {
 
 // load default values for missing entries.
 func (c *configV10) loadDefaults() {
-	// MinIO server running locally.
+	// OtterIO server running locally.
 	c.setAlias("local", aliasConfigV10{
 		URL:       "http://localhost:9000",
 		AccessKey: "",

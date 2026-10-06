@@ -1,0 +1,170 @@
+{
+  "baseline": {
+    "goVersion": "go1.27.1",
+    "otterioVersion": "v0.0.0-20261004215341-be8596f0d69d",
+    "serverPatches": [
+      "otterio-core-compat.patch",
+      "otterio-runtime-compat.patch"
+    ],
+    "remoteCI": "not-run"
+  },
+  "verificationRuns": [
+    {
+      "platform": "Linux",
+      "architecture": "arm64",
+      "clientCGO": 0,
+      "serverCGO": 0,
+      "checks": 455,
+      "testContext": {
+        "platform": "Linux",
+        "asyncPreemptionDisabled": false
+      },
+      "results": [
+        {
+          "scenario": "migration",
+          "checks": 22,
+          "status": "passed"
+        },
+        {
+          "scenario": "single-http",
+          "checks": 49,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-http",
+          "checks": 50,
+          "status": "passed"
+        },
+        {
+          "scenario": "single-tls",
+          "checks": 52,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-tls",
+          "checks": 53,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-http-public",
+          "checks": 49,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-tls-erasure-extended",
+          "checks": 180,
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "platform": "Darwin",
+      "architecture": "arm64",
+      "clientCGO": 1,
+      "serverCGO": 0,
+      "checks": 455,
+      "testContext": {
+        "platform": "Darwin",
+        "asyncPreemptionDisabled": false
+      },
+      "results": [
+        {
+          "scenario": "migration",
+          "checks": 22,
+          "status": "passed"
+        },
+        {
+          "scenario": "single-http",
+          "checks": 49,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-http",
+          "checks": 50,
+          "status": "passed"
+        },
+        {
+          "scenario": "single-tls",
+          "checks": 52,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-tls",
+          "checks": 53,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-http-public",
+          "checks": 49,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-tls-erasure-extended",
+          "checks": 180,
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "platform": "Darwin",
+      "architecture": "arm64",
+      "clientCGO": 1,
+      "serverCGO": 1,
+      "checks": 455,
+      "testContext": {
+        "platform": "Darwin",
+        "asyncPreemptionDisabled": false
+      },
+      "results": [
+        {
+          "scenario": "migration",
+          "checks": 22,
+          "status": "passed"
+        },
+        {
+          "scenario": "single-http",
+          "checks": 49,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-http",
+          "checks": 50,
+          "status": "passed"
+        },
+        {
+          "scenario": "single-tls",
+          "checks": 52,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-tls",
+          "checks": 53,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-http-public",
+          "checks": 49,
+          "status": "passed"
+        },
+        {
+          "scenario": "dual-tls-erasure-extended",
+          "checks": 180,
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "unitVerification": {
+    "ocFullRaceTests": "passed",
+    "ocVet": "passed",
+    "ocLint": "0 issues",
+    "releaseBoundaries": "passed",
+    "otterioHTTPRaceTests": "passed",
+    "darwinSupervisorRaceTestRepetitions": 3,
+    "darwinSupervisorCases": [
+      "repeated restart with stable public PID",
+      "TERM forwarding",
+      "worker exits after supervisor SIGKILL"
+    ]
+  }
+}

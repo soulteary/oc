@@ -41,7 +41,7 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. List all groups.
-     {{.Prompt}} {{.HelpName}} myminio
+     {{.Prompt}} {{.HelpName}} store
 `,
 }
 

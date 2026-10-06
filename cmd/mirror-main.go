@@ -140,12 +140,12 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 ENVIRONMENT VARIABLES:
-   MC_ENCRYPT:      list of comma delimited prefixes
-   MC_ENCRYPT_KEY:  list of comma delimited prefix=secret values
+   OC_ENCRYPT (MC_ENCRYPT):      list of comma delimited prefixes
+   OC_ENCRYPT_KEY (MC_ENCRYPT_KEY):  list of comma delimited prefix=secret values
 
 EXAMPLES:
-  01. Mirror a bucket recursively from MinIO cloud storage to a bucket on Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} play/photos/2014 s3/backup-photos
+  01. Mirror a bucket recursively from OtterIO cloud storage to a bucket on Amazon S3 cloud storage.
+      {{.Prompt}} {{.HelpName}} store/photos/2014 s3/backup-photos
 
   02. Mirror a local folder recursively to Amazon S3 cloud storage.
       {{.Prompt}} {{.HelpName}} backup/ s3/archive
@@ -159,13 +159,13 @@ EXAMPLES:
   05. Mirror a bucket from aliased Amazon S3 cloud storage to a local folder use '--overwrite' to overwrite destination.
       {{.Prompt}} {{.HelpName}} --overwrite s3/miniocloud miniocloud-backup
 
-  06. Mirror a bucket from MinIO cloud storage to a bucket on Amazon S3 cloud storage and remove any extraneous
+  06. Mirror a bucket from OtterIO cloud storage to a bucket on Amazon S3 cloud storage and remove any extraneous
       files on Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --remove play/photos/2014 s3/backup-photos/2014
+      {{.Prompt}} {{.HelpName}} --remove store/photos/2014 s3/backup-photos/2014
 
-  07. Continuously mirror a local folder recursively to MinIO cloud storage. '--watch' continuously watches for
+  07. Continuously mirror a local folder recursively to OtterIO cloud storage. '--watch' continuously watches for
       new objects, uploads and removes extraneous files on Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --remove --watch /var/lib/backups play/backups
+      {{.Prompt}} {{.HelpName}} --remove --watch /var/lib/backups store/backups
 
   08. Continuously mirror all buckets and objects from site 1 to site 2, removed buckets and objects will be reflected as well.
       {{.Prompt}} {{.HelpName}} --remove --watch site1-alias/ site2-alias/
@@ -180,15 +180,15 @@ EXAMPLES:
   11. Mirror objects older than 30 days from Amazon S3 bucket test to a local folder.
       {{.Prompt}} {{.HelpName}} --older-than 30d s3/test ~/test
 
-  12. Mirror server encrypted objects from MinIO cloud storage to a bucket on Amazon S3 cloud storage
+  12. Mirror server encrypted objects from OtterIO cloud storage to a bucket on Amazon S3 cloud storage
       {{.Prompt}} {{.HelpName}} --encrypt-key "minio/photos=32byteslongsecretkeymustbegiven1,s3/archive=32byteslongsecretkeymustbegiven2" minio/photos/ s3/archive/
 
-  13. Mirror server encrypted objects from MinIO cloud storage to a bucket on Amazon S3 cloud storage. In case the encryption key contains
+  13. Mirror server encrypted objects from OtterIO cloud storage to a bucket on Amazon S3 cloud storage. In case the encryption key contains
       non-printable character like tab, pass the base64 encoded string as key.
-      {{.Prompt}} {{.HelpName}} --encrypt-key "s3/photos/=32byteslongsecretkeymustbegiven1,play/archive/=MzJieXRlc2xvbmdzZWNyZXRrZQltdXN0YmVnaXZlbjE=" s3/photos/ play/archive/
+      {{.Prompt}} {{.HelpName}} --encrypt-key "s3/photos/=32byteslongsecretkeymustbegiven1,store/archive/=MzJieXRlc2xvbmdzZWNyZXRrZQltdXN0YmVnaXZlbjE=" s3/photos/ store/archive/
 
   14. Update 'Cache-Control' header on all existing objects recursively.
-      {{.Prompt}} {{.HelpName}} --attr "Cache-Control=max-age=90000,min-fresh=9000" myminio/video-files myminio/video-files
+      {{.Prompt}} {{.HelpName}} --attr "Cache-Control=max-age=90000,min-fresh=9000" store/video-files store/video-files
 
   15. Mirror a local folder recursively to Amazon S3 cloud storage and preserve all local file attributes.
       {{.Prompt}} {{.HelpName}} -a backup/ s3/archive

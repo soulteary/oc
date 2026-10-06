@@ -25,7 +25,7 @@ var adminBucketSubcommands = []cli.Command{
 
 var adminBucketCmd = cli.Command{
 	Name:            "bucket",
-	Usage:           "manage buckets defined in the MinIO server",
+	Usage:           "manage buckets defined in the OtterIO server",
 	Action:          mainAdminBucket,
 	Before:          setGlobalsFromContext,
 	Flags:           globalFlags,

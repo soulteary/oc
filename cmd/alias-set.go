@@ -69,15 +69,15 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Add MinIO service under "myminio" alias. For security reasons turn off bash history momentarily.
+  1. Add OtterIO service under "store" alias. For security reasons turn off bash history momentarily.
      {{.DisableHistory}}
-     {{.Prompt}} {{.HelpName}} myminio http://localhost:9000 minio minio123
+     {{.Prompt}} {{.HelpName}} store http://localhost:9000 minio minio123
      {{.EnableHistory}}
 
-  2. Add MinIO service under "myminio" alias, to use dns style bucket lookup. For security reasons
+  2. Add OtterIO service under "store" alias, to use dns style bucket lookup. For security reasons
      turn off bash history momentarily.
      {{.DisableHistory}}
-     {{.Prompt}} {{.HelpName}} myminio http://localhost:9000 minio minio123 --api "s3v4" --path "off"
+     {{.Prompt}} {{.HelpName}} store http://localhost:9000 minio minio123 --api "s3v4" --path "off"
      {{.EnableHistory}}
 
   3. Add Amazon S3 storage service under "mys3" alias. For security reasons turn off bash history momentarily.

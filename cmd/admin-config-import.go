@@ -44,8 +44,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Import the new local config and apply to the MinIO server
-     {{.Prompt}} {{.HelpName}} play/ < config.txt
+  1. Import the new local config and apply to the OtterIO server
+     {{.Prompt}} {{.HelpName}} store/ < config.txt
 `,
 }
 

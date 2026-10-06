@@ -64,7 +64,7 @@ var adminHealFlags = []cli.Flag{
 
 var adminHealCmd = cli.Command{
 	Name:            "heal",
-	Usage:           "[DEPRECATED] heal disks, buckets and objects on MinIO server",
+	Usage:           "[DEPRECATED] heal disks, buckets and objects on OtterIO server",
 	Action:          mainAdminHeal,
 	OnUsageError:    onUsageError,
 	Before:          setGlobalsFromContext,
@@ -84,7 +84,7 @@ SCAN MODES:
   deep            : Heal objects which are missing or with silent data corruption on one or more disks.
 
 DEPRECATED:
-  MinIO server now supports auto-heal, this command will be removed in future.
+  OtterIO server now supports auto-heal, this command will be removed in future.
 `,
 }
 

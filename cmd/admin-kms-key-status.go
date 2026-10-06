@@ -43,9 +43,9 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Get default master key and its status from a MinIO server/cluster.
+  1. Get default master key and its status from a OtterIO server/cluster.
      $ {{.HelpName}} play
-  2. Get the status of one particular master key from a MinIO server/cluster.
+  2. Get the status of one particular master key from a OtterIO server/cluster.
      $ {{.HelpName}} play my-master-key
 `,
 }

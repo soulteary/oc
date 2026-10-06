@@ -45,7 +45,7 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Display bucket encryption status for bucket "mybucket".
-     {{.Prompt}} {{.HelpName}} myminio/mybucket
+     {{.Prompt}} {{.HelpName}} store/mybucket
 `,
 }
 

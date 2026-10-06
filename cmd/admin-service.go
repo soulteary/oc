@@ -25,7 +25,7 @@ var adminServiceSubcommands = []cli.Command{
 
 var adminServiceCmd = cli.Command{
 	Name:            "service",
-	Usage:           "restart and stop all MinIO servers",
+	Usage:           "restart and stop all OtterIO servers",
 	Action:          mainAdminService,
 	Before:          setGlobalsFromContext,
 	Flags:           globalFlags,

@@ -48,7 +48,7 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Get information of service account 'J123C4ZXEQN8RK6ND35I'
-     {{.Prompt}} {{.HelpName}} myminio/ J123C4ZXEQN8RK6ND35I
+     {{.Prompt}} {{.HelpName}} store/ J123C4ZXEQN8RK6ND35I
 `,
 }
 

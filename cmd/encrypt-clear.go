@@ -44,8 +44,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Remove auto encryption config on bucket "mybucket" for alias "myminio".
-     {{.Prompt}} {{.HelpName}} myminio/mybucket
+  1. Remove auto encryption config on bucket "mybucket" for alias "store".
+     {{.Prompt}} {{.HelpName}} store/mybucket
 `,
 }
 

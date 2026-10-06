@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/minio/cli"
@@ -53,8 +54,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Change the secret key of the service account 'J123C4ZXEQN8RK6ND35I' in MinIO server.
-     {{.Prompt}} {{.HelpName}} myminio/ 'J123C4ZXEQN8RK6ND35I' --secret-key 'xxxxxxx'
+  1. Change the secret key of the service account 'J123C4ZXEQN8RK6ND35I' in OtterIO server.
+     {{.Prompt}} {{.HelpName}} store/ 'J123C4ZXEQN8RK6ND35I' --secret-key 'xxxxxxxx'
 `,
 }
 
@@ -76,6 +77,9 @@ func mainAdminUserSvcAcctSet(ctx *cli.Context) error {
 	svcAccount := args.Get(1)
 
 	secretKey := ctx.String("secret-key")
+	if secretKey != "" && len(secretKey) < 8 {
+		fatalIf(probe.NewError(fmt.Errorf("service secret key must contain at least 8 bytes")), "Invalid service account credentials.")
+	}
 	policyPath := ctx.String("policy")
 
 	// Create a new MinIO Admin Client
@@ -97,7 +101,7 @@ func mainAdminUserSvcAcctSet(ctx *cli.Context) error {
 	}
 
 	e := client.UpdateServiceAccount(globalContext, svcAccount, opts)
-	fatalIf(probe.NewError(e).Trace(args...), "Unable to add a new service account")
+	fatalIf(probe.NewError(e).Trace(args...), "Unable to update the service account")
 
 	printMsg(svcAcctMessage{
 		op:        "set",

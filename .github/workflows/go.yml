@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
+  schedule:
+    - cron: "0 2 * * 1"
   pull_request:
     branches:
       - main
@@ -88,9 +92,14 @@ jobs:
           args: --timeout=5m
 
   core-integration:
-    name: OC and pinned OtterIO core integration
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: OC and pinned OtterIO on ${{ matrix.os }} (cgo=${{ matrix.cgo }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        cgo: ['0', '1']
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -100,7 +109,7 @@ jobs:
       - name: Build OC and the pinned OtterIO server
         env:
           GOTOOLCHAIN: local
-          CGO_ENABLED: '0'
+          CGO_ENABLED: ${{ matrix.cgo }}
         run: |
           go mod download
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/oc" .
@@ -109,15 +118,18 @@ jobs:
           chmod -R u+w "$RUNNER_TEMP/otterio-source"
           cd "$RUNNER_TEMP/otterio-source"
           # The SDK pin remains unchanged; this explicit server fix is required
-          # until a new OtterIO release includes the query-parameter bridge.
+          # until a release includes the query bridge and runtime fixes.
           git apply "$GITHUB_WORKSPACE/buildscripts/otterio-core-compat.patch"
-          go test -mod=readonly ./cmd -run 'TestAdminQueryBridge' -count=1
+          git apply "$GITHUB_WORKSPACE/buildscripts/otterio-runtime-compat.patch"
+          go test -mod=readonly ./cmd/http -run TestShutdownBoundsActiveFiberRequest -count=1
+          go test -mod=readonly ./cmd -run 'TestAdminQueryBridge|TestDarwinRestartSupervisor' -count=3
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio" .
       - name: Verify single and dual ports, TLS, permissions and metrics
         run: |
-          python3 buildscripts/test-core-integration.py --oc "$RUNNER_TEMP/oc" --otterio "$RUNNER_TEMP/otterio" --report "$RUNNER_TEMP/core-integration.json"
+          python3 buildscripts/test-core-integration.py --oc "$RUNNER_TEMP/oc" --otterio "$RUNNER_TEMP/otterio" --extended --report "$RUNNER_TEMP/core-integration.json"
       - name: Upload compatibility results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: core-integration
+          name: core-integration-${{ matrix.os }}-cgo-${{ matrix.cgo }}
           path: ${{ runner.temp }}/core-integration.json

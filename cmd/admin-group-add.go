@@ -46,7 +46,7 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Add users 'fivecent' and 'tencent' to the group 'allcents':
-     {{.Prompt}} {{.HelpName}} myminio allcents fivecent tencent
+     {{.Prompt}} {{.HelpName}} store allcents fivecent tencent
 `,
 }
 

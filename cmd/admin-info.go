@@ -36,7 +36,7 @@ import (
 
 var adminInfoCmd = cli.Command{
 	Name:         "info",
-	Usage:        "display MinIO server information",
+	Usage:        "display OtterIO server information",
 	Action:       mainAdminInfo,
 	OnUsageError: onUsageError,
 	Before:       setGlobalsFromContext,
@@ -51,8 +51,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Get server information of the 'play' MinIO server.
-     {{.Prompt}} {{.HelpName}} play/
+  1. Get server information of the 'play' OtterIO server.
+     {{.Prompt}} {{.HelpName}} store/
 `,
 }
 
@@ -98,9 +98,9 @@ func (u clusterStruct) String() (msg string) {
 	console.SetColor("InfoFail", color.New(color.FgRed, color.Bold))
 	console.SetColor("InfoWarning", color.New(color.FgYellow, color.Bold))
 
-	// MinIO server type default
+	// OtterIO server type default
 	backendType := "Unknown"
-	// Set the type of MinIO server ("FS", "Erasure", "Unknown")
+	// Set the type of OtterIO server ("FS", "Erasure", "Unknown")
 	v := reflect.ValueOf(u.Info.Backend)
 	if v.Kind() == reflect.Map {
 		for _, key := range v.MapKeys() {
@@ -119,7 +119,7 @@ func (u clusterStruct) String() (msg string) {
 
 	// Loop through each server and put together info for each one
 	for _, srv := range u.Info.Servers {
-		// Check if MinIO server is offline ("Mode" field),
+		// Check if OtterIO server is offline ("Mode" field),
 		// If offline, error out
 		if srv.State == "offline" {
 			// "PrintB" is color blue in console library package
@@ -262,13 +262,8 @@ func mainAdminInfo(ctx *cli.Context) error {
 	var clusterInfo clusterStruct
 	// Fetch info of all servers (cluster or single server)
 	admInfo, e := client.ServerInfo(globalContext)
-	if e != nil {
-		clusterInfo.Status = "error"
-		clusterInfo.Error = e.Error()
-	} else {
-		clusterInfo.Status = "success"
-		clusterInfo.Error = ""
-	}
+	fatalIf(probe.NewError(e), "Unable to retrieve server information.")
+	clusterInfo.Status = "success"
 	clusterInfo.Info = admInfo
 	printMsg(clusterStruct(clusterInfo))
 

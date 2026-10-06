@@ -67,7 +67,7 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Enable bucket notification with a specific ARN
-    {{.Prompt}} {{.HelpName}} myminio/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue
+    {{.Prompt}} {{.HelpName}} store/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue
 
   2. Enable bucket notification with filters parameters
     {{.Prompt}} {{.HelpName}} s3/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue --event put,delete,get --prefix photos/ --suffix .jpg
@@ -76,7 +76,7 @@ EXAMPLES:
     {{.Prompt}} {{.HelpName}} s3/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue -p --event put,delete,get --prefix photos/ --suffix .jpg
 
   4. Enable bucket notification for Replication and ILM transition events to a specific ARN
-    {{.Prompt}} {{.HelpName}} myminio/mysourcebucket arn:aws:sqs:us-west-2:444455556666:your-queue --event replica,ilm
+    {{.Prompt}} {{.HelpName}} store/mysourcebucket arn:aws:sqs:us-west-2:444455556666:your-queue --event replica,ilm
 `,
 }
 

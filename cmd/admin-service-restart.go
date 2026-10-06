@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/fatih/color"
@@ -30,11 +31,11 @@ import (
 
 var adminServiceRestartCmd = cli.Command{
 	Name:         "restart",
-	Usage:        "restart all MinIO servers",
+	Usage:        "restart all OtterIO servers",
 	Action:       mainAdminServiceRestart,
 	OnUsageError: onUsageError,
 	Before:       setGlobalsFromContext,
-	Flags:        globalFlags,
+	Flags:        append([]cli.Flag{cli.DurationFlag{Name: "timeout", Value: time.Minute, Usage: "maximum time to wait for restart readiness"}}, globalFlags...),
 	CustomHelpTemplate: `NAME:
   {{.HelpName}} - {{.Usage}}
 
@@ -45,8 +46,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Restart MinIO server represented by its alias 'play'.
-     {{.Prompt}} {{.HelpName}} play/
+  1. Restart OtterIO server represented by its alias 'store'.
+     {{.Prompt}} {{.HelpName}} store/
 `,
 }
 
@@ -117,8 +118,35 @@ func mainAdminServiceRestart(ctx *cli.Context) error {
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
-	// Restart the specified MinIO server
-	fatalIf(probe.NewError(client.ServiceRestart(globalContext)), "Unable to restart the server.")
+	if ctx.Duration("timeout") <= 0 {
+		fatalIf(probe.NewError(fmt.Errorf("restart timeout must be positive")), "Invalid restart timeout.")
+	}
+	waitCtx, waitCancel := context.WithTimeout(globalContext, ctx.Duration("timeout"))
+	defer waitCancel()
+
+	before, beforeErr := client.ServerInfo(waitCtx)
+	fatalIf(probe.NewError(beforeErr), "Unable to capture server identity before restart.")
+	if len(before.Servers) == 0 {
+		fatalIf(probe.NewError(fmt.Errorf("server returned no instances")), "Cannot confirm restart identity.")
+	}
+	observedAt := time.Now()
+	// Uptime is reported in whole seconds. Allow newly started instances to
+	// age before restarting so the old and new boot intervals cannot overlap.
+	for _, server := range before.Servers {
+		if server.Uptime < 2 {
+			timer := time.NewTimer(2 * time.Second)
+			select {
+			case <-timer.C:
+			case <-waitCtx.Done():
+				timer.Stop()
+				fatalIf(probe.NewError(waitCtx.Err()), "Restart was not sent: identity observation timed out.")
+			}
+			break
+		}
+	}
+
+	// Restart the specified OtterIO server
+	fatalIf(probe.NewError(client.ServiceRestart(waitCtx)), "Unable to restart the server.")
 
 	// Success..
 	printMsg(serviceRestartCommand{Status: "success", ServerURL: aliasedURL})
@@ -133,20 +161,23 @@ func mainAdminServiceRestart(ctx *cli.Context) error {
 		}
 	}
 
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-globalContext.Done():
-			return globalContext.Err()
-		case <-time.NewTimer(3 * time.Second).C:
-			ctx, cancel := context.WithTimeout(globalContext, 1*time.Second)
-			// Fetch the service status of the specified MinIO server
+		case <-waitCtx.Done():
+			fatalIf(probe.NewError(waitCtx.Err()), "Restart readiness was not confirmed; inspect the server before retrying.")
+			return waitCtx.Err()
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(waitCtx, time.Second)
+			// Fetch the service status of the specified OtterIO server
 			info, e := client.ServerInfo(ctx)
 			cancel()
 			switch {
-			case e == nil && info.Mode == string(madmin.ItemOnline):
+			case e == nil && restartedServers(before, info, time.Since(observedAt)):
 				printMsg(serviceRestartMessage{Status: "success", ServerURL: aliasedURL})
 				return nil
-			case err == nil && info.Mode == string(madmin.ItemInitializing):
+			case e == nil && info.Mode == string(madmin.ItemInitializing):
 				coloring = color.New(color.FgYellow)
 				mark = "!"
 				fallthrough
@@ -155,4 +186,30 @@ func mainAdminServiceRestart(ctx *cli.Context) error {
 			}
 		}
 	}
+}
+
+// A ready response alone can belong to the old process. Confirm that every
+// original endpoint reports a boot interval later than the observed one.
+func restartedServers(before, after madmin.InfoMessage, elapsed time.Duration) bool {
+	if after.Mode != string(madmin.ItemOnline) || len(before.Servers) == 0 || len(before.Servers) != len(after.Servers) {
+		return false
+	}
+	old := make(map[string]int64, len(before.Servers))
+	for _, server := range before.Servers {
+		if server.Endpoint == "" || server.Uptime < 0 {
+			return false
+		}
+		old[server.Endpoint] = server.Uptime
+	}
+	if len(old) != len(before.Servers) {
+		return false
+	}
+	for _, server := range after.Servers {
+		uptime, ok := old[server.Endpoint]
+		if !ok || server.State != string(madmin.ItemOnline) || server.Uptime < 0 || float64(uptime)+elapsed.Seconds()-float64(server.Uptime) < 2 {
+			return false
+		}
+		delete(old, server.Endpoint)
+	}
+	return len(old) == 0
 }

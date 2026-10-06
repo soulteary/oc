@@ -1,0 +1,413 @@
+diff --git a/cmd/gateway-main.go b/cmd/gateway-main.go
+index 6275a4d..6165d80 100644
+--- a/cmd/gateway-main.go
++++ b/cmd/gateway-main.go
+@@ -155,6 +155,7 @@ func ValidateGatewayArguments(serverAddr, endpointAddr string) error {
+ 
+ // StartGateway - handler for 'otterio gateway <name>'.
+ func StartGateway(ctx *cli.Context, gw Gateway) {
++	runServerSupervisor()
+ 	defer globalDNSCache.Stop()
+ 
+ 	// This is only to uniquely identify each gateway deployments.
+diff --git a/cmd/http/server.go b/cmd/http/server.go
+index b0d93fe..9940ff5 100644
+--- a/cmd/http/server.go
++++ b/cmd/http/server.go
+@@ -120,7 +120,9 @@ func (srv *Server) Shutdown() error {
+ 		return http.ErrServerClosed
+ 	}
+ 
+-	if err := srv.App.Shutdown(); err != nil {
++	// Bound the Fiber drain itself: a stalled stream must not bypass the
++	// configured shutdown deadline before our request-count check is reached.
++	if err := srv.App.ShutdownWithTimeout(srv.ShutdownTimeout); err != nil {
+ 		return err
+ 	}
+ 
+diff --git a/cmd/server-main.go b/cmd/server-main.go
+index 2487c7e..7ae0d34 100644
+--- a/cmd/server-main.go
++++ b/cmd/server-main.go
+@@ -456,6 +456,7 @@ func initAllSubsystems(ctx context.Context, newObject ObjectLayer) (err error) {
+ 
+ // serverMain handler called for 'otterio server' command.
+ func serverMain(ctx *cli.Context) {
++	runServerSupervisor()
+ 	defer globalDNSCache.Stop()
+ 
+ 	signal.Notify(globalOSSignalCh, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+diff --git a/cmd/service.go b/cmd/service.go
+index fe4c04e..5ffb475 100644
+--- a/cmd/service.go
++++ b/cmd/service.go
+@@ -51,11 +51,9 @@ func initGlobalContext() {
+ 	globalServiceSignalCh = make(chan serviceSignal)
+ }
+ 
+-// restartProcess starts a new process passing it the active fd's. It
+-// doesn't fork, but starts a new process using the same environment and
+-// arguments as when it was originally started. This allows for a newly
+-// deployed binary to be started. It returns the pid of the newly started
+-// process when successful.
++// restartProcess replaces the active server after listeners and storage close.
++// Unix exec preserves the PID. Darwin requests a new worker from its stable
++// public supervisor, avoiding exec in the busy server runtime.
+ func restartProcess() error {
+ 	// Use the original binary location. This works with symlinks such that if
+ 	// the file it points to has been changed we will use the updated symlink.
+@@ -64,6 +62,10 @@ func restartProcess() error {
+ 		return err
+ 	}
+ 
++	if handled, err := restartSupervisedProcess(); handled {
++		return err
++	}
++
+ 	// Invokes the execve system call.
+ 	// Re-uses the same pid. This preserves the pid over multiple server-respawns.
+ 	return syscall.Exec(argv0, os.Args, os.Environ())
+diff --git a/cmd/http/shutdown_timeout_test.go b/cmd/http/shutdown_timeout_test.go
+new file mode 100644
+index 0000000..faa0154
+--- /dev/null
++++ b/cmd/http/shutdown_timeout_test.go
+@@ -0,0 +1,76 @@
++package http
++
++import (
++	"context"
++	"errors"
++	"net/http"
++	"testing"
++	"time"
++
++	"github.com/gofiber/fiber/v3"
++)
++
++func TestShutdownBoundsActiveFiberRequest(t *testing.T) {
++	entered := make(chan struct{})
++	release := make(chan struct{})
++	app := fiber.New()
++	app.Get("/blocked", func(c fiber.Ctx) error {
++		close(entered)
++		<-release
++		return c.SendString("done")
++	})
++	server := NewServer([]string{"127.0.0.1:0"}, app, nil)
++	server.ShutdownTimeout = 100 * time.Millisecond
++	started := make(chan error, 1)
++	go func() { started <- server.Start() }()
++	deadline := time.Now().Add(5 * time.Second)
++	address := ""
++	for time.Now().Before(deadline) {
++		server.listenerMutex.Lock()
++		if server.listener != nil {
++			address = server.listener.Addr().String()
++		}
++		server.listenerMutex.Unlock()
++		if address != "" {
++			break
++		}
++		time.Sleep(time.Millisecond)
++	}
++	if address == "" {
++		t.Fatal("listener did not start")
++	}
++	clientDone := make(chan struct{})
++	go func() {
++		defer close(clientDone)
++		client := &http.Client{Timeout: 5 * time.Second}
++		resp, err := client.Get("http://" + address + "/blocked")
++		if err == nil {
++			resp.Body.Close()
++		}
++	}()
++	select {
++	case <-entered:
++	case <-time.After(5 * time.Second):
++		close(release)
++		t.Fatal("request did not start")
++	}
++	begin := time.Now()
++	err := server.Shutdown()
++	close(release)
++	if !errors.Is(err, context.DeadlineExceeded) {
++		t.Fatalf("expected drain deadline, got %v", err)
++	}
++	if elapsed := time.Since(begin); elapsed > 2*time.Second {
++		t.Fatalf("shutdown exceeded its bound: %v", elapsed)
++	}
++	select {
++	case <-clientDone:
++	case <-time.After(5 * time.Second):
++		t.Fatal("client not released")
++	}
++	select {
++	case <-started:
++	case <-time.After(5 * time.Second):
++		t.Fatal("listener not released")
++	}
++}
+diff --git a/cmd/service_restart_darwin_test.go b/cmd/service_restart_darwin_test.go
+new file mode 100644
+index 0000000..4a80371
+--- /dev/null
++++ b/cmd/service_restart_darwin_test.go
+@@ -0,0 +1,121 @@
++package cmd
++
++import (
++	"context"
++	"fmt"
++	"os"
++	"os/exec"
++	"os/signal"
++	"path/filepath"
++	"strconv"
++	"strings"
++	"syscall"
++	"testing"
++	"time"
++)
++
++func TestDarwinRestartSupervisor(t *testing.T) {
++	if root := os.Getenv("OTTERIO_SUPERVISOR_TEST_DIR"); root != "" {
++		if !supervisedWorker() {
++			if err := os.WriteFile(filepath.Join(root, "parent"), []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
++				panic(err)
++			}
++		}
++		runServerSupervisor()
++		parent, _ := os.ReadFile(filepath.Join(root, "parent"))
++		if string(parent) != os.Getenv(supervisorParentEnv) {
++			panic("public process changed")
++		}
++		if os.Getenv("OTTERIO_SUPERVISOR_TEST_SIGNAL") == "1" {
++			signals := make(chan os.Signal, 1)
++			signal.Notify(signals, syscall.SIGTERM)
++			os.WriteFile(filepath.Join(root, "ready"), []byte(strconv.Itoa(os.Getpid())), 0600)
++			received := <-signals
++			os.WriteFile(filepath.Join(root, "signal"), []byte(received.String()), 0600)
++			os.Exit(0)
++		}
++		file := filepath.Join(root, "count")
++		data, _ := os.ReadFile(file)
++		count, _ := strconv.Atoi(string(data))
++		os.WriteFile(file, []byte(strconv.Itoa(count+1)), 0600)
++		if count < 2 {
++			if err := restartProcess(); err != nil {
++				panic(err)
++			}
++			panic("restart returned")
++		}
++		fmt.Println("restart-ok")
++		os.Exit(0)
++	}
++	for _, mode := range []string{"restart", "term", "parent-death"} {
++		t.Run(mode, func(t *testing.T) {
++			forwarding := mode != "restart"
++			root := t.TempDir()
++			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
++			defer cancel()
++			command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestDarwinRestartSupervisor$")
++			for _, value := range os.Environ() {
++				if !strings.HasPrefix(value, "GODEBUG=") && !strings.HasPrefix(value, "OTTERIO_SUPERVISOR_TEST_") && !strings.HasPrefix(value, supervisorParentEnv+"=") {
++					command.Env = append(command.Env, value)
++				}
++			}
++			command.Env = append(command.Env, "OTTERIO_SUPERVISOR_TEST_DIR="+root)
++			if forwarding {
++				command.Env = append(command.Env, "OTTERIO_SUPERVISOR_TEST_SIGNAL=1")
++				if err := command.Start(); err != nil {
++					t.Fatal(err)
++				}
++				deadline := time.Now().Add(10 * time.Second)
++				for {
++					if _, err := os.Stat(filepath.Join(root, "ready")); err == nil {
++						break
++					}
++					if time.Now().After(deadline) {
++						command.Process.Kill()
++						command.Wait()
++						t.Fatal("worker not ready")
++					}
++					time.Sleep(10 * time.Millisecond)
++				}
++				signalToSend := syscall.SIGTERM
++				if mode == "parent-death" {
++					signalToSend = syscall.SIGKILL
++				}
++				if err := command.Process.Signal(signalToSend); err != nil {
++					t.Fatal(err)
++				}
++				if err := command.Wait(); err != nil && mode != "parent-death" {
++					t.Fatal(err)
++				}
++				deadline = time.Now().Add(5 * time.Second)
++				for {
++					if _, err := os.Stat(filepath.Join(root, "signal")); err == nil {
++						break
++					}
++					if time.Now().After(deadline) {
++						data, _ := os.ReadFile(filepath.Join(root, "ready"))
++						pid, _ := strconv.Atoi(string(data))
++						if pid > 0 {
++							_ = syscall.Kill(pid, syscall.SIGKILL)
++						}
++						t.Fatal("worker did not stop with supervisor")
++					}
++					time.Sleep(10 * time.Millisecond)
++				}
++				received, _ := os.ReadFile(filepath.Join(root, "signal"))
++				if string(received) != "terminated" {
++					t.Fatalf("signal was not forwarded: %q", received)
++				}
++			} else {
++				output, err := command.CombinedOutput()
++				if err != nil || !strings.Contains(string(output), "restart-ok") {
++					t.Fatalf("restart failed: %v %s", err, output)
++				}
++				count, _ := os.ReadFile(filepath.Join(root, "count"))
++				if string(count) != "3" {
++					t.Fatalf("worker count: %s", count)
++				}
++			}
++		})
++	}
++}
+diff --git a/cmd/service_supervisor_darwin.go b/cmd/service_supervisor_darwin.go
+new file mode 100644
+index 0000000..ed7c3bd
+--- /dev/null
++++ b/cmd/service_supervisor_darwin.go
+@@ -0,0 +1,117 @@
++package cmd
++
++import (
++	"fmt"
++	"io"
++	"os"
++	"os/exec"
++	"os/signal"
++	"strconv"
++	"strings"
++	"syscall"
++)
++
++const supervisorParentEnv = "_OTTERIO_SUPERVISOR_PARENT"
++const restartWorkerExitCode = 75
++
++func supervisedWorker() bool {
++	return os.Getenv(supervisorParentEnv) == strconv.Itoa(os.Getppid())
++}
++
++// Darwin's runtime can stall in BeforeExec after a busy server has shut down.
++// Keep a stable, lightweight public process and replace its worker with the
++// standard process API. No runtime flags change and supervisors never nest.
++func runServerSupervisor() {
++	if supervisedWorker() {
++		go watchSupervisor()
++		return
++	}
++	os.Exit(superviseServer(os.Args))
++}
++
++func superviseServer(args []string) int {
++	signals := make(chan os.Signal, 8)
++	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
++	defer signal.Stop(signals)
++	stopping := false
++	for {
++		// Resolve on every restart so an atomically replaced binary or symlink
++		// starts the new version, as on the Unix exec path.
++		path, err := exec.LookPath(args[0])
++		if err != nil {
++			fmt.Fprintln(os.Stderr, "Cannot start server worker:", err)
++			return 1
++		}
++		reader, writer, pipeErr := os.Pipe()
++		if pipeErr != nil {
++			fmt.Fprintln(os.Stderr, "Cannot monitor server worker:", pipeErr)
++			return 1
++		}
++		command := exec.Command(path, args[1:]...)
++		command.ExtraFiles = []*os.File{reader}
++		command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
++		for _, value := range os.Environ() {
++			if !strings.HasPrefix(value, supervisorParentEnv+"=") {
++				command.Env = append(command.Env, value)
++			}
++		}
++		command.Env = append(command.Env, supervisorParentEnv+"="+strconv.Itoa(os.Getpid()))
++		if err := command.Start(); err != nil {
++			reader.Close()
++			writer.Close()
++			fmt.Fprintln(os.Stderr, "Cannot start server worker:", err)
++			return 1
++		}
++		reader.Close()
++		done := make(chan error, 1)
++		go func() { done <- command.Wait() }()
++		for {
++			select {
++			case received := <-signals:
++				stopping = true
++				_ = command.Process.Signal(received)
++			case err := <-done:
++				writer.Close()
++				if err == nil {
++					return 0
++				}
++				if exit, ok := err.(*exec.ExitError); ok {
++					code := exit.ExitCode()
++					if code == restartWorkerExitCode && !stopping {
++						goto restart
++					}
++					if code < 0 {
++						if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() {
++							return 128 + int(status.Signal())
++						}
++						return 1
++					}
++					return code
++				}
++				fmt.Fprintln(os.Stderr, "Server worker failed:", err)
++				return 1
++			}
++		}
++	restart:
++	}
++}
++
++func restartSupervisedProcess() (bool, error) {
++	if !supervisedWorker() {
++		return true, fmt.Errorf("Darwin restart requires the server supervisor")
++	}
++	// HTTP listeners and storage were already closed by handleSignals.
++	os.Exit(restartWorkerExitCode)
++	return true, nil
++}
++
++// The parent retains the write end of fd 3's pipe. EOF also handles SIGKILL,
++// which cannot be forwarded, so a forcibly killed supervisor leaves no server.
++func watchSupervisor() {
++	pipe := os.NewFile(3, "otterio-supervisor-liveness")
++	if pipe != nil {
++		_, _ = io.Copy(io.Discard, pipe)
++		_ = pipe.Close()
++	}
++	_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
++}
+diff --git a/cmd/service_supervisor_other.go b/cmd/service_supervisor_other.go
+new file mode 100644
+index 0000000..b632698
+--- /dev/null
++++ b/cmd/service_supervisor_other.go
+@@ -0,0 +1,6 @@
++//go:build !darwin
++
++package cmd
++
++func runServerSupervisor()                    {}
++func restartSupervisedProcess() (bool, error) { return false, nil }

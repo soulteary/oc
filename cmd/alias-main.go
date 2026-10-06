@@ -25,7 +25,7 @@ import (
 	"github.com/soulteary/otterio/pkg/console"
 )
 
-//   Configure an alias in MinIO Client
+//   Configure an alias in OC client
 //
 //   ----
 //   NOTE: that the alias command only writes values to the config file.

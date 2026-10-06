@@ -1,176 +1,57 @@
-# MinIO客户端快速入门指南
+# OC 客户端
 
-> OC 阶段一构建与发布基线见[验证与边界说明](docs/oc-phase-one.md)。自更新和 MinIO SUBNET 上传已禁用。使用 Go 1.27.1 执行 `make build`，产物为 `oc`。
+OC 是 OtterIO 的命令行客户端，提供文件系统与 S3 对象操作，以及 OtterIO 专属管理命令。项目继承 MinIO Client 的 Apache 2.0 代码；原始归属信息保留在 LICENSE、NOTICE 和源文件中。
 
-[![Slack](https://slack.min.io/slack?type=svg)](https://slack.min.io) [![Go Report Card](https://goreportcard.com/badge/minio/mc)](https://goreportcard.com/report/minio/mc) [![Docker Pulls](https://img.shields.io/docker/pulls/minio/mc.svg?maxAge=604800)](https://hub.docker.com/r/minio/mc/)
+## 构建
 
-MinIO Client (mc)为ls，cat，cp，mirror，diff，find等UNIX命令提供了一种替代方案。它支持文件系统和兼容Amazon S3的云存储服务（AWS Signature v2和v4）。
+使用 `go.mod` 指定的 Go 工具链：
 
-
-```
-ls       列出文件和文件夹。
-mb       创建一个存储桶或一个文件夹。
-cat      显示文件和对象内容。
-pipe     将一个STDIN重定向到一个对象或者文件或者STDOUT。
-share    生成用于共享的URL。
-cp       拷贝文件和对象。
-mirror   给存储桶和文件夹做镜像。
-find     基于参数查找文件。
-diff     对两个文件夹或者存储桶比较差异。
-rm       删除文件和对象。
-events   管理对象通知。
-watch    监听文件和对象的事件。
-policy   管理访问策略。
-session  为cp命令管理保存的会话。
-config   管理mc配置文件。
-update   检查软件更新。
-version  输出版本信息。
+```sh
+make build
+./oc --help
 ```
 
-## Docker容器
-### 稳定版
-```
-docker pull minio/mc
-docker run minio/mc ls play
-```
+Go module 路径暂保留 `github.com/soulteary/mc`，避免破坏既有源码引用。自更新和 MinIO SUBNET 上传已禁用。安装和发行边界见 [阶段一](docs/oc-phase-one.md)。
 
-### 尝鲜版
-```
-docker pull minio/mc:edge
-docker run minio/mc:edge ls play
-```
+## 连接 OtterIO
 
-**注意:** 上述示例默认使用MinIO[演示环境](#test-your-setup)做演示，如果想用`mc`操作其它S3兼容的服务，采用下面的方式来启动容器：
-
-```
-docker run -it --entrypoint=/bin/sh minio/mc
+```sh
+oc alias set store http://127.0.0.1:9000 ACCESS_KEY SECRET_KEY \
+  --api s3v4 --path on --admin-url http://127.0.0.1:9001
+oc ls store
+oc mb store/example
+oc cp ./file.txt store/example/file.txt
+oc admin info store
 ```
 
-然后使用[`mc config`命令](#add-a-cloud-storage-service)。
+单端口部署省略 `--admin-url`。独立管理证书使用 `--admin-ca /path/to/ca.pem`；S3 额外 CA 放在 OC 配置目录的 `certs/CAs/`。详细说明见 [阶段二](docs/oc-phase-two.md)。
 
-## macOS
-### Homebrew
-使用[Homebrew](http://brew.sh/)安装mc。
+## 从 mc 迁移
 
-```
-brew install minio/stable/mc
-mc --help
-```
+OC 固定使用 `~/.oc`，Windows 使用用户目录下的 `oc`，不随二进制文件名变化。默认不会读取或修改 `~/.mc`。
 
-## GNU/Linux
-### 下载二进制文件
-| 平台 | CPU架构 | URL |
-| ---------- | -------- |------|
-|GNU/Linux|64-bit Intel|https://dl.min.io/client/mc/release/linux-amd64/mc |
-
-```
-chmod +x mc
-./mc --help
+```sh
+oc config import ~/.mc/config.json
 ```
 
-## Microsoft Windows
-### 下载二进制文件
-| 平台 | CPU架构 | URL |
-| ---------- | -------- |------|
-|Microsoft Windows|64-bit Intel|https://dl.min.io/client/mc/release/windows-amd64/mc.exe |
+显式导入支持版本 10 配置，整体替换目标别名，并以私有权限备份原 OC 配置。源文件不变；相对管理 CA 路径转成相对于源配置目录的绝对路径。旧版配置先由原客户端迁移至版本 10。证书目录、会话和分享记录不自动复制；需要的 S3 CA 请单独复制到 OC 配置目录。
 
-```
-mc.exe --help
+```sh
+OC_CONFIG_DIR=/path/to/oc-config oc ls store
+oc --config-dir /path/to/oc-config ls store
+OC_HOST_store=http://ACCESS_KEY:SECRET_KEY@127.0.0.1:9000 oc ls store
 ```
 
-## 通过源码安装
-通过源码安装仅适用于开发人员和高级用户。`mc update`命令不支持基于源码安装的更新通知。请从https://min.io/download/#minio-client下载官方版本。
+`OC_*` 优先于对应 `MC_*`；`MC_*` 在整个 OC 0.x 系列保留，停止支持前至少提前一个次版本公告。显式 `--config-dir` 优先于环境变量，环境别名优先于文件别名。支持 `OC_HOST_<alias>`、`OC_REGION`、`OC_ENCRYPT`、`OC_ENCRYPT_KEY`、`OC_PROFILER` 和健康检查环境变量。配置目录环境变量兼容 `MC_CONFIG_DIR`。管理地址与 CA 使用独立的 `OC_ADMIN_*` 设置。
 
-如果您没有Golang环境，请参照[如何安装Golang](https://golang.org/doc/install)。
+## 兼容范围与验证
 
-```
-go get -d github.com/soulteary/mc
-cd ${GOPATH}/src/github.com/soulteary/mc
-make
-```
+[阶段三](docs/oc-phase-three.md) 记录管理、版本、生命周期、对象锁等功能的部署前提及测试结果。不能把普通服务器、单节点纠删码、分布式和网关模式的功能等同；KMS、通知目标及复制还需要对应服务端配置。
 
-## 添加一个云存储服务
-如果你打算仅在POSIX兼容文件系统中使用`mc`,那你可以直接略过本节，跳到[日常使用](#everyday-use)。
-
-添加一个或多个S3兼容的服务，请参考下面说明。`mc`将所有的配置信息都存储在``~/.mc/config.json``文件中。
-
-```
-mc alias set <ALIAS> <YOUR-S3-ENDPOINT> <YOUR-ACCESS-KEY> <YOUR-SECRET-KEY> [--api API-SIGNATURE]
+```sh
+python3 buildscripts/test-core-integration.py \
+  --oc /path/to/oc --otterio /path/to/otterio --extended \
+  --report /tmp/oc-compatibility.json
 ```
 
-别名就是给你的云存储服务起了一个短点的外号。S3 endpoint,access key和secret key是你的云存储服务提供的。API签名是可选参数，默认情况下，它被设置为"S3v4"。
-
-### 示例-MinIO云存储
-从MinIO服务获得URL、access key和secret key。
-
-```
-mc alias set minio http://192.168.1.51 BKIKJAA5BMMU2RHO6IBB V7f1CwQqAcwo80UEIJEjc5gVQUSSx5ohQ9GSrr12 --api s3v4
-```
-
-### 示例-Amazon S3云存储
-参考[AWS Credentials指南](http://docs.aws.amazon.com/general/latest/gr/aws-security-credentials.html)获取你的AccessKeyID和SecretAccessKey。
-
-```
-mc alias set s3 https://s3.amazonaws.com BKIKJAA5BMMU2RHO6IBB V7f1CwQqAcwo80UEIJEjc5gVQUSSx5ohQ9GSrr12 --api s3v4
-```
-
-### 示例-Google云存储
-参考[Google Credentials Guide](https://cloud.google.com/storage/docs/migrating?hl=en#keys)获取你的AccessKeyID和SecretAccessKey。
-
-```
-mc alias set gcs  https://storage.googleapis.com BKIKJAA5BMMU2RHO6IBB V8f1CwQqAcwo80UEIJEjc5gVQUSSx5ohQ9GSrr12 --api s3v2
-```
-
-注意：Google云存储只支持旧版签名版本V2，所以你需要选择S3v2。
-
-## 验证
-`mc`预先配置了云存储服务URL：https://play.min.io，别名“play”。它是一个用于研发和测试的MinIO服务。如果想测试Amazon S3,你可以将“play”替换为“s3”。
-
-*示例:*
-
-列出https://play.min.io上的所有存储桶。
-
-```
-mc ls play
-[2016-03-22 19:47:48 PDT]     0B my-bucketname/
-[2016-03-22 22:01:07 PDT]     0B mytestbucket/
-[2016-03-22 20:04:39 PDT]     0B mybucketname/
-[2016-01-28 17:23:11 PST]     0B newbucket/
-[2016-03-20 09:08:36 PDT]     0B s3git-test/
-```
-<a name="everyday-use"></a>
-## 日常使用
-
-### Shell别名
-你可以添加shell别名来覆盖默认的Unix工具命令。
-
-```
-alias ls='mc ls'
-alias cp='mc cp'
-alias cat='mc cat'
-alias mkdir='mc mb'
-alias pipe='mc pipe'
-alias find='mc find'
-```
-
-### Shell自动补全
-你也可以下载[`autocomplete/bash_autocomplete`](https://raw.githubusercontent.com/minio/mc/master/autocomplete/bash_autocomplete)到`/etc/bash_completion.d/`，然后将其重命名为`mc`。别忘了在这个文件运行source命令让其在你的当前shell上可用。
-
-```
-sudo wget https://raw.githubusercontent.com/minio/mc/master/autocomplete/bash_autocomplete -O /etc/bash_completion.d/mc
-source /etc/bash_completion.d/mc
-```
-
-```
-mc <TAB>
-admin    config   diff     ls       mirror   policy   session  update   watch
-cat      cp       events   mb       pipe     rm       share    version
-```
-
-## 了解更多
-- [MinIO Client完全指南](https://docs.min.io/docs/minio-client-complete-guide)
-- [MinIO快速入门](https://docs.min.io/docs/minio-quickstart-guide)
-- [MinIO官方文档](https://docs.min.io)
-
-## 贡献
-请遵守MinIO[贡献者指南](https://github.com/soulteary/mc/blob/master/docs/zh_CN/CONTRIBUTING.md)
+脚本只使用临时实例和临时凭据；固定服务端版本需要阶段二的参数桥接补丁和阶段三的关闭超时与重启补丁。Darwin 的监督重启机制和完整平台验证记录见阶段三文档。输出 `--json` 的错误保留 `status`、`error.message`、`error.cause` 等字段，并新增 `error.code` 与 `error.category`，错误对象单行输出。错误退出码为 1，取消及信号退出码沿用既有约定。

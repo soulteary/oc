@@ -45,8 +45,8 @@ FLAGS:
    {{range .VisibleFlags}}{{.}}
    {{end}}
 EXAMPLES:
-  1. Get server side replication metrics for bucket "mybucket" for alias "myminio".
-	   {{.Prompt}} {{.HelpName}} myminio/mybucket
+  1. Get server side replication metrics for bucket "mybucket" for alias "store".
+	   {{.Prompt}} {{.HelpName}} store/mybucket
 `,
 }
 

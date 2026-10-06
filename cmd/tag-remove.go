@@ -63,16 +63,16 @@ DESCRIPTION:
 
 EXAMPLES:
   1. Remove the tags assigned to an object.
-     {{.Prompt}} {{.HelpName}} myminio/testbucket/testobject
+     {{.Prompt}} {{.HelpName}} store/testbucket/testobject
 
   2. Remove the tags assigned to a particular version of an object.
-     {{.Prompt}} {{.HelpName}} --version-id "ieQq7aXsyhlhDt47YURGlrucYY3GxWHa" myminio/testbucket/testobject
+     {{.Prompt}} {{.HelpName}} --version-id "ieQq7aXsyhlhDt47YURGlrucYY3GxWHa" store/testbucket/testobject
 
   3. Remove the tags assigned to an object versions that are older than one week
-     {{.Prompt}} {{.HelpName}} --versions --rewind 7d myminio/testbucket/testobject
+     {{.Prompt}} {{.HelpName}} --versions --rewind 7d store/testbucket/testobject
 
   4. Remove the tags assigned to a bucket.
-     {{.Prompt}} {{.HelpName}} play/testbucket
+     {{.Prompt}} {{.HelpName}} store/testbucket
 `,
 }
 

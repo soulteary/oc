@@ -45,13 +45,13 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Enable webhook notification target for MinIO server.
-     {{.Prompt}} {{.HelpName}} myminio/ notify_webhook endpoint="http://localhost:8080/minio/events"
+  1. Enable webhook notification target for OtterIO server.
+     {{.Prompt}} {{.HelpName}} store/ notify_webhook endpoint="http://localhost:8080/minio/events"
 
-  2. Change region name for the MinIO server to 'us-west-1'.
-     {{.Prompt}} {{.HelpName}} myminio/ region name=us-west-1
+  2. Change region name for the OtterIO server to 'us-west-1'.
+     {{.Prompt}} {{.HelpName}} store/ region name=us-west-1
 
-  3. Change healing settings on a distributed MinIO server setup.
+  3. Change healing settings on a distributed OtterIO server setup.
      {{.Prompt}} {{.HelpName}} mydist/ heal max_delay=300ms max_io=50
 `,
 }

@@ -20,23 +20,25 @@ import "github.com/minio/cli"
 
 var configCmd = cli.Command{
 	Name:  "config",
-	Usage: "configure MinIO client",
+	Usage: "configure OC client",
 	Action: func(ctx *cli.Context) error {
 		cli.ShowCommandHelp(ctx, ctx.Args().First())
 		return nil
 	},
-	Hidden:          true,
+	Hidden:          false,
 	Before:          setGlobalsFromContext,
 	HideHelpCommand: true,
 	Flags:           globalFlags,
 	Subcommands: []cli.Command{
 		configHostCmd,
+		configImportCmd,
 	},
 }
 
 var configHostCmd = cli.Command{
-	Name:  "host",
-	Usage: "add, remove and list hosts in configuration file",
+	Hidden: true,
+	Name:   "host",
+	Usage:  "add, remove and list hosts in configuration file",
 	Action: func(ctx *cli.Context) error {
 		cli.ShowCommandHelp(ctx, ctx.Args().First())
 		return nil

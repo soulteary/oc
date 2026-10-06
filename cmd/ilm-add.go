@@ -49,7 +49,7 @@ DESCRIPTION:
 
 EXAMPLES:
   1. Add expiration rule on mybucket.
-     {{.Prompt}} {{.HelpName}} --expiry-days "200" myminio/mybucket
+     {{.Prompt}} {{.HelpName}} --expiry-days "200" store/mybucket
 
   2. Add expiry and transition date rules on a prefix in mybucket.
      {{.Prompt}} {{.HelpName}} --expiry-date "2025-09-17" --transition-date "2025-05-01" \

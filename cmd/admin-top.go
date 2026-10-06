@@ -24,7 +24,7 @@ var adminTopSubcommands = []cli.Command{
 
 var adminTopCmd = cli.Command{
 	Name:            "top",
-	Usage:           "provide top like statistics for MinIO",
+	Usage:           "provide top like statistics for OtterIO",
 	Action:          mainAdminTop,
 	Before:          setGlobalsFromContext,
 	Flags:           globalFlags,

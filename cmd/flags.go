@@ -25,9 +25,10 @@ var globalFlags = []cli.Flag{
 	cli.StringFlag{Name: "admin-url", Usage: "explicit OtterIO management endpoint (OC_ADMIN_URL or OC_ADMIN_URL_<alias>)"},
 	cli.StringFlag{Name: "admin-ca", Usage: "PEM CA file for the management endpoint (OC_ADMIN_CA or OC_ADMIN_CA_<alias>)"},
 	cli.StringFlag{
-		Name:  "config-dir, C",
-		Value: mustGetMcConfigDir(),
-		Usage: "path to configuration folder",
+		Name:   "config-dir, C",
+		EnvVar: "OC_CONFIG_DIR,MC_CONFIG_DIR",
+		Value:  mustGetMcConfigDir(),
+		Usage:  "path to configuration folder",
 	},
 	cli.BoolFlag{
 		Name:  "quiet, q",

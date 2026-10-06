@@ -37,6 +37,8 @@ type causeMessage struct {
 
 // errorMessage container for error messages
 type errorMessage struct {
+	Code      string             `json:"code,omitempty"`
+	Category  string             `json:"category"`
 	Message   string             `json:"message"`
 	Cause     causeMessage       `json:"cause"`
 	Type      string             `json:"type"`
@@ -54,7 +56,9 @@ func fatalIf(err *probe.Error, msg string, data ...interface{}) {
 
 func fatal(err *probe.Error, msg string, data ...interface{}) {
 	if globalJSON {
+		code, category := classifyClientError(err.ToGoError())
 		errorMsg := errorMessage{
+			Code: code, Category: category,
 			Message: msg,
 			Type:    "fatal",
 			Cause: causeMessage{
@@ -66,13 +70,13 @@ func fatal(err *probe.Error, msg string, data ...interface{}) {
 		if globalDebug {
 			errorMsg.CallTrace = err.CallTrace
 		}
-		json, e := json.MarshalIndent(struct {
+		json, e := json.Marshal(struct {
 			Status string       `json:"status"`
 			Error  errorMessage `json:"error"`
 		}{
 			Status: "error",
 			Error:  errorMsg,
-		}, "", " ")
+		})
 		if e != nil {
 			console.Fatalln(probe.NewError(e))
 		}
@@ -131,7 +135,9 @@ func errorIf(err *probe.Error, msg string, data ...interface{}) {
 		return
 	}
 	if globalJSON {
+		code, category := classifyClientError(err.ToGoError())
 		errorMsg := errorMessage{
+			Code: code, Category: category,
 			Message: fmt.Sprintf(msg, data...),
 			Type:    "error",
 			Cause: causeMessage{
@@ -143,13 +149,13 @@ func errorIf(err *probe.Error, msg string, data ...interface{}) {
 		if globalDebug {
 			errorMsg.CallTrace = err.CallTrace
 		}
-		json, e := json.MarshalIndent(struct {
+		json, e := json.Marshal(struct {
 			Status string       `json:"status"`
 			Error  errorMessage `json:"error"`
 		}{
 			Status: "error",
 			Error:  errorMsg,
-		}, "", " ")
+		})
 		if e != nil {
 			console.Fatalln(probe.NewError(e))
 		}

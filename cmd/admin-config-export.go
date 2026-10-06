@@ -39,8 +39,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Export the current config from MinIO server
-     {{.Prompt}} {{.HelpName}} play/ > config.txt
+  1. Export the current config from OtterIO server
+     {{.Prompt}} {{.HelpName}} store/ > config.txt
 `,
 }
 

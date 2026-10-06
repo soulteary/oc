@@ -138,8 +138,8 @@ EXAMPLES:
   05. Find all images with ".jpg", ".png", and ".gif" extensions, using regex under "s3/photos".
       {{.Prompt}} {{.HelpName}} s3/photos --regex "(?i)\.(jpg|png|gif)$"
 
-  06. Find all images with ".jpg" extension under "s3/bucket" and copy to "play/bucket" *continuously*.
-      {{.Prompt}} {{.HelpName}} s3/bucket --name "*.jpg" --watch --exec "mc cp {} play/bucket"
+  06. Find all images with ".jpg" extension under "s3/bucket" and copy to "store/bucket" *continuously*.
+      {{.Prompt}} {{.HelpName}} s3/bucket --name "*.jpg" --watch --exec "mc cp {} store/bucket"
 
   07. Find and generate public URLs valid for 7 days, for all objects between 64 MB, and 1 GB in size under "s3" account.
       {{.Prompt}} {{.HelpName}} s3 --larger 64MB --smaller 1GB --print {url}

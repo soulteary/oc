@@ -38,8 +38,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Remove the service account 'J123C4ZXEQN8RK6ND35I' from MinIO server.
-     {{.Prompt}} {{.HelpName}} myminio/ J123C4ZXEQN8RK6ND35I
+  1. Remove the service account 'J123C4ZXEQN8RK6ND35I' from OtterIO server.
+     {{.Prompt}} {{.HelpName}} store/ J123C4ZXEQN8RK6ND35I
 `,
 }
 

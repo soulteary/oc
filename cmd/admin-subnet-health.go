@@ -41,14 +41,14 @@ var adminHealthFlags = []cli.Flag{
 		Name:   "test",
 		Usage:  "choose health tests to run [" + options.String() + "]",
 		Value:  nil,
-		EnvVar: "MC_HEALTH_TEST,MC_OBD_TEST",
+		EnvVar: "OC_HEALTH_TEST,OC_OBD_TEST,MC_HEALTH_TEST,MC_OBD_TEST",
 		Hidden: true,
 	},
 	cli.DurationFlag{
 		Name:   "deadline",
 		Usage:  "maximum duration that health tests should be allowed to run",
 		Value:  3600 * time.Second,
-		EnvVar: "MC_HEALTH_DEADLINE,MC_OBD_DEADLINE",
+		EnvVar: "OC_HEALTH_DEADLINE,OC_OBD_DEADLINE,MC_HEALTH_DEADLINE,MC_OBD_DEADLINE",
 	},
 	cli.StringFlag{
 		Name:  "license",
@@ -78,8 +78,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Get server information of the 'play' MinIO server.
-     {{.Prompt}} {{.HelpName}} play/
+  1. Get server information of the 'play' OtterIO server.
+     {{.Prompt}} {{.HelpName}} store/
 `,
 }
 

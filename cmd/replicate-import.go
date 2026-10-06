@@ -45,11 +45,11 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Set replication configuration from '/data/replication/config' on bucket "mybucket" for alias "myminio".
-     {{.Prompt}} {{.HelpName}} myminio/mybucket < '/data/replication/config'
+  1. Set replication configuration from '/data/replication/config' on bucket "mybucket" for alias "store".
+     {{.Prompt}} {{.HelpName}} store/mybucket < '/data/replication/config'
 
-  2. Import replication configuration for bucket "mybucket" on alias "myminio" from STDIN.
-     {{.Prompt}} {{.HelpName}} myminio/mybucket
+  2. Import replication configuration for bucket "mybucket" on alias "store" from STDIN.
+     {{.Prompt}} {{.HelpName}} store/mybucket
 `,
 }
 

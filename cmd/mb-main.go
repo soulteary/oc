@@ -78,7 +78,7 @@ EXAMPLES:
      {{.Prompt}} {{.HelpName}} /mnt/sdb/mydisk /mnt/sdc/mydisk /mnt/sdd/mydisk
 
   6. Ignore if bucket/directory already exists.
-     {{.Prompt}} {{.HelpName}} --ignore-existing myminio/mynewbucket
+     {{.Prompt}} {{.HelpName}} --ignore-existing store/mynewbucket
 
   7. Create a new bucket on Amazon S3 cloud storage in region 'us-west-2' with object lock enabled.
      {{.Prompt}} {{.HelpName}} --with-lock --region=us-west-2 s3/myregionbucket

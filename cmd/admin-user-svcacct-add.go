@@ -58,14 +58,14 @@ USAGE:
   {{.HelpName}} ALIAS ACCOUNT
 
 ACCOUNT:
-  An account could be a regular MinIO user, STS ou LDAP user.
+  An account could be a regular OtterIO user, STS ou LDAP user.
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Add a new service account for user 'foobar' to MinIO server.
-     {{.Prompt}} {{.HelpName}} myminio foobar
+  1. Add a new service account for user 'foobar' to OtterIO server.
+     {{.Prompt}} {{.HelpName}} store foobar
 `,
 }
 
@@ -151,6 +151,7 @@ func mainAdminUserSvcAcctAdd(ctx *cli.Context) error {
 
 	accessKey := ctx.String("access-key")
 	secretKey := ctx.String("secret-key")
+	fatalIf(probe.NewError(validateServiceCredentials(accessKey, secretKey)), "Invalid service account credentials.")
 	policyPath := ctx.String("policy")
 
 	// Create a new MinIO Admin Client

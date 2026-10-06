@@ -35,14 +35,14 @@ USAGE:
   {{.HelpName}} ALIAS TARGET-ACCOUNT
 
 TARGET-ACCOUNT:
-  Could be a MinIO user, STS or LDAP account.
+  Could be a OtterIO user, STS or LDAP account.
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. List all service accounts for user 'foobar'.
-     {{.Prompt}} {{.HelpName}} myminio/ foobar
+     {{.Prompt}} {{.HelpName}} store/ foobar
 `,
 }
 

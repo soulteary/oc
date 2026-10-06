@@ -55,8 +55,8 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}{{end}}
 ENVIRONMENT VARIABLES:
-  MC_ENCRYPT:      list of comma delimited prefix values
-  MC_ENCRYPT_KEY:  list of comma delimited prefix=secret values
+  OC_ENCRYPT (MC_ENCRYPT):      list of comma delimited prefix values
+  OC_ENCRYPT_KEY (MC_ENCRYPT_KEY):  list of comma delimited prefix=secret values
 
 EXAMPLES:
   1. Write contents of stdin to a file on local filesystem.

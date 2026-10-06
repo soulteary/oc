@@ -40,14 +40,14 @@ var adminConsoleFlags = []cli.Flag{
 	},
 	cli.StringFlag{
 		Name:  "type, t",
-		Usage: "list error logs by type. Valid options are '[minio, application, all]'",
+		Usage: "list error logs by type. Valid options are '[otterio, application, all]' (minio remains an alias)",
 		Value: "all",
 	},
 }
 
 var adminConsoleCmd = cli.Command{
 	Name:            "console",
-	Usage:           "show console logs for MinIO server",
+	Usage:           "show console logs for OtterIO server",
 	Action:          mainAdminConsole,
 	OnUsageError:    onUsageError,
 	Before:          setGlobalsFromContext,
@@ -63,13 +63,13 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Show console logs for a MinIO server with alias 'play'
+  1. Show console logs for a OtterIO server with alias 'store'
      {{.Prompt}} {{.HelpName}} play
 
-  2. Show last 5 log entries for node 'node1' on MinIO server with alias 'cluster1'
+  2. Show last 5 log entries for node 'node1' on OtterIO server with alias 'cluster1'
      {{.Prompt}} {{.HelpName}} --limit 5 cluster1 node1
 
-  3. Show application error logs on MinIO server with alias 'play'
+  3. Show application error logs on OtterIO server with alias 'store'
      {{.Prompt}} {{.HelpName}} --type application play
 `,
 }
@@ -188,10 +188,8 @@ func mainAdminConsole(ctx *cli.Context) error {
 			fatalIf(errInvalidArgument().Trace(ctx.Args()...), "please set a proper limit, for example: '--limit 5' to display last 5 logs, omit this flag to display all available logs")
 		}
 	}
-	logType := strings.ToLower(ctx.String("type"))
-	if logType != "minio" && logType != "application" && logType != "all" {
-		fatalIf(errInvalidArgument().Trace(ctx.Args()...), "Invalid value for --type flag. Valid options are [minio, application, all]")
-	}
+	logType, logErr := normalizeConsoleLogType(ctx.String("type"))
+	fatalIf(probe.NewError(logErr), "Invalid log type.")
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
 	if err != nil {
@@ -215,4 +213,17 @@ func mainAdminConsole(ctx *cli.Context) error {
 		printMsg(logMessage{LogInfo: logInfo})
 	}
 	return nil
+}
+
+func normalizeConsoleLogType(value string) (string, error) {
+	value = strings.ToLower(value)
+	if value == "minio" {
+		value = "otterio"
+	}
+	switch value {
+	case "otterio", "application", "all":
+		return value, nil
+	default:
+		return "", fmt.Errorf("valid log types are otterio, application and all")
+	}
 }

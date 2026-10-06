@@ -53,17 +53,17 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Add a new user 'foobar' to MinIO server.
+  1. Add a new user 'foobar' to OtterIO server.
      {{.DisableHistory}}
-     {{.Prompt}} {{.HelpName}} myminio foobar foo12345
+     {{.Prompt}} {{.HelpName}} store foobar foo12345
      {{.EnableHistory}}
-  2. Add a new user 'foobar' to MinIO server, prompting for keys.
-     {{.Prompt}} {{.HelpName}} myminio
+  2. Add a new user 'foobar' to OtterIO server, prompting for keys.
+     {{.Prompt}} {{.HelpName}} store
      Enter Access Key: foobar
      Enter Secret Key: foobar12345
-  3. Add a new user 'foobar' to MinIO server using piped keys.
+  3. Add a new user 'foobar' to OtterIO server using piped keys.
      {{.DisableHistory}}
-     {{.Prompt}} echo -e "foobar\nfoobar12345" | {{.HelpName}} myminio
+     {{.Prompt}} echo -e "foobar\nfoobar12345" | {{.HelpName}} store
      {{.EnableHistory}}
 `,
 }

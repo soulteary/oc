@@ -53,10 +53,10 @@ FLAGS:
   {{end}}
 EXAMPLES:
     1. Start CPU profiling only
-       {{.Prompt}} {{.HelpName}} --type cpu myminio/
+       {{.Prompt}} {{.HelpName}} --type cpu store/
 
     2. Start CPU, Memory and Block profiling concurrently
-       {{.Prompt}} {{.HelpName}} --type cpu,mem,block myminio/
+       {{.Prompt}} {{.HelpName}} --type cpu,mem,block store/
 `,
 }
 

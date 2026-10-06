@@ -33,12 +33,12 @@ import (
 // mcCustomConfigDir contains the whole path to config dir. Only access via get/set functions.
 var mcCustomConfigDir string
 
-// setMcConfigDir - set a custom MinIO Client config folder.
+// setMcConfigDir - set a custom OC client config folder.
 func setMcConfigDir(configDir string) {
 	mcCustomConfigDir = configDir
 }
 
-// getMcConfigDir - construct MinIO Client config folder.
+// getMcConfigDir - construct OC client config folder.
 func getMcConfigDir() (string, *probe.Error) {
 	if mcCustomConfigDir != "" {
 		return mcCustomConfigDir, nil
@@ -55,17 +55,12 @@ func getMcConfigDir() (string, *probe.Error) {
 // Generally you want to use getMcConfigDir which returns custom overrides.
 func defaultMCConfigDir() string {
 	if runtime.GOOS == "windows" {
-		// For windows the path is slightly different
-		cmd := filepath.Base(os.Args[0])
-		if strings.HasSuffix(strings.ToLower(cmd), ".exe") {
-			cmd = cmd[:strings.LastIndex(cmd, ".")]
-		}
-		return fmt.Sprintf("%s\\", cmd)
+		return "oc\\"
 	}
-	return fmt.Sprintf(".%s/", filepath.Base(os.Args[0]))
+	return ".oc/"
 }
 
-// mustGetMcConfigDir - construct MinIO Client config folder or fail
+// mustGetMcConfigDir - construct OC client config folder or fail
 func mustGetMcConfigDir() (configDir string) {
 	configDir, err := getMcConfigDir()
 	fatalIf(err.Trace(), "Unable to get mcConfigDir.")
@@ -73,7 +68,7 @@ func mustGetMcConfigDir() (configDir string) {
 	return configDir
 }
 
-// createMcConfigDir - create MinIO Client config folder
+// createMcConfigDir - create OC client config folder
 func createMcConfigDir() *probe.Error {
 	p, err := getMcConfigDir()
 	if err != nil {
@@ -85,7 +80,7 @@ func createMcConfigDir() *probe.Error {
 	return nil
 }
 
-// getMcConfigPath - construct MinIO Client configuration path
+// getMcConfigPath - construct OC client configuration path
 func getMcConfigPath() (string, *probe.Error) {
 	if mcCustomConfigDir != "" {
 		return filepath.Join(mcCustomConfigDir, globalMCConfigFile), nil
@@ -195,12 +190,12 @@ func mustGetHostConfig(alias string) *aliasConfigV10 {
 	// If alias is not found,
 	// look for it in the environment variable.
 	if aliasCfg == nil {
-		if envConfig, ok := os.LookupEnv(mcEnvHostPrefix + alias); ok {
+		if envConfig, ok := lookupClientEnv(mcEnvHostPrefix + alias); ok {
 			aliasCfg, _ = expandAliasFromEnv(envConfig)
 		}
 	}
 	if aliasCfg == nil {
-		if envConfig, ok := os.LookupEnv(mcEnvHostsDeprecatedPrefix + alias); ok {
+		if envConfig, ok := lookupClientEnv(mcEnvHostsDeprecatedPrefix + alias); ok {
 			errorIf(errInvalidArgument().Trace(mcEnvHostsDeprecatedPrefix+alias), "`MC_HOSTS_<alias>` environment variable is deprecated. Please use `MC_HOST_<alias>` instead for the same functionality.")
 			aliasCfg, _ = expandAliasFromEnv(envConfig)
 		}
@@ -288,8 +283,8 @@ func expandAlias(aliasedURL string) (alias string, urlStr string, aliasCfg *alia
 	var envConfig string
 	var ok bool
 
-	if envConfig, ok = os.LookupEnv(mcEnvHostPrefix + alias); !ok {
-		envConfig, ok = os.LookupEnv(mcEnvHostsDeprecatedPrefix + alias)
+	if envConfig, ok = lookupClientEnv(mcEnvHostPrefix + alias); !ok {
+		envConfig, ok = lookupClientEnv(mcEnvHostsDeprecatedPrefix + alias)
 		if ok {
 			errorIf(errInvalidArgument().Trace(mcEnvHostsDeprecatedPrefix+alias), "`MC_HOSTS_<alias>` environment variable is deprecated. Please use `MC_HOST_<alias>` instead for the same functionality.")
 		}

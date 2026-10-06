@@ -62,17 +62,17 @@ DESCRIPTION:
   List lifecycle configuration rules set on a bucket.
 
 EXAMPLES:
-  1. List the lifecycle management rules (all fields) for mybucket on alias 'myminio'.
-     {{.Prompt}} {{.HelpName}} myminio/mybucket
+  1. List the lifecycle management rules (all fields) for mybucket on alias 'store'.
+     {{.Prompt}} {{.HelpName}} store/mybucket
 
-  2. List the lifecycle management rules (expration date/days fields) for mybucket on alias 'myminio'.
-     {{.Prompt}} {{.HelpName}} --expiry myminio/mybucket
+  2. List the lifecycle management rules (expration date/days fields) for mybucket on alias 'store'.
+     {{.Prompt}} {{.HelpName}} --expiry store/mybucket
 
-  3. List the lifecycle management rules (transition date/days, storage class fields) for mybucket on alias 'myminio'.
-     {{.Prompt}} {{.HelpName}} --transition myminio/mybucket
+  3. List the lifecycle management rules (transition date/days, storage class fields) for mybucket on alias 'store'.
+     {{.Prompt}} {{.HelpName}} --transition store/mybucket
 
-  4. List the lifecycle management rules in JSON format for mybucket on alias 'myminio'.
-     {{.Prompt}} {{.HelpName}} --json myminio/mybucket
+  4. List the lifecycle management rules in JSON format for mybucket on alias 'store'.
+     {{.Prompt}} {{.HelpName}} --json store/mybucket
 `,
 }
 

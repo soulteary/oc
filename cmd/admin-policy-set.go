@@ -40,17 +40,17 @@ USAGE:
   {{.HelpName}} TARGET POLICYNAME [ user=username1 | group=groupname1 ]
 
 POLICYNAME:
-  Name of the policy on the MinIO server.
+  Name of the policy on the OtterIO server.
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Set the "readwrite" policy for user "james".
-     {{.Prompt}} {{.HelpName}} myminio readwrite user=james
+     {{.Prompt}} {{.HelpName}} store readwrite user=james
 
   2. Set the "readonly" policy for group "auditors".
-     {{.Prompt}} {{.HelpName}} myminio readonly group=auditors
+     {{.Prompt}} {{.HelpName}} store readonly group=auditors
 `,
 }
 

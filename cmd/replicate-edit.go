@@ -78,23 +78,23 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Change priority of rule with rule ID "bsibgh8t874dnjst8hkg" on bucket "mybucket" for alias "myminio".
-     {{.Prompt}} {{.HelpName}} myminio/mybucket --id "bsibgh8t874dnjst8hkg"  --priority 3
+  1. Change priority of rule with rule ID "bsibgh8t874dnjst8hkg" on bucket "mybucket" for alias "store".
+     {{.Prompt}} {{.HelpName}} store/mybucket --id "bsibgh8t874dnjst8hkg"  --priority 3
  
-  2. Disable a replication configuration rule with rule ID "bsibgh8t874dnjst8hkg" on target myminio/bucket
-     {{.Prompt}} {{.HelpName}} myminio/mybucket --id "bsibgh8t874dnjst8hkg" --state disable
+  2. Disable a replication configuration rule with rule ID "bsibgh8t874dnjst8hkg" on target store/bucket
+     {{.Prompt}} {{.HelpName}} store/mybucket --id "bsibgh8t874dnjst8hkg" --state disable
 
-  3. Set tags and storage class on a replication configuration with rule ID "kMYD.491" on target myminio/bucket/prefix.
-     {{.Prompt}} {{.HelpName}} myminio/mybucket --id "kMYD.491" --tags "key1=value1&key2=value2" \
+  3. Set tags and storage class on a replication configuration with rule ID "kMYD.491" on target store/bucket/prefix.
+     {{.Prompt}} {{.HelpName}} store/mybucket --id "kMYD.491" --tags "key1=value1&key2=value2" \
 								  --storage-class "STANDARD" --priority 2
-  4. Clear tags for replication configuration rule with ID "kMYD.491" on a target myminio/bucket.
-     {{.Prompt}} {{.HelpName}} myminio/mybucket --id "kMYD.491" --tags ""
+  4. Clear tags for replication configuration rule with ID "kMYD.491" on a target store/bucket.
+     {{.Prompt}} {{.HelpName}} store/mybucket --id "kMYD.491" --tags ""
 
-  5. Enable delete marker replication on a replication configuration rule with ID "kxYD.491" on a target myminio/bucket.
-     {{.Prompt}} {{.HelpName}} myminio/mybucket --id "kxYD.491" --replicate "delete-marker"
+  5. Enable delete marker replication on a replication configuration rule with ID "kxYD.491" on a target store/bucket.
+     {{.Prompt}} {{.HelpName}} store/mybucket --id "kxYD.491" --replicate "delete-marker"
 
-  6. Disable delete marker and versioned delete replication on a replication configuration rule with ID "kxYD.491" on a target myminio/bucket.
-     {{.Prompt}} {{.HelpName}} myminio/mybucket --id "kxYD.491" --replicate ""
+  6. Disable delete marker and versioned delete replication on a replication configuration rule with ID "kxYD.491" on a target store/bucket.
+     {{.Prompt}} {{.HelpName}} store/mybucket --id "kxYD.491" --replicate ""
 
 `,
 }

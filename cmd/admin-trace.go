@@ -78,7 +78,7 @@ var adminTraceFlags = []cli.Flag{
 
 var adminTraceCmd = cli.Command{
 	Name:            "trace",
-	Usage:           "show http trace for MinIO server",
+	Usage:           "show http trace for OtterIO server",
 	Action:          mainAdminTrace,
 	OnUsageError:    onUsageError,
 	Before:          setGlobalsFromContext,
@@ -94,20 +94,20 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Show verbose console trace for MinIO server
-     {{.Prompt}} {{.HelpName}} -v -a myminio
+  1. Show verbose console trace for OtterIO server
+     {{.Prompt}} {{.HelpName}} -v -a store
 
-  2. Show trace only for failed requests for MinIO server
-    {{.Prompt}} {{.HelpName}} -v -e myminio
+  2. Show trace only for failed requests for OtterIO server
+    {{.Prompt}} {{.HelpName}} -v -e store
 
   3. Show verbose console trace for requests with '503' status code
-    {{.Prompt}} {{.HelpName}} -v --status-code 503 myminio
+    {{.Prompt}} {{.HelpName}} -v --status-code 503 store
 
   4. Show console trace for a specific path
-    {{.Prompt}} {{.HelpName}} --path my-bucket/my-prefix/ myminio
+    {{.Prompt}} {{.HelpName}} --path my-bucket/my-prefix/ store
 
   5. Show console trace for requests with '404' and '503' status code
-    {{.Prompt}} {{.HelpName}} --status-code 404 --status-code 503 myminio
+    {{.Prompt}} {{.HelpName}} --status-code 404 --status-code 503 store
 `,
 }
 
@@ -403,7 +403,7 @@ func shortTrace(ti madmin.ServiceTraceInfo) shortTraceMsg {
 		s.CallStats.Rx = t.CallStats.InputBytes
 		s.CallStats.Tx = t.CallStats.OutputBytes
 
-		// Support older versions of MinIO server
+		// Support older versions of OtterIO server
 		s.Time = t.ReqInfo.Time
 	}
 	return s

@@ -97,17 +97,17 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Display bucket quota configured for "mybucket" on MinIO.
-     {{.Prompt}} {{.HelpName}} myminio/mybucket
+  1. Display bucket quota configured for "mybucket" on OtterIO.
+     {{.Prompt}} {{.HelpName}} store/mybucket
 
-  2. Set FIFO quota for a bucket "mybucket" on MinIO.
-     {{.Prompt}} {{.HelpName}} myminio/mybucket --fifo 10GB
+  2. Set FIFO quota for a bucket "mybucket" on OtterIO.
+     {{.Prompt}} {{.HelpName}} store/mybucket --fifo 10GB
 
-  3. Set hard quota of 1gb for a bucket "mybucket" on MinIO.
-     {{.Prompt}} {{.HelpName}} myminio/mybucket --hard 1GB
+  3. Set hard quota of 1gb for a bucket "mybucket" on OtterIO.
+     {{.Prompt}} {{.HelpName}} store/mybucket --hard 1GB
 
-  4. Clear bucket quota configured for bucket "mybucket" on MinIO.
-     {{.Prompt}} {{.HelpName}} myminio/mybucket --clear
+  4. Clear bucket quota configured for bucket "mybucket" on OtterIO.
+     {{.Prompt}} {{.HelpName}} store/mybucket --clear
 `,
 }
 

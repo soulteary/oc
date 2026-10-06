@@ -130,27 +130,27 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 ENVIRONMENT VARIABLES:
-  MC_ENCRYPT:      list of comma delimited prefixes
-  MC_ENCRYPT_KEY:  list of comma delimited prefix=secret values
+  OC_ENCRYPT (MC_ENCRYPT):      list of comma delimited prefixes
+  OC_ENCRYPT_KEY (MC_ENCRYPT_KEY):  list of comma delimited prefix=secret values
 
 EXAMPLES:
   01. Copy a list of objects from local file system to Amazon S3 cloud storage.
       {{.Prompt}} {{.HelpName}} Music/*.ogg s3/jukebox/
 
-  02. Copy a folder recursively from MinIO cloud storage to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive play/mybucket/burningman2011/ s3/mybucket/
+  02. Copy a folder recursively from OtterIO cloud storage to Amazon S3 cloud storage.
+      {{.Prompt}} {{.HelpName}} --recursive store/mybucket/burningman2011/ s3/mybucket/
 
-  03. Copy multiple local folders recursively to MinIO cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive backup/2014/ backup/2015/ play/archive/
+  03. Copy multiple local folders recursively to OtterIO cloud storage.
+      {{.Prompt}} {{.HelpName}} --recursive backup/2014/ backup/2015/ store/archive/
 
   04. Copy a bucket recursively from aliased Amazon S3 cloud storage to local filesystem on Windows.
       {{.Prompt}} {{.HelpName}} --recursive s3\documents\2014\ C:\Backups\2014
 
-  05. Copy files older than 7 days and 10 hours from MinIO cloud storage to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --older-than 7d10h play/mybucket/burningman2011/ s3/mybucket/
+  05. Copy files older than 7 days and 10 hours from OtterIO cloud storage to Amazon S3 cloud storage.
+      {{.Prompt}} {{.HelpName}} --older-than 7d10h store/mybucket/burningman2011/ s3/mybucket/
 
-  06. Copy files newer than 7 days and 10 hours from MinIO cloud storage to a local path.
-      {{.Prompt}} {{.HelpName}} --newer-than 7d10h play/mybucket/burningman2011/ ~/latest/
+  06. Copy files newer than 7 days and 10 hours from OtterIO cloud storage to a local path.
+      {{.Prompt}} {{.HelpName}} --newer-than 7d10h store/mybucket/burningman2011/ ~/latest/
 
   07. Copy an object with name containing unicode characters to Amazon S3 cloud storage.
       {{.Prompt}} {{.HelpName}} 本語 s3/andoria/
@@ -158,42 +158,42 @@ EXAMPLES:
   08. Copy a local folder with space separated characters to Amazon S3 cloud storage.
       {{.Prompt}} {{.HelpName}} --recursive 'workdir/documents/May 2014/' s3/miniocloud
 
-  09. Copy a folder with encrypted objects recursively from Amazon S3 to MinIO cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive --encrypt-key "s3/documents/=32byteslongsecretkeymustbegiven1,myminio/documents/=32byteslongsecretkeymustbegiven2" s3/documents/ myminio/documents/
+  09. Copy a folder with encrypted objects recursively from Amazon S3 to OtterIO cloud storage.
+      {{.Prompt}} {{.HelpName}} --recursive --encrypt-key "s3/documents/=32byteslongsecretkeymustbegiven1,store/documents/=32byteslongsecretkeymustbegiven2" s3/documents/ store/documents/
 
-  10. Copy a folder with encrypted objects recursively from Amazon S3 to MinIO cloud storage. In case the encryption key contains non-printable character like tab, pass the
+  10. Copy a folder with encrypted objects recursively from Amazon S3 to OtterIO cloud storage. In case the encryption key contains non-printable character like tab, pass the
       base64 encoded string as key.
-      {{.Prompt}} {{.HelpName}} --recursive --encrypt-key "s3/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=,myminio/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=" s3/documents/ myminio/documents/
+      {{.Prompt}} {{.HelpName}} --recursive --encrypt-key "s3/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=,store/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=" s3/documents/ store/documents/
 
-  11. Copy a list of objects from local file system to MinIO cloud storage with specified metadata, separated by ";"
-      {{.Prompt}} {{.HelpName}} --attr "key1=value1;key2=value2" Music/*.mp4 play/mybucket/
+  11. Copy a list of objects from local file system to OtterIO cloud storage with specified metadata, separated by ";"
+      {{.Prompt}} {{.HelpName}} --attr "key1=value1;key2=value2" Music/*.mp4 store/mybucket/
 
-  12. Copy a folder recursively from MinIO cloud storage to Amazon S3 cloud storage with Cache-Control and custom metadata, separated by ";".
-      {{.Prompt}} {{.HelpName}} --attr "Cache-Control=max-age=90000,min-fresh=9000;key1=value1;key2=value2" --recursive play/mybucket/burningman2011/ s3/mybucket/
+  12. Copy a folder recursively from OtterIO cloud storage to Amazon S3 cloud storage with Cache-Control and custom metadata, separated by ";".
+      {{.Prompt}} {{.HelpName}} --attr "Cache-Control=max-age=90000,min-fresh=9000;key1=value1;key2=value2" --recursive store/mybucket/burningman2011/ s3/mybucket/
 
   13. Copy a text file to an object storage and assign REDUCED_REDUNDANCY storage-class to the uploaded object.
-      {{.Prompt}} {{.HelpName}} --storage-class REDUCED_REDUNDANCY myobject.txt play/mybucket
+      {{.Prompt}} {{.HelpName}} --storage-class REDUCED_REDUNDANCY myobject.txt store/mybucket
 
   14. Copy a text file to an object storage and create or resume copy session.
-      {{.Prompt}} {{.HelpName}} --recursive --continue dir/ play/mybucket
+      {{.Prompt}} {{.HelpName}} --recursive --continue dir/ store/mybucket
 
   15. Copy a text file to an object storage and preserve the file system attribute as metadata.
-      {{.Prompt}} {{.HelpName}} -a myobject.txt play/mybucket
+      {{.Prompt}} {{.HelpName}} -a myobject.txt store/mybucket
 
   16. Copy a text file to an object storage with object lock mode set to 'GOVERNANCE' with retention duration 1 day.
-      {{.Prompt}} {{.HelpName}} --retention-mode governance --retention-duration 1d locked.txt play/locked-bucket/
+      {{.Prompt}} {{.HelpName}} --retention-mode governance --retention-duration 1d locked.txt store/locked-bucket/
 
   17. Copy a text file to an object storage with legal-hold enabled.
-      {{.Prompt}} {{.HelpName}} --legal-hold on locked.txt play/locked-bucket/
+      {{.Prompt}} {{.HelpName}} --legal-hold on locked.txt store/locked-bucket/
 
   18. Copy a text file to an object storage and disable multipart upload feature.
-      {{.Prompt}} {{.HelpName}} --disable-multipart myobject.txt play/mybucket
+      {{.Prompt}} {{.HelpName}} --disable-multipart myobject.txt store/mybucket
 
   19. Roll back 10 days in the past to copy the content of 'mybucket'
-      {{.Prompt}} {{.HelpName}} --rewind 10d -r play/mybucket/ /tmp/dest/
+      {{.Prompt}} {{.HelpName}} --rewind 10d -r store/mybucket/ /tmp/dest/
 
   20. Set tags to the uploaded objects
-      {{.Prompt}} {{.HelpName}} -r --tags "category=prod" ./data/ play/another-bucket/
+      {{.Prompt}} {{.HelpName}} -r --tags "category=prod" ./data/ store/another-bucket/
 
 `,
 }
@@ -760,7 +760,7 @@ func mainCopy(cliCtx *cli.Context) error {
 	retentionDuration := cliCtx.String(rdFlag)
 	legalHold := strings.ToUpper(cliCtx.String(lhFlag))
 	tags := cliCtx.String("tags")
-	sseKeys := os.Getenv("MC_ENCRYPT_KEY")
+	sseKeys := clientEnv("MC_ENCRYPT_KEY")
 	if key := cliCtx.String("encrypt-key"); key != "" {
 		sseKeys = key
 	}
