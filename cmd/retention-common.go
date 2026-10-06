@@ -109,7 +109,7 @@ func (m retentionBucketMessage) JSON() string {
 }
 
 func getRetainUntilDate(validity uint64, unit minio.ValidityUnit) (string, *probe.Error) {
-	if validity == 0 {
+	if validity == 0 || validity > uint64(^uint(0)>>1) {
 		return "", probe.NewError(fmt.Errorf("invalid validity '%v'", validity))
 	}
 	t := UTCNow()
