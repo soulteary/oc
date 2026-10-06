@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -57,6 +58,57 @@ func TestFSPutWithStalePartial(t *testing.T) {
 	}
 }
 
+func TestFSPutDoesNotFollowLegacyPartialSymlink(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		size      int64
+		wantError bool
+	}{
+		{"success", 3, false},
+		{"short-input", 10, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "object")
+			victim := filepath.Join(t.TempDir(), "victim")
+			if err := os.WriteFile(victim, []byte("untouched"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("original"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			link := path + partSuffix
+			if err := os.Symlink(victim, link); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			client, err := fsNew(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = client.Put(context.Background(), strings.NewReader("new"), tc.size, nil, PutOptions{})
+			if (err != nil) != tc.wantError {
+				t.Fatalf("Put error = %v, want error = %v", err, tc.wantError)
+			}
+			assertFSFileContents(t, victim, "untouched")
+			want := "new"
+			if tc.wantError {
+				want = "original"
+			}
+			assertFSFileContents(t, path, want)
+			if target, err := os.Readlink(link); err != nil || target != victim {
+				t.Fatalf("legacy symlink changed: target = %q, error = %v", target, err)
+			}
+			entries, readErr := os.ReadDir(dir)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if len(entries) != 2 {
+				t.Fatalf("staging files leaked: %v", entries)
+			}
+		})
+	}
+}
+
 func TestFSPutFailedWriteKeepsDestination(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "object")
@@ -80,6 +132,260 @@ func TestFSPutFailedWriteKeepsDestination(t *testing.T) {
 	}
 	if len(entries) != 2 {
 		t.Fatalf("temporary file leaked after failure: %v", entries)
+	}
+}
+
+type fsPutCallbackReader struct {
+	io.Reader
+	before func()
+}
+
+func TestFSPutReportsCleanupFailure(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "object")
+	reader := &fsPutCallbackReader{Reader: strings.NewReader("new"), before: func() {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 {
+			t.Fatalf("unexpected staging entries: %v", entries)
+		}
+		// A foreign entry must be left intact, rather than recursively removed.
+		if err := os.WriteFile(filepath.Join(dir, entries[0].Name(), "keep"), []byte("keep"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	client, err := fsNew(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Put(context.Background(), reader, 3, nil, PutOptions{}); err == nil {
+		t.Fatal("cleanup failure incorrectly reported as success")
+	}
+	assertFSFileContents(t, target, "new")
+	entries, readErr := os.ReadDir(dir)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			assertFSFileContents(t, filepath.Join(dir, entry.Name(), "keep"), "keep")
+		}
+	}
+}
+
+func (r *fsPutCallbackReader) Read(p []byte) (int, error) {
+	if r.before != nil {
+		before := r.before
+		r.before = nil
+		before()
+	}
+	return r.Reader.Read(p)
+}
+
+func TestFSPutReplacedStagingDirectory(t *testing.T) {
+	for _, replacement := range []string{"symlink", "directory"} {
+		for _, failure := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/read-failure=%v", replacement, failure), func(t *testing.T) {
+				dir := t.TempDir()
+				outside := t.TempDir()
+				target := filepath.Join(dir, "object")
+				if err := os.WriteFile(target, []byte("original"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				for _, name := range []string{partialDataName, partialManifestName} {
+					if err := os.WriteFile(filepath.Join(outside, name), []byte("untouched"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				var source io.Reader = strings.NewReader("new")
+				if failure {
+					source = fsFailingReader{}
+				}
+				var stage, moved string
+				reader := &fsPutCallbackReader{Reader: source, before: func() {
+					entries, err := os.ReadDir(dir)
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, entry := range entries {
+						if partialDirCandidate(entry.Name()) {
+							stage = filepath.Join(dir, entry.Name())
+						}
+					}
+					if stage == "" {
+						t.Fatal("staging directory missing")
+					}
+					moved = stage + "-moved"
+					if err := os.Rename(stage, moved); err != nil {
+						t.Fatal(err)
+					}
+					if replacement == "symlink" {
+						if err := os.Symlink(outside, stage); err != nil {
+							t.Skipf("symlinks unavailable: %v", err)
+						}
+					} else {
+						if err := os.Mkdir(stage, 0700); err != nil {
+							t.Fatal(err)
+						}
+						for _, name := range []string{partialDataName, partialManifestName} {
+							if err := os.WriteFile(filepath.Join(stage, name), []byte("replacement"), 0600); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+				}}
+				client, err := fsNew(target)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := client.Put(context.Background(), reader, -1, nil, PutOptions{}); err == nil {
+					t.Fatal("changed staging path was accepted")
+				}
+				assertFSFileContents(t, target, "original")
+				for _, name := range []string{partialDataName, partialManifestName} {
+					assertFSFileContents(t, filepath.Join(outside, name), "untouched")
+					if replacement == "directory" {
+						assertFSFileContents(t, filepath.Join(stage, name), "replacement")
+					}
+				}
+				if replacement == "symlink" {
+					if link, err := os.Readlink(stage); err != nil || link != outside {
+						t.Fatalf("replacement link changed: %q %v", link, err)
+					}
+				}
+				entries, readErr := os.ReadDir(moved)
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				if len(entries) != 0 {
+					t.Fatalf("original staged data leaked: %v", entries)
+				}
+			})
+		}
+	}
+}
+
+func TestFSPartialRenameUsesOpenedDirectories(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "object")
+	file, stage, err := createLocalPartial(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stage.close()
+	if _, err := file.WriteString("new"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := stage.unchanged(); err != nil {
+		t.Fatal(err)
+	}
+	// Replace the path AFTER verification to exercise the remaining race window.
+	moved := stage.dir + "-moved"
+	if err := os.Rename(stage.dir, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(stage.dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage.dir, partialDataName), []byte("wrong"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := renameLocalPartial(stage.root, stage.parent, filepath.Base(target)); err != nil {
+		t.Fatal(err)
+	}
+	assertFSFileContents(t, target, "new")
+	assertFSFileContents(t, filepath.Join(stage.dir, partialDataName), "wrong")
+	if err := stage.cleanup(); err == nil {
+		t.Fatal("replacement was not reported during cleanup")
+	}
+	entries, err := os.ReadDir(moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("original staging not cleaned: %v", entries)
+	}
+}
+
+func TestFSPartialCleanupKeepsFilesNotCreatedByThisWrite(t *testing.T) {
+	parentDir := t.TempDir()
+	name := partialDirPrefix + "existing" + partSuffix
+	dir := filepath.Join(parentDir, name)
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{partialDataName, partialManifestName} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("untouched"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	parent, err := os.OpenRoot(parentDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parent.Close()
+	root, err := parent.OpenRoot(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	info, err := root.Stat(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Models a directory swapped in before exclusive manifest creation fails.
+	stage := &localPartial{parent: parent, root: root, name: name, dir: dir, info: info}
+	if err := stage.cleanup(); err == nil {
+		t.Fatal("nonempty directory cleanup should fail")
+	}
+	for _, name := range []string{partialDataName, partialManifestName} {
+		assertFSFileContents(t, filepath.Join(dir, name), "untouched")
+	}
+}
+
+func TestFSPutReplacedParentDirectory(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "parent")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dir, "object")
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "object"), []byte("untouched"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	moved := dir + "-moved"
+	reader := &fsPutCallbackReader{Reader: strings.NewReader("new"), before: func() {
+		if err := os.Rename(dir, moved); err != nil {
+			if runtime.GOOS == "windows" {
+				t.Skipf("Windows directory handle prevents replacement: %v", err)
+			}
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, dir); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}}
+	client, err := fsNew(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Put(context.Background(), reader, 3, nil, PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	assertFSFileContents(t, filepath.Join(outside, "object"), "untouched")
+	assertFSFileContents(t, filepath.Join(moved, "object"), "new")
+	entries, readErr := os.ReadDir(moved)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("staging leaked after parent move: %v", entries)
 	}
 }
 
@@ -267,10 +573,11 @@ func TestFSPartialRemoveByTarget(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "object")
 	for i := 0; i < 2; i++ {
-		file, _, e := createLocalPartial(path)
+		file, stage, e := createLocalPartial(path)
 		if e != nil {
 			t.Fatal(e)
 		}
+		stage.close()
 		if _, e := file.WriteString("data"); e != nil {
 			t.Fatal(e)
 		}
@@ -310,13 +617,14 @@ func TestFSPartialLifecycle(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
+		stage.close()
 		if _, e := file.WriteString("partial"); e != nil {
 			t.Fatal(e)
 		}
 		if e := file.Close(); e != nil {
 			t.Fatal(e)
 		}
-		if !isIgnoredFile(filepath.Join(stage, partialDataName)) {
+		if !isIgnoredFile(filepath.Join(stage.dir, partialDataName)) {
 			t.Fatal("watch would expose staged file")
 		}
 	}
@@ -374,17 +682,18 @@ func TestFSPartialLifecycle(t *testing.T) {
 
 func makeTestLocalPartial(t *testing.T, target string) string {
 	t.Helper()
-	file, dir, err := createLocalPartial(target)
+	file, stage, err := createLocalPartial(target)
 	if err != nil {
 		t.Fatal(err)
 	}
+	stage.close()
 	if _, err := file.WriteString("partial"); err != nil {
 		t.Fatal(err)
 	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return dir
+	return stage.dir
 }
 
 func TestFSPartialRejectsUnverifiedDirectories(t *testing.T) {

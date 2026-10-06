@@ -268,7 +268,7 @@ func preserveAttributes(fd *os.File, attr map[string]string) *probe.Error {
 
 /// Object operations.
 
-func (f *fsClient) put(ctx context.Context, reader io.Reader, size int64, progress io.Reader, opts PutOptions) (int64, *probe.Error) {
+func (f *fsClient) put(ctx context.Context, reader io.Reader, size int64, progress io.Reader, opts PutOptions) (written int64, putErr *probe.Error) {
 	if err := ctx.Err(); err != nil {
 		return 0, probe.NewError(err)
 	}
@@ -295,12 +295,21 @@ func (f *fsClient) put(ctx context.Context, reader io.Reader, size int64, progre
 
 	// Store data and a target manifest in a private, unique staging directory.
 	// This preserves long filenames and lets incomplete listings recover the target.
-	tmpFile, stageDir, e := createLocalPartial(objectPath)
+	tmpFile, stage, e := createLocalPartial(objectPath)
 	if e != nil {
 		return 0, f.toClientError(e, objectPath)
 	}
-	defer cleanupLocalPartial(stageDir)
-	objectPartPath := filepath.Join(stageDir, partialDataName)
+	defer func() {
+		if err := stage.cleanup(); err != nil {
+			var original error
+			if putErr != nil {
+				original = putErr.ToGoError()
+			}
+			putErr = probe.NewError(errors.Join(original, fmt.Errorf("clean up local staging: %w", err)))
+		}
+	}()
+	defer tmpFile.Close()
+	objectPartPath := filepath.Join(stage.dir, partialDataName)
 
 	attr := make(map[string]string)
 	if _, ok := opts.metadata[metadataKey]; ok && opts.isPreserve {
@@ -361,7 +370,7 @@ func (f *fsClient) put(ctx context.Context, reader io.Reader, size int64, progre
 			return totalWritten, err.Trace()
 		}
 		if !atime.IsZero() && !mtime.IsZero() {
-			if e := os.Chtimes(objectPartPath, atime, mtime); e != nil {
+			if e := stage.root.Chtimes(partialDataName, atime, mtime); e != nil {
 				return totalWritten, probe.NewError(e)
 			}
 		}
@@ -370,7 +379,7 @@ func (f *fsClient) put(ctx context.Context, reader io.Reader, size int64, progre
 		return totalWritten, probe.NewError(err)
 	}
 	// Commit only after the data and metadata have both been validated.
-	if e = os.Rename(objectPartPath, objectPath); e != nil {
+	if e = stage.commit(objectPath); e != nil {
 		err := f.toClientError(e, objectPath)
 		return totalWritten, err.Trace(objectPartPath, objectPath)
 	}

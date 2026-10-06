@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -52,17 +53,66 @@ func partialDirCandidate(path string) bool {
 	return strings.HasPrefix(name, partialDirPrefix) && strings.HasSuffix(name, partSuffix)
 }
 
-func createLocalPartial(target string) (*os.File, string, error) {
-	dir, err := os.MkdirTemp(filepath.Dir(target), partialDirPrefix+"*"+partSuffix)
+// localPartial holds directory handles for the entire write lifecycle. Path
+// names are only used for display and to detect replacement, never for data I/O.
+type localPartial struct {
+	parent, root                 *os.Root
+	name, dir                    string
+	info                         os.FileInfo
+	createdManifest, createdData bool
+}
+
+func createLocalPartial(target string) (_ *os.File, _ *localPartial, err error) {
+	parent, err := os.OpenRoot(filepath.Dir(target))
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
-	marker, err := os.CreateTemp(dir, ".manifest-*"+partSuffix)
+	stage := &localPartial{parent: parent}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, stage.cleanup())
+		}
+	}()
+	for {
+		stage.name = partialDirPrefix + rand.Text() + partSuffix
+		err = parent.Mkdir(stage.name, 0700)
+		if !os.IsExist(err) {
+			break
+		}
+	}
 	if err != nil {
-		cleanupLocalPartial(dir)
-		return nil, "", err
+		stage.name = ""
+		return nil, nil, err
 	}
-	defer os.Remove(marker.Name())
+	stage.dir = filepath.Join(filepath.Dir(target), stage.name)
+	info, err := parent.Lstat(stage.name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !info.IsDir() || !privatePartialDirectory(info) {
+		return nil, nil, fmt.Errorf("staging directory is not private")
+	}
+	stage.root, err = parent.OpenRoot(stage.name)
+	if err != nil {
+		return nil, nil, err
+	}
+	opened, err := stage.root.Stat(".")
+	if err != nil {
+		return nil, nil, err
+	}
+	if !os.SameFile(info, opened) {
+		return nil, nil, fmt.Errorf("staging directory changed")
+	}
+	if err = securePartialDirectory(stage.root); err != nil {
+		return nil, nil, err
+	}
+	stage.info = opened
+	// Exclusive creation in the opened private directory cannot follow a link.
+	marker, err := stage.root.OpenFile(partialManifestName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, nil, err
+	}
+	stage.createdManifest = true
 	manifest := localPartialManifest{Format: partialFormat, Target: filepath.Base(target)}
 	if !utf8.ValidString(manifest.Target) {
 		manifest.TargetBytes = base64.StdEncoding.EncodeToString([]byte(manifest.Target))
@@ -76,26 +126,72 @@ func createLocalPartial(target string) (*os.File, string, error) {
 	if err == nil {
 		err = closeErr
 	}
-	if err == nil {
-		err = os.Rename(marker.Name(), filepath.Join(dir, partialManifestName))
-	}
 	if err != nil {
-		_ = os.Remove(marker.Name())
-		cleanupLocalPartial(dir)
-		return nil, "", err
+		return nil, nil, err
 	}
-	file, err := os.OpenFile(filepath.Join(dir, partialDataName), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0666)
+	file, err := stage.root.OpenFile(partialDataName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0666)
 	if err != nil {
-		cleanupLocalPartial(dir)
-		return nil, "", err
+		return nil, nil, err
 	}
-	return file, dir, nil
+	stage.createdData = true
+	return file, stage, nil
 }
 
-func cleanupLocalPartial(dir string) {
-	_ = os.Remove(filepath.Join(dir, partialDataName))
-	_ = os.Remove(filepath.Join(dir, partialManifestName))
-	_ = os.Remove(dir)
+func (s *localPartial) unchanged() error {
+	info, err := s.parent.Lstat(s.name)
+	if err != nil {
+		return err
+	}
+	if s.info == nil || !info.IsDir() || !os.SameFile(info, s.info) {
+		return fmt.Errorf("staging directory changed during write")
+	}
+	return nil
+}
+
+func (s *localPartial) commit(target string) error {
+	if err := s.unchanged(); err != nil {
+		return err
+	}
+	return renameLocalPartial(s.root, s.parent, filepath.Base(target))
+}
+
+func (s *localPartial) close() {
+	if s.root != nil {
+		_ = s.root.Close()
+	}
+	if s.parent != nil {
+		_ = s.parent.Close()
+	}
+}
+
+func (s *localPartial) cleanup() error {
+	defer s.close()
+	var errs []error
+	if s.root != nil && s.info != nil {
+		for _, entry := range []struct {
+			name    string
+			created bool
+		}{
+			{partialDataName, s.createdData}, {partialManifestName, s.createdManifest},
+		} {
+			if !entry.created {
+				continue
+			}
+			if err := s.root.Remove(entry.name); err != nil && !os.IsNotExist(err) {
+				errs = append(errs, err)
+			}
+		}
+		// Never traverse a replacement. Remove only the empty directory entry.
+		if err := s.unchanged(); err != nil {
+			errs = append(errs, err)
+		} else {
+			_ = s.root.Close()
+			if err := s.parent.Remove(s.name); err != nil && !os.IsNotExist(err) {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // The name alone never authorizes deletion. OpenRoot confines operations to
