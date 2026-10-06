@@ -20,7 +20,7 @@ checks:
 
 getdeps:
 	@mkdir -p ${GOPATH}/bin
-	@which golangci-lint 1>/dev/null || (echo "Installing golangci-lint" && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2)
+	@${GOPATH}/bin/golangci-lint version 2>/dev/null | grep -q 'version 2.14.0 ' || (echo "Installing golangci-lint v2.14.0" && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0)
 	@which stringer 1>/dev/null || (echo "Installing stringer" && go install golang.org/x/tools/cmd/stringer@latest)
 
 crosscompile:

@@ -66,8 +66,9 @@ jobs:
           diff -au <(gofmt -d *.go) <(printf "")
           diff -au <(gofmt -s -d cmd) <(printf "")
           diff -au <(gofmt -s -d pkg) <(printf "")
-          make test-race
-          make verify
+          go vet ./...
+          go test -race -v --timeout 20m ./...
+          go build -race -tags kqueue -trimpath -o "$RUNNER_TEMP/oc-race" .
           make crosscompile
 
       - name: Build and test on macOS
@@ -83,7 +84,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: v2.14.0
           args: --timeout=5m
 
   core-integration:
