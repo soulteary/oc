@@ -53,6 +53,7 @@ type fsClient struct {
 
 const (
 	partSuffix       = ".part.minio"
+	partialDirPrefix = ".oc-part-"
 	slashSeperator   = "/"
 	metadataKey      = "X-Amz-Meta-Mc-Attrs"
 	metadataKeyS3Cmd = "X-Amz-Meta-S3cmd-Attrs"
@@ -91,6 +92,9 @@ func isNotSupported(e error) bool {
 // isIgnoredFile returns true if 'filename' is on the exclude list.
 func isIgnoredFile(filename string) bool {
 	matchFile := filepath.Base(filename)
+	if strings.HasSuffix(matchFile, partSuffix) || isPartialDir(filepath.Dir(filename)) {
+		return true
+	}
 
 	// OS specific ignore list.
 	for _, ignoredFile := range ignoreFiles[runtime.GOOS] {
@@ -265,6 +269,9 @@ func preserveAttributes(fd *os.File, attr map[string]string) *probe.Error {
 /// Object operations.
 
 func (f *fsClient) put(ctx context.Context, reader io.Reader, size int64, progress io.Reader, opts PutOptions) (int64, *probe.Error) {
+	if err := ctx.Err(); err != nil {
+		return 0, probe.NewError(err)
+	}
 	// ContentType is not handled on purpose.
 	// For filesystem this is a redundant information.
 
@@ -286,18 +293,14 @@ func (f *fsClient) put(ctx context.Context, reader io.Reader, size int64, progre
 
 	objectPath := f.PathURL.Path
 
-	// Write to a temporary file "object.part.minio" before commit.
-	objectPartPath := objectPath + partSuffix
-
-	// We cannot resume this operation, then we
-	// should remove any partial download if any.
-	defer os.Remove(objectPartPath)
-
-	tmpFile, e := os.OpenFile(objectPartPath, os.O_CREATE|os.O_WRONLY, 0666)
+	// Store data and a target manifest in a private, unique staging directory.
+	// This preserves long filenames and lets incomplete listings recover the target.
+	tmpFile, stageDir, e := createLocalPartial(objectPath)
 	if e != nil {
-		err := f.toClientError(e, f.PathURL.Path)
-		return 0, err.Trace(f.PathURL.Path)
+		return 0, f.toClientError(e, objectPath)
 	}
+	defer cleanupLocalPartial(stageDir)
+	objectPartPath := filepath.Join(stageDir, partialDataName)
 
 	attr := make(map[string]string)
 	if _, ok := opts.metadata[metadataKey]; ok && opts.isPreserve {
@@ -312,10 +315,10 @@ func (f *fsClient) put(ctx context.Context, reader io.Reader, size int64, progre
 		}
 	}
 
-	totalWritten, e := io.Copy(tmpFile, hookreader.NewHook(reader, progress))
+	totalWritten, e := io.Copy(tmpFile, hookreader.NewHook(fsContextReader{ctx: ctx, reader: reader}, progress))
 	if e != nil {
 		tmpFile.Close()
-		return 0, probe.NewError(e)
+		return totalWritten, probe.NewError(e)
 	}
 
 	// Close the input reader as well, if possible.
@@ -334,8 +337,8 @@ func (f *fsClient) put(ctx context.Context, reader io.Reader, size int64, progre
 		return totalWritten, probe.NewError(e)
 	}
 
-	// Following verification is needed only for input size greater than '0'.
-	if size > 0 {
+	// Nonnegative sizes are known, including an explicitly empty object.
+	if size >= 0 {
 		// Unexpected EOF reached (less data was written than expected).
 		if totalWritten < size {
 			return totalWritten, probe.NewError(UnexpectedEOF{
@@ -352,22 +355,24 @@ func (f *fsClient) put(ctx context.Context, reader io.Reader, size int64, progre
 		}
 	}
 
-	// Safely completed put. Now commit by renaming to actual filename.
-	if e = os.Rename(objectPartPath, objectPath); e != nil {
-		err := f.toClientError(e, objectPath)
-		return totalWritten, err.Trace(objectPartPath, objectPath)
-	}
-
 	if len(attr) != 0 && opts.isPreserve {
 		atime, mtime, err := parseAtimeMtime(attr)
 		if err != nil {
 			return totalWritten, err.Trace()
 		}
 		if !atime.IsZero() && !mtime.IsZero() {
-			if e := os.Chtimes(objectPath, atime, mtime); e != nil {
+			if e := os.Chtimes(objectPartPath, atime, mtime); e != nil {
 				return totalWritten, probe.NewError(e)
 			}
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return totalWritten, probe.NewError(err)
+	}
+	// Commit only after the data and metadata have both been validated.
+	if e = os.Rename(objectPartPath, objectPath); e != nil {
+		err := f.toClientError(e, objectPath)
+		return totalWritten, err.Trace(objectPartPath, objectPath)
 	}
 
 	return totalWritten, nil
@@ -477,15 +482,65 @@ func (f *fsClient) Remove(ctx context.Context, isIncomplete, isRemoveBucket, isB
 	go func() {
 		defer close(errorCh)
 
-		for content := range contentCh {
+		sendError := func(err *probe.Error) bool {
+			select {
+			case errorCh <- err:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+		for {
+			var content *ClientContent
+			select {
+			case <-ctx.Done():
+				return
+			case next, ok := <-contentCh:
+				if !ok {
+					return
+				}
+				content = next
+			}
+			if ctx.Err() != nil {
+				return
+			}
 			if content.Err != nil {
-				errorCh <- content.Err
+				if !sendError(content.Err) {
+					return
+				}
 				continue
 			}
 			name := content.URL.Path
-			// Add partSuffix for incomplete uploads.
+			// Remove verified staged data or legacy partial files.
 			if isIncomplete {
-				name += partSuffix
+				partials := []*ClientContent{content}
+				if content.fsPartialPath == "" {
+					var e error
+					partials, e = localPartials(name)
+					if e != nil {
+						if !sendError(f.toClientError(e, name)) {
+							return
+						}
+						continue
+					}
+				}
+				if len(partials) == 0 {
+					if !sendError(f.toClientError(os.ErrNotExist, name)) {
+						return
+					}
+					continue
+				}
+				for _, partial := range partials {
+					if ctx.Err() != nil {
+						return
+					}
+					if e := removeLocalPartial(partial); e != nil && !os.IsNotExist(e) {
+						if !sendError(f.toClientError(e, partial.fsPartialPath)) {
+							return
+						}
+					}
+				}
+				continue
 			}
 			e := deleteFile(name)
 			if e == nil {
@@ -497,9 +552,13 @@ func (f *fsClient) Remove(ctx context.Context, isIncomplete, isRemoveBucket, isB
 			}
 			if os.IsPermission(e) {
 				// Ignore permission error.
-				errorCh <- probe.NewError(PathInsufficientPermission{Path: content.URL.Path})
+				if !sendError(probe.NewError(PathInsufficientPermission{Path: content.URL.Path})) {
+					return
+				}
 			} else {
-				errorCh <- probe.NewError(e)
+				if !sendError(probe.NewError(e)) {
+					return
+				}
 				return
 			}
 		}
@@ -510,6 +569,9 @@ func (f *fsClient) Remove(ctx context.Context, isIncomplete, isRemoveBucket, isB
 
 // List - list files and folders.
 func (f *fsClient) List(ctx context.Context, opts ListOptions) <-chan *ClientContent {
+	if opts.Incomplete {
+		return f.listLocalPartials(ctx, opts.Recursive)
+	}
 	contentCh := make(chan *ClientContent)
 	filteredCh := make(chan *ClientContent)
 
@@ -523,21 +585,14 @@ func (f *fsClient) List(ctx context.Context, opts ListOptions) <-chan *ClientCon
 		go f.listInRoutine(contentCh, opts.WithMetadata)
 	}
 
-	// This function filters entries from any  listing go routine
-	// created previously. If isIncomplete is activated, we will
-	// only show partly uploaded files,
+	// Hide staged and legacy partial files from ordinary listings.
 	go func() {
 		for c := range contentCh {
-			if opts.Incomplete {
-				if !strings.HasSuffix(c.URL.Path, partSuffix) {
-					continue
-				}
-				// Strip part suffix
-				c.URL.Path = strings.Split(c.URL.Path, partSuffix)[0]
-			} else {
-				if strings.HasSuffix(c.URL.Path, partSuffix) {
-					continue
-				}
+			if c.Err == nil && (isPartialDir(c.URL.Path) || isPartialDir(filepath.Dir(c.URL.Path))) {
+				continue
+			}
+			if c.Err == nil && strings.HasSuffix(c.URL.Path, partSuffix) {
+				continue
 			}
 			// Send to filtered channel
 			filteredCh <- c
@@ -1068,7 +1123,21 @@ func (f *fsClient) fsStat(isIncomplete bool) (os.FileInfo, *probe.Error) {
 	}
 
 	if isIncomplete {
-		fpath += partSuffix
+		partials, err := localPartials(fpath)
+		if err != nil {
+			return nil, f.toClientError(err, fpath)
+		}
+		if len(partials) == 0 {
+			return nil, f.toClientError(os.ErrNotExist, fpath)
+		}
+		if partials[0].fsPartialInfo == nil {
+			marker, err := os.Stat(filepath.Join(filepath.Dir(partials[0].fsPartialPath), partialManifestName))
+			if err != nil {
+				return nil, f.toClientError(err, fpath)
+			}
+			return emptyPartialInfo{FileInfo: marker, target: filepath.Base(fpath)}, nil
+		}
+		return partials[0].fsPartialInfo, nil
 	}
 
 	st, e = os.Stat(fpath)

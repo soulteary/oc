@@ -168,6 +168,9 @@ type Client interface {
 
 // ClientContent - Content container for content metadata
 type ClientContent struct {
+	fsPartialPath string // Exact local staging file represented by an incomplete listing.
+	fsPartialInfo os.FileInfo
+
 	URL          ClientURL
 	Time         time.Time
 	Size         int64

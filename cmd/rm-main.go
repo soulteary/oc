@@ -258,6 +258,13 @@ func removeSingle(url, versionID string, isIncomplete, isFake, isForce, isBypass
 	)
 
 	_, content, pErr := url2Stat(ctx, url, versionID, false, encKeyDB, time.Time{})
+	if isIncomplete {
+		if client, err := newClient(url); err == nil {
+			if local, ok := client.(*fsClient); ok {
+				content, pErr = local.Stat(ctx, StatOptions{incomplete: true})
+			}
+		}
+	}
 	if pErr != nil {
 		switch minio.ToErrorResponse(pErr.ToGoError()).StatusCode {
 		case http.StatusBadRequest, http.StatusMethodNotAllowed:
@@ -316,8 +323,10 @@ func removeSingle(url, versionID string, isIncomplete, isFake, isForce, isBypass
 				errorIf(pErr.Trace(url), "Failed to remove `%s`.", url)
 				switch pErr.ToGoError().(type) {
 				case PathInsufficientPermission:
-					// Ignore Permission error.
-					continue
+					// Incomplete cleanup must report failures instead of claiming success.
+					if !isIncomplete {
+						continue
+					}
 				}
 				return exitStatus(globalErrorExitStatus)
 			}
@@ -360,8 +369,10 @@ func listAndRemove(url string, timeRef time.Time, withVersions, isRecursive, isI
 			errorIf(content.Err.Trace(url), "Failed to remove `%s` recursively.", url)
 			switch content.Err.ToGoError().(type) {
 			case PathInsufficientPermission:
-				// Ignore Permission error.
-				continue
+				// Incomplete cleanup must report failures instead of claiming success.
+				if !isIncomplete {
+					continue
+				}
 			}
 			close(contentCh)
 			return exitStatus(globalErrorExitStatus)
@@ -419,8 +430,10 @@ func listAndRemove(url string, timeRef time.Time, withVersions, isRecursive, isI
 					errorIf(pErr.Trace(urlString), "Failed to remove `%s`.", urlString)
 					switch pErr.ToGoError().(type) {
 					case PathInsufficientPermission:
-						// Ignore Permission error.
-						continue
+						// Incomplete cleanup must report failures instead of claiming success.
+						if !isIncomplete {
+							continue
+						}
 					}
 					close(contentCh)
 					return exitStatus(globalErrorExitStatus)
@@ -434,8 +447,10 @@ func listAndRemove(url string, timeRef time.Time, withVersions, isRecursive, isI
 		errorIf(pErr.Trace(url), "Failed to remove `%s` recursively.", url)
 		switch pErr.ToGoError().(type) {
 		case PathInsufficientPermission:
-			// Ignore Permission error.
-			continue
+			// Incomplete cleanup must report failures instead of claiming success.
+			if !isIncomplete {
+				continue
+			}
 		}
 		return exitStatus(globalErrorExitStatus)
 	}
