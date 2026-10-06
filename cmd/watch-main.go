@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -175,6 +176,10 @@ func watchNotifications(ctx context.Context, wo *WatchObject) error {
 	for eventsCh != nil || errorsCh != nil {
 		select {
 		case <-ctx.Done():
+			if !errors.Is(ctx.Err(), context.Canceled) {
+				errorIf(probe.NewError(ctx.Err()), "Unable to watch for events.")
+				return exitStatus(globalErrorExitStatus)
+			}
 			return nil
 		case events, ok := <-eventsCh:
 			if !ok {
@@ -198,5 +203,15 @@ func watchNotifications(ctx context.Context, wo *WatchObject) error {
 			}
 		}
 	}
-	return nil
+	// A watch is continuous: channels closing without cancellation must not
+	// make scripts believe a terminated subscription is still healthy.
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return nil
+	}
+	err := ctx.Err()
+	if err == nil {
+		err = errWatchStreamClosed
+	}
+	errorIf(probe.NewError(err), "Unable to watch for events.")
+	return exitStatus(globalErrorExitStatus)
 }

@@ -9,8 +9,18 @@ import (
 	"github.com/soulteary/otterio/pkg/madmin"
 )
 
+var errWatchStreamClosed = errors.New("watch notification stream closed unexpectedly")
+
 // Additive machine-readable fields; original SDK errors and messages remain intact.
 func classifyClientError(err error) (string, string) {
+	if errors.Is(err, errWatchStreamClosed) {
+		return "WatchStreamClosed", "watch"
+	}
+	var unsupported APINotImplemented
+	var unsupportedPointer *APINotImplemented
+	if errors.As(err, &unsupported) || errors.As(err, &unsupportedPointer) {
+		return "NotImplemented", "unsupported"
+	}
 	var overflow fsWatchOverflow
 	if errors.As(err, &overflow) {
 		if overflow.native {
