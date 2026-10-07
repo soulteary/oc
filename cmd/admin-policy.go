@@ -16,9 +16,9 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var adminPolicySubcommands = []cli.Command{
+var adminPolicySubcommands = []*cli.Command{
 	adminPolicyAddCmd,
 	adminPolicyRemoveCmd,
 	adminPolicyListCmd,
@@ -28,18 +28,18 @@ var adminPolicySubcommands = []cli.Command{
 	adminPolicyUpdateCmd,
 }
 
-var adminPolicyCmd = cli.Command{
+var adminPolicyCmd = &cli.Command{
 	Name:            "policy",
 	Usage:           "manage policies defined in the OtterIO server",
-	Action:          mainAdminPolicy,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainAdminPolicy),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     adminPolicySubcommands,
+	Commands:        adminPolicySubcommands,
 	HideHelpCommand: true,
 }
 
 // mainAdminPolicy is the handle for "mc admin policy" command.
-func mainAdminPolicy(ctx *cli.Context) error {
+func mainAdminPolicy(ctx *cli.Command) error {
 	commandNotFound(ctx, adminPolicySubcommands)
 	return nil
 	// Sub-commands like "get", "set" have their own main.

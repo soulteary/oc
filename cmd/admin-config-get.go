@@ -17,40 +17,41 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
-var adminConfigGetCmd = cli.Command{
+var adminConfigGetCmd = &cli.Command{
 	Name:         "get",
 	Usage:        "interactively retrieve a config key parameters",
-	Before:       setGlobalsFromContext,
-	Action:       mainAdminConfigGet,
+	Before:       commandBefore(setGlobalsFromContext),
+	Action:       commandAction(mainAdminConfigGet),
 	OnUsageError: onUsageError,
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Get the current region setting on OtterIO server.
-     {{.Prompt}} {{.HelpName}} store/ region
+     {{Prompt}} {{.FullName}} store/ region
      region name=us-east-1
 
   2. Get the current notification settings for Webhook target on OtterIO server
-     {{.Prompt}} {{.HelpName}} store/ notify_webhook
+     {{Prompt}} {{.FullName}} store/ notify_webhook
      notify_webhook endpoint="http://localhost:8080" auth_token= queue_limit=10000 queue_dir="/home/events"
 
   3. Get the current compression settings on OtterIO server
-     {{.Prompt}} {{.HelpName}} store/ compression
+     {{Prompt}} {{.FullName}} store/ compression
      compression extensions=".txt,.csv" mime_types="text/*"
 `,
 }
@@ -76,25 +77,25 @@ func (u configGetMessage) JSON() string {
 }
 
 // checkAdminConfigGetSyntax - validate all the passed arguments
-func checkAdminConfigGetSyntax(ctx *cli.Context) {
-	if !ctx.Args().Present() || len(ctx.Args()) < 1 {
-		cli.ShowCommandHelpAndExit(ctx, "get", 1) // last argument is exit code
+func checkAdminConfigGetSyntax(ctx *cli.Command) {
+	if !ctx.Args().Present() || ctx.Args().Len() < 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "get", 1) // last argument is exit code
 	}
 }
 
-func mainAdminConfigGet(ctx *cli.Context) error {
+func mainAdminConfigGet(ctx *cli.Command) error {
 
 	checkAdminConfigGetSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
-	if len(ctx.Args()) == 1 {
+	if ctx.Args().Len() == 1 {
 		// Call get config API
 		hr, e := client.HelpConfigKV(globalContext, "", "", false)
 		fatalIf(probe.NewError(e), "Unable to get help for the sub-system")
@@ -109,8 +110,8 @@ func mainAdminConfigGet(ctx *cli.Context) error {
 	}
 
 	// Call get config API
-	buf, e := client.GetConfigKV(globalContext, strings.Join(args.Tail(), " "))
-	fatalIf(probe.NewError(e), "Unable to get server '%s' config", args.Tail())
+	buf, e := client.GetConfigKV(globalContext, strings.Join(argumentTail(args), " "))
+	fatalIf(probe.NewError(e), "Unable to get server '%s' config", argumentTail(args))
 
 	// Print
 	printMsg(configGetMessage{

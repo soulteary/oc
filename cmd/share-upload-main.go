@@ -22,14 +22,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	shareUploadFlags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "recursively upload any object matching the prefix",
 		},
 		shareFlagExpire,
@@ -38,42 +38,42 @@ var (
 )
 
 // Share documents via URL.
-var shareUpload = cli.Command{
+var shareUpload = &cli.Command{
 	Name:         "upload",
 	Usage:        "generate `curl` command to upload objects without requiring access/secret keys",
-	Action:       mainShareUpload,
+	Action:       commandAction(mainShareUpload),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(shareUploadFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET [TARGET...]
+  {{.FullName}} [FLAGS] TARGET [TARGET...]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Generate a curl command to allow upload access for a single object. Command expires in 7 days (default).
-     {{.Prompt}} {{.HelpName}} s3/backup/2006-Mar-1/backup.tar.gz
+     {{Prompt}} {{.FullName}} s3/backup/2006-Mar-1/backup.tar.gz
 
   2. Generate a curl command to allow upload access to a folder. Command expires in 120 hours.
-     {{.Prompt}} {{.HelpName}} --expire=120h s3/backup/2007-Mar-2/
+     {{Prompt}} {{.FullName}} --expire=120h s3/backup/2007-Mar-2/
 
   3. Generate a curl command to allow upload access of only '.png' images to a folder. Command expires in 2 hours.
-     {{.Prompt}} {{.HelpName}} --expire=2h --content-type=image/png s3/backup/2007-Mar-2/
+     {{Prompt}} {{.FullName}} --expire=2h --content-type=image/png s3/backup/2007-Mar-2/
 
   4. Generate a curl command to allow upload access to any objects matching the key prefix 'backup/'. Command expires in 2 hours.
-     {{.Prompt}} {{.HelpName}} --recursive --expire=2h s3/backup/2007-Mar-2/backup/
+     {{Prompt}} {{.FullName}} --recursive --expire=2h s3/backup/2007-Mar-2/backup/
 `,
 }
 
 // checkShareUploadSyntax - validate command-line args.
-func checkShareUploadSyntax(ctx *cli.Context) {
-	args := ctx.Args()
-	if !args.Present() {
-		cli.ShowCommandHelpAndExit(ctx, "upload", 1) // last argument is exit code.
+func checkShareUploadSyntax(ctx *cli.Command) {
+	args := ctx.Args().Slice()
+	if len(args) == 0 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "upload", 1) // last argument is exit code.
 	}
 
 	// Set command flags from context.
@@ -98,7 +98,7 @@ func checkShareUploadSyntax(ctx *cli.Context) {
 			"Expiry cannot be larger than 7 days.")
 	}
 
-	for _, targetURL := range ctx.Args() {
+	for _, targetURL := range ctx.Args().Slice() {
 		url := newClientURL(targetURL)
 		if strings.HasSuffix(targetURL, string(url.Separator)) && !isRecursive {
 			fatalIf(errInvalidArgument().Trace(targetURL),
@@ -177,7 +177,7 @@ func doShareUploadURL(ctx context.Context, objectURL string, isRecursive bool, e
 }
 
 // main for share upload command.
-func mainShareUpload(cliCtx *cli.Context) error {
+func mainShareUpload(cliCtx *cli.Command) error {
 	ctx, cancelShareDownload := context.WithCancel(globalContext)
 	defer cancelShareDownload()
 
@@ -201,7 +201,7 @@ func mainShareUpload(cliCtx *cli.Context) error {
 		fatalIf(probe.NewError(e), "Unable to parse expire=`"+expireArg+"`.")
 	}
 
-	for _, targetURL := range cliCtx.Args() {
+	for _, targetURL := range cliCtx.Args().Slice() {
 		err := doShareUploadURL(ctx, targetURL, isRecursive, expiry, contentType)
 		if err != nil {
 			switch err.ToGoError().(type) {

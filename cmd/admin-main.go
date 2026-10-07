@@ -16,7 +16,7 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
 var (
 	adminFlags = []cli.Flag{}
@@ -29,7 +29,7 @@ const (
 	check = "✔"
 )
 
-var adminCmdSubcommands = []cli.Command{
+var adminCmdSubcommands = []*cli.Command{
 	adminServiceCmd,
 	adminInfoCmd,
 	adminUserCmd,
@@ -48,20 +48,20 @@ var adminCmdSubcommands = []cli.Command{
 	adminBucketCmd,
 }
 
-var adminCmd = cli.Command{
+var adminCmd = &cli.Command{
 	Name:            "admin",
 	Usage:           "manage OtterIO servers",
-	Action:          mainAdmin,
-	Subcommands:     adminCmdSubcommands,
+	Action:          commandAction(mainAdmin),
+	Commands:        adminCmdSubcommands,
 	HideHelpCommand: true,
-	Before:          setGlobalsFromContext,
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           append(adminFlags, globalFlags...),
 }
 
 const dateTimeFormatFilename = "2006-01-02T15-04-05.999999-07-00"
 
 // mainAdmin is the handle for "mc admin" command.
-func mainAdmin(ctx *cli.Context) error {
+func mainAdmin(ctx *cli.Command) error {
 	commandNotFound(ctx, adminCmdSubcommands)
 	return nil
 	// Sub-commands like "service", "heal", "top" have their own main.

@@ -22,41 +22,41 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var encryptSetCmd = cli.Command{
+var encryptSetCmd = &cli.Command{
 	Name:         "set",
 	Usage:        "set encryption config",
-	Action:       mainEncryptSet,
+	Action:       commandAction(mainEncryptSet),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
    
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
    
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Enable SSE-S3 auto encryption on bucket "mybucket" for alias "store".
-     {{.Prompt}} {{.HelpName}} sse-s3 store/mybucket
+     {{Prompt}} {{.FullName}} sse-s3 store/mybucket
 
   2. Enable SSE-KMS auto encryption with kms key on bucket "mybucket" for alias "s3".
-     {{.Prompt}} {{.HelpName}} sse-kms arn:aws:kms:us-east-1:xxx:key/xxx s3/mybucket  
+     {{Prompt}} {{.FullName}} sse-kms arn:aws:kms:us-east-1:xxx:key/xxx s3/mybucket{{"  "}}
 `,
 }
 
 // checkEncryptSetSyntax - validate all the passed arguments
-func checkEncryptSetSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) < 2 || len(ctx.Args()) > 3 {
-		cli.ShowCommandHelpAndExit(ctx, "set", 1) // last argument is exit code
+func checkEncryptSetSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() < 2 || ctx.Args().Len() > 3 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "set", 1) // last argument is exit code
 	}
 }
 
@@ -81,7 +81,7 @@ func (v encryptSetMessage) String() string {
 	return console.Colorize("encryptSetMessage", fmt.Sprintf("Auto encryption configuration has been set successfully for %s", v.URL))
 }
 
-func mainEncryptSet(cliCtx *cli.Context) error {
+func mainEncryptSet(cliCtx *cli.Command) error {
 	ctx, cancelencryptSet := context.WithCancel(globalContext)
 	defer cancelencryptSet()
 
@@ -90,8 +90,8 @@ func mainEncryptSet(cliCtx *cli.Context) error {
 	checkEncryptSetSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(len(args) - 1)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, len(args)-1)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")

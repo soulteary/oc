@@ -20,35 +20,35 @@ import (
 	"context"
 	"os"
 
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var ilmImportCmd = cli.Command{
+var ilmImportCmd = &cli.Command{
 	Name:         "import",
 	Usage:        "import lifecycle configuration in JSON format",
-	Action:       mainILMImport,
+	Action:       commandAction(mainILMImport),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 DESCRIPTION:
   Import entire lifecycle configuration from STDIN, input file is expected to be in JSON format.
 
 EXAMPLES:
   1. Set lifecycle configuration for the mybucket on alias 'store' to the rules imported from lifecycle.json
-     {{.Prompt}} {{.HelpName}} store/mybucket < lifecycle.json
+     {{Prompt}} {{.FullName}} store/mybucket < lifecycle.json
 
   2. Set lifecycle configuration for the mybucket on alias 'store'. User is expected to enter the JSON contents on STDIN
-     {{.Prompt}} {{.HelpName}} store/mybucket
+     {{Prompt}} {{.FullName}} store/mybucket
 `,
 }
 
@@ -82,21 +82,21 @@ func readILMConfig() (*lifecycle.Configuration, *probe.Error) {
 }
 
 // checkILMImportSyntax - validate arguments passed by user
-func checkILMImportSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "import", globalErrorExitStatus)
+func checkILMImportSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "import", globalErrorExitStatus)
 	}
 }
 
-func mainILMImport(cliCtx *cli.Context) error {
+func mainILMImport(cliCtx *cli.Command) error {
 	ctx, cancelILMImport := context.WithCancel(globalContext)
 	defer cancelILMImport()
 
 	checkILMImportSyntax(cliCtx)
 	setILMDisplayColorScheme()
 
-	args := cliCtx.Args()
-	urlStr := args.Get(0)
+	args := cliCtx.Args().Slice()
+	urlStr := argumentAt(args, 0)
 
 	client, err := newClient(urlStr)
 	fatalIf(err.Trace(urlStr), "Unable to initialize client for "+urlStr)

@@ -23,47 +23,47 @@ import (
 	"sync"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 // mv command flags.
 var (
 	mvFlags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "move recursively",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "older-than",
 			Usage: "move objects older than L days, M hours and N minutes",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "newer-than",
 			Usage: "move objects newer than L days, M hours and N minutes",
 		},
-		cli.StringFlag{
-			Name:  "storage-class, sc",
+		&cli.StringFlag{
+			Name: "storage-class", Aliases: []string{"sc"},
 			Usage: "set storage class for new object(s) on target",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "encrypt",
 			Usage: "encrypt/decrypt objects (using server-side encryption with server managed keys)",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "attr",
 			Usage: "add custom metadata for the object",
 		},
-		cli.BoolFlag{
-			Name:  "continue, c",
+		&cli.BoolFlag{
+			Name: "continue", Aliases: []string{"c"},
 			Usage: "create or resume move session",
 		},
-		cli.BoolFlag{
-			Name:  "preserve, a",
+		&cli.BoolFlag{
+			Name: "preserve", Aliases: []string{"a"},
 			Usage: "preserve filesystem attributes (mode, ownership, timestamps)",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "disable-multipart",
 			Usage: "disable multipart upload feature",
 		},
@@ -71,18 +71,18 @@ var (
 )
 
 // Move command.
-var mvCmd = cli.Command{
+var mvCmd = &cli.Command{
 	Name:         "mv",
 	Usage:        "move objects",
-	Action:       mainMove,
+	Action:       commandAction(mainMove),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(append(mvFlags, ioFlags...), globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] SOURCE [SOURCE...] TARGET
+  {{.FullName}} [FLAGS] SOURCE [SOURCE...] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -93,53 +93,53 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
   01. Move a list of objects from local file system to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} Music/*.ogg s3/jukebox/
+      {{Prompt}} {{.FullName}} Music/*.ogg s3/jukebox/
 
   02. Move a folder recursively from OtterIO cloud storage to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive store/mybucket/burningman2011/ s3/mybucket/
+      {{Prompt}} {{.FullName}} --recursive store/mybucket/burningman2011/ s3/mybucket/
 
   03. Move multiple local folders recursively to OtterIO cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive backup/2014/ backup/2015/ store/archive/
+      {{Prompt}} {{.FullName}} --recursive backup/2014/ backup/2015/ store/archive/
 
   04. Move a bucket recursively from aliased Amazon S3 cloud storage to local filesystem on Windows.
-      {{.Prompt}} {{.HelpName}} --recursive s3\documents\2014\ C:\Backups\2014
+      {{Prompt}} {{.FullName}} --recursive s3\documents\2014\ C:\Backups\2014
 
   05. Move files older than 7 days and 10 hours from OtterIO cloud storage to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --older-than 7d10h store/mybucket/burningman2011/ s3/mybucket/
+      {{Prompt}} {{.FullName}} --older-than 7d10h store/mybucket/burningman2011/ s3/mybucket/
 
   06. Move files newer than 7 days and 10 hours from OtterIO cloud storage to a local path.
-      {{.Prompt}} {{.HelpName}} --newer-than 7d10h store/mybucket/burningman2011/ ~/latest/
+      {{Prompt}} {{.FullName}} --newer-than 7d10h store/mybucket/burningman2011/ ~/latest/
 
   07. Move an object with name containing unicode characters to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} 本語 s3/andoria/
+      {{Prompt}} {{.FullName}} 本語 s3/andoria/
 
   08. Move a local folder with space separated characters to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive 'workdir/documents/May 2014/' s3/miniocloud
+      {{Prompt}} {{.FullName}} --recursive 'workdir/documents/May 2014/' s3/miniocloud
 
   09. Move a folder with encrypted objects recursively from Amazon S3 to OtterIO cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive --encrypt-key "s3/documents/=32byteslongsecretkeymustbegiven1,store/documents/=32byteslongsecretkeymustbegiven2" s3/documents/ store/documents/
+      {{Prompt}} {{.FullName}} --recursive --encrypt-key "s3/documents/=32byteslongsecretkeymustbegiven1,store/documents/=32byteslongsecretkeymustbegiven2" s3/documents/ store/documents/
 
   10. Move a folder with encrypted objects recursively from Amazon S3 to OtterIO cloud storage. In case the encryption key contains non-printable character like tab, pass the
       base64 encoded string as key.
-      {{.Prompt}} {{.HelpName}} --recursive --encrypt-key "s3/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=,store/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=" s3/documents/ store/documents/
+      {{Prompt}} {{.FullName}} --recursive --encrypt-key "s3/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=,store/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=" s3/documents/ store/documents/
 
   11. Move a list of objects from local file system to OtterIO cloud storage with specified metadata, separated by ";"
-      {{.Prompt}} {{.HelpName}} --attr "key1=value1;key2=value2" Music/*.mp4 store/mybucket/
+      {{Prompt}} {{.FullName}} --attr "key1=value1;key2=value2" Music/*.mp4 store/mybucket/
 
   12. Move a folder recursively from OtterIO cloud storage to Amazon S3 cloud storage with Cache-Control and custom metadata, separated by ";".
-      {{.Prompt}} {{.HelpName}} --attr "Cache-Control=max-age=90000,min-fresh=9000;key1=value1;key2=value2" --recursive store/mybucket/burningman2011/ s3/mybucket/
+      {{Prompt}} {{.FullName}} --attr "Cache-Control=max-age=90000,min-fresh=9000;key1=value1;key2=value2" --recursive store/mybucket/burningman2011/ s3/mybucket/
 
   13. Move a text file to an object storage and assign REDUCED_REDUNDANCY storage-class to the uploaded object.
-      {{.Prompt}} {{.HelpName}} --storage-class REDUCED_REDUNDANCY myobject.txt store/mybucket
+      {{Prompt}} {{.FullName}} --storage-class REDUCED_REDUNDANCY myobject.txt store/mybucket
 
   14. Move a text file to an object storage and create or resume copy session.
-      {{.Prompt}} {{.HelpName}} --recursive --continue dir/ store/mybucket
+      {{Prompt}} {{.FullName}} --recursive --continue dir/ store/mybucket
 
   15. Move a text file to an object storage and preserve the file system attribute as metadata.
-      {{.Prompt}} {{.HelpName}} -a myobject.txt store/mybucket
+      {{Prompt}} {{.FullName}} -a myobject.txt store/mybucket
 
   16. Move a text file to an object storage and disable multipart upload feature.
-      {{.Prompt}} {{.HelpName}} --disable-multipart myobject.txt store/mybucket
+      {{Prompt}} {{.FullName}} --disable-multipart myobject.txt store/mybucket
 `,
 }
 
@@ -208,7 +208,7 @@ var rmManager = &removeManager{
 }
 
 // mainMove is the entry point for mv command.
-func mainMove(cliCtx *cli.Context) error {
+func mainMove(cliCtx *cli.Command) error {
 	ctx, cancelMove := context.WithCancel(globalContext)
 	defer cancelMove()
 
@@ -227,9 +227,9 @@ func mainMove(cliCtx *cli.Context) error {
 	checkCopySyntax(ctx, cliCtx, encKeyDB, true)
 
 	if cliCtx.NArg() == 2 {
-		args := cliCtx.Args()
-		srcURL := args.Get(0)
-		dstURL := args.Get(1)
+		args := cliCtx.Args().Slice()
+		srcURL := argumentAt(args, 0)
+		dstURL := argumentAt(args, 1)
 		if srcURL == dstURL {
 			fatalIf(errDummy().Trace(), fmt.Sprintf("Source and destination urls cannot be the same: %v.", srcURL))
 		}
@@ -237,7 +237,7 @@ func mainMove(cliCtx *cli.Context) error {
 
 	// Check if source URLs does not have object locking enabled
 	// since we cannot move them (remove them from the source)
-	for _, urlStr := range cliCtx.Args()[:cliCtx.NArg()-1] {
+	for _, urlStr := range cliCtx.Args().Slice()[:cliCtx.NArg()-1] {
 		client, err := newClient(urlStr)
 		if err != nil {
 			fatalIf(err.Trace(), "Unable to parse the provided url.")
@@ -274,7 +274,7 @@ func mainMove(cliCtx *cli.Context) error {
 	var session *sessionV8
 
 	if cliCtx.Bool("continue") {
-		sessionID := getHash("mv", cliCtx.Args())
+		sessionID := getHash("mv", cliCtx.Args().Slice())
 		if isSessionExists(sessionID) {
 			session, err = loadSessionV8(sessionID)
 			fatalIf(err.Trace(sessionID), "Unable to load session.")
@@ -302,7 +302,7 @@ func mainMove(cliCtx *cli.Context) error {
 			}
 
 			// extract URLs.
-			session.Header.CommandArgs = cliCtx.Args()
+			session.Header.CommandArgs = cliCtx.Args().Slice()
 		}
 	}
 

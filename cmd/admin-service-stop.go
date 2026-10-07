@@ -17,32 +17,34 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminServiceStopCmd = cli.Command{
+var adminServiceStopCmd = &cli.Command{
 	Name:         "stop",
 	Usage:        "stop OtterIO server",
-	Action:       mainAdminServiceStop,
+	Action:       commandAction(mainAdminServiceStop),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Stop OtterIO server represented by its alias 'store'.
-     {{.Prompt}} {{.HelpName}} store/
+     {{Prompt}} {{.FullName}} store/
 `,
 }
 
@@ -66,13 +68,13 @@ func (s serviceStopMessage) JSON() string {
 }
 
 // checkAdminServiceStopSyntax - validate all the passed arguments
-func checkAdminServiceStopSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) == 0 || len(ctx.Args()) > 2 {
-		cli.ShowCommandHelpAndExit(ctx, "stop", 1) // last argument is exit code
+func checkAdminServiceStopSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() == 0 || ctx.Args().Len() > 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "stop", 1) // last argument is exit code
 	}
 }
 
-func mainAdminServiceStop(ctx *cli.Context) error {
+func mainAdminServiceStop(ctx *cli.Command) error {
 
 	// Validate serivce stop syntax.
 	checkAdminServiceStopSyntax(ctx)
@@ -81,8 +83,8 @@ func mainAdminServiceStop(ctx *cli.Context) error {
 	console.SetColor("ServiceStop", color.New(color.FgGreen, color.Bold))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")

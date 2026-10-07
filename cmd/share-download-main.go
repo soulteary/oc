@@ -21,18 +21,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	shareDownloadFlags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "share all objects recursively",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "share a particular object version",
 		},
 		shareFlagExpire,
@@ -40,42 +40,42 @@ var (
 )
 
 // Share documents via URL.
-var shareDownload = cli.Command{
+var shareDownload = &cli.Command{
 	Name:         "download",
 	Usage:        "generate URLs for download access",
-	Action:       mainShareDownload,
+	Action:       commandAction(mainShareDownload),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(shareDownloadFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET [TARGET...]
+  {{.FullName}} [FLAGS] TARGET [TARGET...]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Share this object with 7 days default expiry.
-     {{.Prompt}} {{.HelpName}} s3/backup/2006-Mar-1/backup.tar.gz
+     {{Prompt}} {{.FullName}} s3/backup/2006-Mar-1/backup.tar.gz
 
   2. Share this object with 10 minutes expiry.
-     {{.Prompt}} {{.HelpName}} --expire=10m s3/backup/2006-Mar-1/backup.tar.gz
+     {{Prompt}} {{.FullName}} --expire=10m s3/backup/2006-Mar-1/backup.tar.gz
 
   3. Share all objects under this folder with 5 days expiry.
-     {{.Prompt}} {{.HelpName}} --expire=120h s3/backup/2006-Mar-1/
+     {{Prompt}} {{.FullName}} --expire=120h s3/backup/2006-Mar-1/
 
   4. Share all objects under this bucket and all its folders and sub-folders with 5 days expiry.
-     {{.Prompt}} {{.HelpName}} --recursive --expire=120h s3/backup/
+     {{Prompt}} {{.FullName}} --recursive --expire=120h s3/backup/
 `,
 }
 
 // checkShareDownloadSyntax - validate command-line args.
-func checkShareDownloadSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[string][]prefixSSEPair) {
-	args := cliCtx.Args()
-	if !args.Present() {
-		cli.ShowCommandHelpAndExit(cliCtx, "download", 1) // last argument is exit code.
+func checkShareDownloadSyntax(ctx context.Context, cliCtx *cli.Command, encKeyDB map[string][]prefixSSEPair) {
+	args := cliCtx.Args().Slice()
+	if len(args) == 0 {
+		cli.ShowCommandHelpAndExit(context.Background(), cliCtx, "download", 1) // last argument is exit code.
 	}
 
 	// Parse expiry.
@@ -104,7 +104,7 @@ func checkShareDownloadSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB
 
 	// Validate if object exists only if the `--recursive` flag was NOT specified
 	if !isRecursive {
-		for _, url := range cliCtx.Args() {
+		for _, url := range cliCtx.Args().Slice() {
 			_, _, err := url2Stat(ctx, url, "", false, encKeyDB, time.Time{})
 			if err != nil {
 				fatalIf(err.Trace(url), "Unable to stat `"+url+"`.")
@@ -201,7 +201,7 @@ func doShareDownloadURL(ctx context.Context, targetURL, versionID string, isRecu
 }
 
 // main for share download.
-func mainShareDownload(cliCtx *cli.Context) error {
+func mainShareDownload(cliCtx *cli.Command) error {
 	ctx, cancelShareDownload := context.WithCancel(globalContext)
 	defer cancelShareDownload()
 
@@ -228,7 +228,7 @@ func mainShareDownload(cliCtx *cli.Context) error {
 		fatalIf(probe.NewError(e), "Unable to parse expire=`"+cliCtx.String("expire")+"`.")
 	}
 
-	for _, targetURL := range cliCtx.Args() {
+	for _, targetURL := range cliCtx.Args().Slice() {
 		err := doShareDownloadURL(ctx, targetURL, versionID, isRecursive, expiry)
 		if err != nil {
 			switch err.ToGoError().(type) {

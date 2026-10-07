@@ -21,8 +21,8 @@ import (
 	"context"
 	"crypto/x509"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -88,22 +88,22 @@ func setGlobals(quiet, debug, json, noColor, insecure bool) {
 }
 
 // Set global states. NOTE: It is deliberately kept monolithic to ensure we dont miss out any flags.
-func setGlobalsFromContext(ctx *cli.Context) error {
-	quiet := ctx.IsSet("quiet") || ctx.GlobalIsSet("quiet")
-	debug := ctx.IsSet("debug") || ctx.GlobalIsSet("debug")
-	json := ctx.IsSet("json") || ctx.GlobalIsSet("json")
-	noColor := ctx.IsSet("no-color") || ctx.GlobalIsSet("no-color")
-	insecure := ctx.IsSet("insecure") || ctx.GlobalIsSet("insecure")
+func setGlobalsFromContext(ctx *cli.Command) error {
+	quiet := ctx.IsSet("quiet") || commandGlobalIsSet(ctx, "quiet")
+	debug := ctx.IsSet("debug") || commandGlobalIsSet(ctx, "debug")
+	json := ctx.IsSet("json") || commandGlobalIsSet(ctx, "json")
+	noColor := ctx.IsSet("no-color") || commandGlobalIsSet(ctx, "no-color")
+	insecure := ctx.IsSet("insecure") || commandGlobalIsSet(ctx, "insecure")
 	globalAdminURL = commandStringOverride(ctx, "admin-url")
 	globalAdminCA = commandStringOverride(ctx, "admin-ca")
 	setGlobals(quiet, debug, json, noColor, insecure)
 	return nil
 }
 
-func commandStringOverride(ctx *cli.Context, name string) string {
+func commandStringOverride(ctx *cli.Command, name string) string {
 	// GlobalString stops at the nearest flag declaration, including an unset
 	// default on a nested command. Walk explicit settings instead.
-	for current := ctx; current != nil; current = current.Parent() {
+	for _, current := range ctx.Lineage() {
 		if current.IsSet(name) {
 			return current.String(name)
 		}

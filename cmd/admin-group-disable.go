@@ -17,27 +17,27 @@
 package cmd
 
 import (
-	"github.com/minio/cli"
+	"github.com/urfave/cli/v3"
 )
 
-var adminGroupDisableCmd = cli.Command{
+var adminGroupDisableCmd = &cli.Command{
 	Name:         "disable",
 	Usage:        "disable a group",
-	Action:       mainAdminGroupEnableDisable,
+	Action:       commandAction(mainAdminGroupEnableDisable),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET GROUPNAME
+  {{.FullName}} TARGET GROUPNAME
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Disable group 'allcents'.
-     {{.Prompt}} {{.HelpName}} store allcents
+     {{Prompt}} {{.FullName}} store allcents
 `,
 }

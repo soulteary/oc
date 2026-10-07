@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
 func TestWatchStreamTermination(t *testing.T) {

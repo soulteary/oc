@@ -34,10 +34,10 @@ import (
 	"time"
 
 	"github.com/mattn/go-ieproxy"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 
 	"github.com/soulteary/mc/pkg/ioutils"
 	"github.com/soulteary/mc/pkg/probe"
@@ -437,9 +437,9 @@ func centerText(s string, w int) string {
 	return sb.String()
 }
 
-func getAliasAndBucket(ctx *cli.Context) (string, string) {
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+func getAliasAndBucket(ctx *cli.Command) (string, string) {
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	aliasedURL = filepath.Clean(aliasedURL)
 	return url2Alias(aliasedURL)
 }

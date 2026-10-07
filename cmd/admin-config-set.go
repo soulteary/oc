@@ -17,42 +17,43 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
-var adminConfigSetCmd = cli.Command{
+var adminConfigSetCmd = &cli.Command{
 	Name:         "set",
 	Usage:        "interactively set a config key parameters",
-	Before:       setGlobalsFromContext,
-	Action:       mainAdminConfigSet,
+	Before:       commandBefore(setGlobalsFromContext),
+	Action:       commandAction(mainAdminConfigSet),
 	OnUsageError: onUsageError,
 	Flags:        append(adminConfigEnvFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Enable webhook notification target for OtterIO server.
-     {{.Prompt}} {{.HelpName}} store/ notify_webhook endpoint="http://localhost:8080/minio/events"
+     {{Prompt}} {{.FullName}} store/ notify_webhook endpoint="http://localhost:8080/minio/events"
 
   2. Change region name for the OtterIO server to 'us-west-1'.
-     {{.Prompt}} {{.HelpName}} store/ region name=us-west-1
+     {{Prompt}} {{.FullName}} store/ region name=us-west-1
 
   3. Change healing settings on a distributed OtterIO server setup.
-     {{.Prompt}} {{.HelpName}} mydist/ heal max_delay=300ms max_io=50
+     {{Prompt}} {{.FullName}} mydist/ heal max_delay=300ms max_io=50
 `,
 }
 
@@ -85,14 +86,14 @@ func (u configSetMessage) JSON() string {
 }
 
 // checkAdminConfigSetSyntax - validate all the passed arguments
-func checkAdminConfigSetSyntax(ctx *cli.Context) {
-	if !ctx.Args().Present() && len(ctx.Args()) < 1 {
-		cli.ShowCommandHelpAndExit(ctx, "set", 1) // last argument is exit code
+func checkAdminConfigSetSyntax(ctx *cli.Command) {
+	if !ctx.Args().Present() && ctx.Args().Len() < 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "set", 1) // last argument is exit code
 	}
 }
 
 // main config set function
-func mainAdminConfigSet(ctx *cli.Context) error {
+func mainAdminConfigSet(ctx *cli.Command) error {
 
 	// Check command arguments
 	checkAdminConfigSetSyntax(ctx)
@@ -101,18 +102,18 @@ func mainAdminConfigSet(ctx *cli.Context) error {
 	console.SetColor("SetConfigSuccess", color.New(color.FgGreen, color.Bold))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
-	input := strings.Join(args.Tail(), " ")
+	input := strings.Join(argumentTail(args), " ")
 
 	if !strings.Contains(input, madmin.KvSeparator) {
 		// Call get config API
-		hr, e := client.HelpConfigKV(globalContext, args.Get(1), args.Get(2), ctx.IsSet("env"))
+		hr, e := client.HelpConfigKV(globalContext, argumentAt(args, 1), argumentAt(args, 2), ctx.IsSet("env"))
 		fatalIf(probe.NewError(e), "Unable to get help for the sub-system")
 
 		// Print

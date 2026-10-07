@@ -16,25 +16,25 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var adminServiceSubcommands = []cli.Command{
+var adminServiceSubcommands = []*cli.Command{
 	adminServiceRestartCmd,
 	adminServiceStopCmd,
 }
 
-var adminServiceCmd = cli.Command{
+var adminServiceCmd = &cli.Command{
 	Name:            "service",
 	Usage:           "restart and stop all OtterIO servers",
-	Action:          mainAdminService,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainAdminService),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
 	HideHelpCommand: true,
-	Subcommands:     adminServiceSubcommands,
+	Commands:        adminServiceSubcommands,
 }
 
 // mainAdmin is the handle for "mc admin service" command.
-func mainAdminService(ctx *cli.Context) error {
+func mainAdminService(ctx *cli.Command) error {
 	commandNotFound(ctx, adminServiceSubcommands)
 	return nil
 	// Sub-commands like "status", "restart" have their own main.

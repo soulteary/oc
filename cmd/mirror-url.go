@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/wildcard"
+	"github.com/urfave/cli/v3"
 )
 
 //
@@ -37,13 +37,13 @@ import (
 //   mirror(d1..., d2) -> []mirror(d1/f, d2/d1/f)
 
 // checkMirrorSyntax(URLs []string)
-func checkMirrorSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[string][]prefixSSEPair) (srcURL, tgtURL string) {
-	if len(cliCtx.Args()) != 2 {
-		cli.ShowCommandHelpAndExit(cliCtx, "mirror", 1) // last argument is exit code.
+func checkMirrorSyntax(ctx context.Context, cliCtx *cli.Command, encKeyDB map[string][]prefixSSEPair) (srcURL, tgtURL string) {
+	if cliCtx.Args().Len() != 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), cliCtx, "mirror", 1) // last argument is exit code.
 	}
 
 	// extract URLs.
-	URLs := cliCtx.Args()
+	URLs := cliCtx.Args().Slice()
 	srcURL = URLs[0]
 	tgtURL = URLs[1]
 

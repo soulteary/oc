@@ -21,10 +21,10 @@ import (
 	"math"
 	"strings"
 
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/rs/xid"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
 const defaultILMDateFormat string = "2006-01-02"
@@ -183,7 +183,7 @@ func (opts LifecycleOptions) ToConfig(config *lifecycle.Configuration) (*lifecyc
 }
 
 // GetLifecycleOptions create LifeCycleOptions based on cli inputs
-func GetLifecycleOptions(ctx *cli.Context) LifecycleOptions {
+func GetLifecycleOptions(ctx *cli.Command) LifecycleOptions {
 	var id = ctx.String("id")
 	if id == "" {
 		id = xid.New().String()

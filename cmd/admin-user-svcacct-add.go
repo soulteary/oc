@@ -21,41 +21,41 @@ import (
 	"os"
 	"strings"
 
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	iampolicy "github.com/soulteary/otterio/pkg/iam/policy"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 var adminUserSvcAcctAddFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "access-key",
 		Usage: "set an access key for the service account",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "secret-key",
 		Usage: "set a secret key for the service account",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "policy",
 		Usage: "path to a JSON policy file",
 	},
 }
 
-var adminUserSvcAcctAddCmd = cli.Command{
+var adminUserSvcAcctAddCmd = &cli.Command{
 	Name:         "add",
 	Usage:        "add a new service account",
-	Action:       mainAdminUserSvcAcctAdd,
+	Action:       commandAction(mainAdminUserSvcAcctAdd),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(adminUserSvcAcctAddFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} ALIAS ACCOUNT
+  {{.FullName}} ALIAS ACCOUNT
 
 ACCOUNT:
   An account could be a regular OtterIO user, STS ou LDAP user.
@@ -65,13 +65,13 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Add a new service account for user 'foobar' to OtterIO server.
-     {{.Prompt}} {{.HelpName}} store foobar
+     {{Prompt}} {{.FullName}} store foobar
 `,
 }
 
 // checkAdminUserSvcAcctAddSyntax - validate all the passed arguments
-func checkAdminUserSvcAcctAddSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
+func checkAdminUserSvcAcctAddSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
 		fatalIf(errInvalidArgument().Trace(ctx.Args().Tail()...),
 			"Incorrect number of arguments for user svcacct add command.")
 	}
@@ -141,13 +141,13 @@ func (u svcAcctMessage) JSON() string {
 }
 
 // mainAdminUserSvcAcctAdd is the handle for "mc admin user svcacct add" command.
-func mainAdminUserSvcAcctAdd(ctx *cli.Context) error {
+func mainAdminUserSvcAcctAdd(ctx *cli.Command) error {
 	checkAdminUserSvcAcctAddSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
-	user := args.Get(1)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
+	user := argumentAt(args, 1)
 
 	accessKey := ctx.String("access-key")
 	secretKey := ctx.String("secret-key")

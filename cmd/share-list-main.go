@@ -17,11 +17,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -29,18 +30,18 @@ var (
 )
 
 // Share documents via URL.
-var shareList = cli.Command{
+var shareList = &cli.Command{
 	Name:         "list",
 	Usage:        "list previously shared objects",
-	Action:       mainShareList,
+	Action:       commandAction(mainShareList),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(shareListFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} COMMAND - {{.Usage}}
+  {{.FullName}} COMMAND - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} COMMAND
+  {{.FullName}} COMMAND
 
 COMMAND:
   upload:   list previously shared access to uploads.
@@ -48,18 +49,18 @@ COMMAND:
 
 EXAMPLES:
   1. List previously shared downloads, that haven't expired yet.
-      {{.Prompt}} {{.HelpName}} download
+      {{Prompt}} {{.FullName}} download
 
   2. List previously shared uploads, that haven't expired yet.
-      {{.Prompt}} {{.HelpName}} upload
+      {{Prompt}} {{.FullName}} upload
 `,
 }
 
 // validate command-line args.
-func checkShareListSyntax(ctx *cli.Context) {
-	args := ctx.Args()
-	if !args.Present() || (args.First() != "upload" && args.First() != "download") {
-		cli.ShowCommandHelpAndExit(ctx, "list", 1) // last argument is exit code.
+func checkShareListSyntax(ctx *cli.Command) {
+	args := ctx.Args().Slice()
+	if len(args) == 0 || (argumentAt(args, 0) != "upload" && argumentAt(args, 0) != "download") {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "list", 1) // last argument is exit code.
 	}
 }
 
@@ -103,7 +104,7 @@ func doShareList(cmd string) *probe.Error {
 }
 
 // main entry point for share list.
-func mainShareList(ctx *cli.Context) error {
+func mainShareList(ctx *cli.Command) error {
 
 	// validate command-line args.
 	checkShareListSyntax(ctx)

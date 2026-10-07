@@ -19,27 +19,27 @@ package cmd
 import (
 	"context"
 
-	"github.com/minio/cli"
 	minio "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/soulteary/mc/cmd/ilm"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var ilmEditCmd = cli.Command{
+var ilmEditCmd = &cli.Command{
 	Name:         "edit",
 	Usage:        "modify a lifecycle configuration rule with given id",
-	Action:       mainILMEdit,
+	Action:       commandAction(mainILMEdit),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(ilmEditFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [COMMAND FLAGS] TARGET
+  {{.FullName}} [COMMAND FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -49,10 +49,10 @@ DESCRIPTION:
 
 EXAMPLES:
   1. Modify the expiration date for an existing rule with id "rHTY.a123".
-     {{.Prompt}} {{.HelpName}} --id "rHTY.a123" --expiry-date "2020-09-17" s3/mybucket
+     {{Prompt}} {{.FullName}} --id "rHTY.a123" --expiry-date "2020-09-17" s3/mybucket
 
   2. Modify the expiration and transition days for an existing rule with id "hGHKijqpo123".
-     {{.Prompt}} {{.HelpName}} --id "hGHKijqpo123" --expiry-days "300" \
+     {{Prompt}} {{.FullName}} --id "hGHKijqpo123" --expiry-days "300" \
           --transition-days "200" --storage-class "GLACIER" s3/mybucket
 `,
 }
@@ -60,7 +60,7 @@ EXAMPLES:
 var ilmEditFlags = append(
 	// Start by showing --id in edit command
 	[]cli.Flag{
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "id",
 			Usage: "id of the rule to be modified",
 		},
@@ -85,25 +85,25 @@ func (i ilmEditMessage) JSON() string {
 }
 
 // Validate user given arguments
-func checkILMEditSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "edit", globalErrorExitStatus)
+func checkILMEditSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "edit", globalErrorExitStatus)
 	}
 	id := ctx.String("id")
 	if id == "" {
-		fatalIf(errInvalidArgument(), "ID for lifecycle rule cannot be empty, please refer mc "+ctx.Command.FullName()+" --help for more details")
+		fatalIf(errInvalidArgument(), "ID for lifecycle rule cannot be empty, please refer mc "+ctx.FullName()+" --help for more details")
 	}
 }
 
 // Calls SetBucketLifecycle with the XML representation of lifecycleConfiguration type.
-func mainILMEdit(cliCtx *cli.Context) error {
+func mainILMEdit(cliCtx *cli.Command) error {
 	ctx, cancelILMEdit := context.WithCancel(globalContext)
 	defer cancelILMEdit()
 
 	checkILMEditSyntax(cliCtx)
 	setILMDisplayColorScheme()
-	args := cliCtx.Args()
-	urlStr := args.Get(0)
+	args := cliCtx.Args().Slice()
+	urlStr := argumentAt(args, 0)
 
 	client, err := newClient(urlStr)
 	fatalIf(err.Trace(urlStr), "Unable to initialize client for "+urlStr)

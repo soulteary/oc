@@ -21,45 +21,45 @@ import (
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	eventListFlags = []cli.Flag{}
 )
 
-var eventListCmd = cli.Command{
+var eventListCmd = &cli.Command{
 	Name:         "list",
 	Usage:        "list bucket notifications",
-	Action:       mainEventList,
+	Action:       commandAction(mainEventList),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(eventListFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET ARN [FLAGS]
+  {{.FullName}} TARGET ARN [FLAGS]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. List notification configurations associated to a specific arn
-    {{.Prompt}} {{.HelpName}} store/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue
+    {{Prompt}} {{.FullName}} store/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue
 
   2. List all notification configurations
-    {{.Prompt}} {{.HelpName}} s3/mybucket
+    {{Prompt}} {{.FullName}} s3/mybucket
 `,
 }
 
 // checkEventListSyntax - validate all the passed arguments
-func checkEventListSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 && len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "list", 1) // last argument is exit code
+func checkEventListSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 && ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "list", 1) // last argument is exit code
 	}
 }
 
@@ -98,7 +98,7 @@ func (u eventListMessage) String() string {
 	return msg
 }
 
-func mainEventList(cliCtx *cli.Context) error {
+func mainEventList(cliCtx *cli.Command) error {
 	ctx, cancelEventList := context.WithCancel(globalContext)
 	defer cancelEventList()
 
@@ -108,7 +108,7 @@ func mainEventList(cliCtx *cli.Context) error {
 
 	checkEventListSyntax(cliCtx)
 
-	args := cliCtx.Args()
+	args := cliCtx.Args().Slice()
 	path := args[0]
 	arn := ""
 	if len(args) > 1 {

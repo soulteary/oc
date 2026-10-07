@@ -19,10 +19,10 @@ package cmd
 import (
 	"net/url"
 
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 //   Configure an alias in OC client
@@ -40,24 +40,24 @@ var (
 	aliasFlags = []cli.Flag{}
 )
 
-var aliasSubcommands = []cli.Command{
+var aliasSubcommands = []*cli.Command{
 	aliasSetCmd,
 	aliasListCmd,
 	aliasRemoveCmd,
 }
 
-var aliasCmd = cli.Command{
+var aliasCmd = &cli.Command{
 	Name:            "alias",
 	Usage:           "set, remove and list aliases in configuration file",
-	Action:          mainAlias,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainAlias),
+	Before:          commandBefore(setGlobalsFromContext),
 	HideHelpCommand: true,
 	Flags:           append(aliasFlags, globalFlags...),
-	Subcommands:     aliasSubcommands,
+	Commands:        aliasSubcommands,
 }
 
 // mainAlias is the handle for "mc alias" command. provides sub-commands which write configuration data in json format to config file.
-func mainAlias(ctx *cli.Context) error {
+func mainAlias(ctx *cli.Command) error {
 	commandNotFound(ctx, aliasSubcommands)
 	return nil
 	// Sub-commands like add, list and remove have their own main.

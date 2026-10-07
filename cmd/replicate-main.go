@@ -16,9 +16,9 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var replicateSubcommands = []cli.Command{
+var replicateSubcommands = []*cli.Command{
 	replicateAddCmd,
 	replicateEditCmd,
 	replicateListCmd,
@@ -28,18 +28,18 @@ var replicateSubcommands = []cli.Command{
 	replicateRemoveCmd,
 }
 
-var replicateCmd = cli.Command{
+var replicateCmd = &cli.Command{
 	Name:            "replicate",
 	Usage:           "configure server side bucket replication",
 	HideHelpCommand: true,
-	Action:          mainReplicate,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainReplicate),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     replicateSubcommands,
+	Commands:        replicateSubcommands,
 }
 
 // mainReplicate is the handle for "mc replicate" command.
-func mainReplicate(ctx *cli.Context) error {
+func mainReplicate(ctx *cli.Command) error {
 	commandNotFound(ctx, replicateSubcommands)
 	return nil
 	// Sub-commands like "list", "clear", "add" have their own main.

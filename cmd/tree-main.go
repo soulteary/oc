@@ -25,9 +25,9 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -61,59 +61,59 @@ func (t treeMessage) JSON() string {
 }
 
 var treeFlags = []cli.Flag{
-	cli.BoolFlag{
-		Name:  "files, f",
+	&cli.BoolFlag{
+		Name: "files", Aliases: []string{"f"},
 		Usage: "includes files in tree",
 	},
-	cli.IntFlag{
-		Name:  "depth, d",
+	&cli.IntFlag{
+		Name: "depth", Aliases: []string{"d"},
 		Usage: "sets the depth threshold",
 		Value: -1,
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "rewind",
 		Usage: "display tree no later than specified date",
 	},
 }
 
 // trees files and folders.
-var treeCmd = cli.Command{
+var treeCmd = &cli.Command{
 	Name:         "tree",
 	Usage:        "list buckets and objects in a tree format",
-	Action:       mainTree,
+	Action:       commandAction(mainTree),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(treeFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET [TARGET ...]
+  {{.FullName}} [FLAGS] TARGET [TARGET ...]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
    1. List all buckets and directories on OtterIO object storage server in tree format.
-      {{.Prompt}} {{.HelpName}} store
+      {{Prompt}} {{.FullName}} store
 
    2. List all directories in "mybucket" on OtterIO object storage server in tree format.
-      {{.Prompt}} {{.HelpName}} store/mybucket/
+      {{Prompt}} {{.FullName}} store/mybucket/
 
    3. List all directories in "mybucket" on OtterIO object storage server hosted on Microsoft Windows in tree format.
-      {{.Prompt}} {{.HelpName}} store\mybucket\
+      {{Prompt}} {{.FullName}} store\mybucket\
 
    4. List all directories and objects in "mybucket" on OtterIO object storage server in tree format.
-      {{.Prompt}} {{.HelpName}} --files store/mybucket/
+      {{Prompt}} {{.FullName}} --files store/mybucket/
 
    5. List all directories upto depth level '2' in tree format.
-      {{.Prompt}} {{.HelpName}} --depth 2 store/mybucket/
+      {{Prompt}} {{.FullName}} --depth 2 store/mybucket/
 `,
 }
 
 // parseTreeSyntax - validate all the passed arguments
-func parseTreeSyntax(ctx context.Context, cliCtx *cli.Context) (args []string, depth int, files bool, timeRef time.Time) {
-	args = cliCtx.Args()
+func parseTreeSyntax(ctx context.Context, cliCtx *cli.Command) (args []string, depth int, files bool, timeRef time.Time) {
+	args = cliCtx.Args().Slice()
 	depth = cliCtx.Int("depth")
 	files = cliCtx.Bool("files")
 
@@ -256,7 +256,7 @@ func doTree(ctx context.Context, url string, timeRef time.Time, level int, leaf 
 }
 
 // mainTree - is a handler for mc tree command
-func mainTree(cliCtx *cli.Context) error {
+func mainTree(cliCtx *cli.Command) error {
 	ctx, cancelList := context.WithCancel(globalContext)
 	defer cancelList()
 

@@ -1,14 +1,13 @@
 {
   "schemaVersion": 1,
   "goToolchain": "1.27.1",
-  "otterioSDK": "v0.0.0-20261004215341-be8596f0d69d",
-  "requiredServerPatches": [
-    "buildscripts/otterio-core-compat.patch",
-    "buildscripts/otterio-runtime-compat.patch",
-    "buildscripts/otterio-http-api-compat.patch",
-    "buildscripts/otterio-account-info-compat.patch",
-    "buildscripts/otterio-conditional-writes-compat.patch"
-  ],
+  "otterioSDK": "v0.0.0-20261007220321-af83288d39ef",
+  "otterioSource": "af83288d39ef62a44f62f8fff69a5aae93023d99",
+  "cliFramework": {
+    "module": "github.com/urfave/cli/v3",
+    "version": "v3.14.0"
+  },
+  "requiredServerPatches": [],
   "coreDeployments": [
     "single-http",
     "dual-http",
@@ -49,7 +48,7 @@
   },
   "notValidated": [
     "distributed-topology",
-    "gateway",
+    "other-gateway-backends-and-external-upstreams",
     "external-kms",
     "external-notification-targets",
     "cross-instance-replication",
@@ -69,5 +68,9 @@
     "externalS3": "Object APIs require provider-specific acceptance; OtterIO admin commands are not generic S3 APIs.",
     "streamDelivery": "Live notifications have no durable replay cursor; reconnect does not guarantee disconnected-event delivery.",
     "legacyEnvironment": "MC_* remains supported throughout OC 0.x; removal requires at least one minor-release notice."
-  }
+  },
+  "gatewayDeployments": [
+    "nas-local-filesystem",
+    "s3-local-otterio-upstream"
+  ]
 }

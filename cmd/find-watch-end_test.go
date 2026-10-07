@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
 func TestFindWatchUnexpectedEndFails(t *testing.T) {

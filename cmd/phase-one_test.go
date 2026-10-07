@@ -3,18 +3,17 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 func TestDisabledSelfUpdate(t *testing.T) {
-	ctx := cli.NewContext(cli.NewApp(), flag.NewFlagSet("update", flag.ContinueOnError), nil)
+	ctx := &cli.Command{}
 	err := mainUpdate(ctx)
 	code, ok := err.(cli.ExitCoder)
 	if !ok || code.ExitCode() != 1 || !strings.Contains(err.Error(), "disabled") {
@@ -24,14 +23,10 @@ func TestDisabledSelfUpdate(t *testing.T) {
 
 func TestHealthUploadFlagsRejected(t *testing.T) {
 	for _, args := range [][]string{nil, {"--license=test"}, {"--license="}, {"--dev"}, {"--dev=false"}} {
-		fs := flag.NewFlagSet("health", flag.ContinueOnError)
-		fs.String("license", "", "")
-		fs.Bool("dev", false, "")
-		if err := fs.Parse(args); err != nil {
-			t.Fatal(err)
-		}
-		ctx := cli.NewContext(cli.NewApp(), fs, nil)
-		err := rejectHealthUpload(ctx)
+		command := &cli.Command{Name: "health", Flags: []cli.Flag{
+			&cli.StringFlag{Name: "license"}, &cli.BoolFlag{Name: "dev"},
+		}, Action: commandAction(rejectHealthUpload), ExitErrHandler: ignoreCLIExit}
+		err := runCLICommand(context.Background(), command, append([]string{"health"}, args...))
 		if (err != nil) != (len(args) > 0) {
 			t.Fatalf("args=%v error=%v", args, err)
 		}

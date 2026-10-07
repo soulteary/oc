@@ -20,34 +20,34 @@ import (
 	"context"
 	"errors"
 
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
-var ilmExportCmd = cli.Command{
+var ilmExportCmd = &cli.Command{
 	Name:         "export",
 	Usage:        "export lifecycle configuration in JSON format",
-	Action:       mainILMExport,
+	Action:       commandAction(mainILMExport),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 DESCRIPTION:
   Exports lifecycle configuration in JSON format to STDOUT.
 
 EXAMPLES:
   1. Export lifecycle configuration for 'mybucket' to 'lifecycle.json' file.
-     {{.Prompt}} {{.HelpName}} store/mybucket > lifecycle.json
+     {{Prompt}} {{.FullName}} store/mybucket > lifecycle.json
 
   2. Print lifecycle configuration for 'mybucket' to STDOUT.
-     {{.Prompt}} {{.HelpName}} store/mybucket
+     {{Prompt}} {{.FullName}} store/mybucket
 `,
 }
 
@@ -72,21 +72,21 @@ func (i ilmExportMessage) JSON() string {
 }
 
 // checkILMExportSyntax - validate arguments passed by user
-func checkILMExportSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "export", globalErrorExitStatus)
+func checkILMExportSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "export", globalErrorExitStatus)
 	}
 }
 
-func mainILMExport(cliCtx *cli.Context) error {
+func mainILMExport(cliCtx *cli.Command) error {
 	ctx, cancelILMExport := context.WithCancel(globalContext)
 	defer cancelILMExport()
 
 	checkILMExportSyntax(cliCtx)
 	setILMDisplayColorScheme()
 
-	args := cliCtx.Args()
-	urlStr := args.Get(0)
+	args := cliCtx.Args().Slice()
+	urlStr := argumentAt(args, 0)
 
 	client, err := newClient(urlStr)
 	fatalIf(err.Trace(args...), "Unable to initialize client for "+urlStr+".")

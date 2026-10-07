@@ -29,36 +29,36 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	catFlags = []cli.Flag{
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "display an earlier object version",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "display a specific version of an object",
 		},
 	}
 )
 
 // Display contents of a file.
-var catCmd = cli.Command{
+var catCmd = &cli.Command{
 	Name:         "cat",
 	Usage:        "display object contents",
-	Action:       mainCat,
+	Action:       commandAction(mainCat),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(append(catFlags, ioFlags...), globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] SOURCE [SOURCE...]
+  {{.FullName}} [FLAGS] SOURCE [SOURCE...]
 {{if .VisibleFlags}}
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -68,26 +68,26 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
   1. Stream an object from Amazon S3 cloud storage to mplayer standard input.
-     {{.Prompt}} {{.HelpName}} s3/mysql-backups/kubecon-mysql-operator.mpv | mplayer -
+     {{Prompt}} {{.FullName}} s3/mysql-backups/kubecon-mysql-operator.mpv | mplayer -
 
   2. Concatenate contents of file1.txt and stdin to standard output.
-     {{.Prompt}} {{.HelpName}} file1.txt - > file.txt
+     {{Prompt}} {{.FullName}} file1.txt - > file.txt
 
   3. Concatenate multiple files to one.
-     {{.Prompt}} {{.HelpName}} part.* > complete.img
+     {{Prompt}} {{.FullName}} part.* > complete.img
 
   4. Save an encrypted object from Amazon S3 cloud storage to a local file.
-     {{.Prompt}} {{.HelpName}} --encrypt-key 's3/mysql-backups=32byteslongsecretkeymustbegiven1' s3/mysql-backups/backups-201810.gz > /mnt/data/recent.gz
+     {{Prompt}} {{.FullName}} --encrypt-key 's3/mysql-backups=32byteslongsecretkeymustbegiven1' s3/mysql-backups/backups-201810.gz > /mnt/data/recent.gz
 
   5. Display the content of encrypted object. In case the encryption key contains non-printable character like tab, pass the
      base64 encoded string as key.
-     {{.Prompt}} {{.HelpName}} --encrypt-key "store/my-bucket/=MzJieXRlc2xvbmdzZWNyZXRrZQltdXN0YmVnaXZlbjE="  store/my-bucket/my-object
+     {{Prompt}} {{.FullName}} --encrypt-key "store/my-bucket/=MzJieXRlc2xvbmdzZWNyZXRrZQltdXN0YmVnaXZlbjE="  store/my-bucket/my-object
 
   6. Display the content of an object 10 days earlier
-     {{.Prompt}} {{.HelpName}} --rewind 10d store/my-bucket/my-object
+     {{Prompt}} {{.FullName}} --rewind 10d store/my-bucket/my-object
 
   7. Display the content of a particular object version
-     {{.Prompt}} {{.HelpName}} --vid "3ddac055-89a7-40fa-8cd3-530a5581b6b8" store/my-bucket/my-object
+     {{Prompt}} {{.FullName}} --vid "3ddac055-89a7-40fa-8cd3-530a5581b6b8" store/my-bucket/my-object
 `,
 }
 
@@ -141,8 +141,8 @@ func (s prettyStdout) Write(input []byte) (int, error) {
 }
 
 // parseCatSyntax performs command-line input validation for cat command.
-func parseCatSyntax(ctx *cli.Context) (args []string, versionID string, timeRef time.Time) {
-	args = ctx.Args()
+func parseCatSyntax(ctx *cli.Command) (args []string, versionID string, timeRef time.Time) {
+	args = ctx.Args().Slice()
 
 	versionID = ctx.String("version-id")
 	rewind := ctx.String("rewind")
@@ -245,7 +245,7 @@ func catOut(r io.Reader, size int64) *probe.Error {
 }
 
 // mainCat is the main entry point for cat command.
-func mainCat(cliCtx *cli.Context) error {
+func mainCat(cliCtx *cli.Command) error {
 	ctx, cancelCat := context.WithCancel(globalContext)
 	defer cancelCat()
 

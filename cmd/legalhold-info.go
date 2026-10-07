@@ -24,45 +24,45 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	lhInfoFlags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "show legal hold status recursively",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "show legal hold status of a specific object version",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "show legal hold status of an object version at specified time",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "versions",
 			Usage: "show legal hold status of multiple versions of object(s)",
 		},
 	}
 )
-var legalHoldInfoCmd = cli.Command{
+var legalHoldInfoCmd = &cli.Command{
 	Name:         "info",
 	Usage:        "show legal hold info for object(s)",
-	Action:       mainLegalHoldInfo,
+	Action:       commandAction(mainLegalHoldInfo),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(lhInfoFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET
+  {{.FullName}} [FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -70,16 +70,16 @@ FLAGS:
 
 EXAMPLES:
    1. Show legal hold on a specific object
-      $ {{.HelpName}} store/mybucket/prefix/obj.csv
+      $ {{.FullName}} store/mybucket/prefix/obj.csv
 
    2. Show legal hold on a specific object version
-      $ {{.HelpName}} store/mybucket/prefix/obj.csv --version-id "HiMFUTOowG6ylfNi4LKxD3ieHbgfgrvC"
+      $ {{.FullName}} store/mybucket/prefix/obj.csv --version-id "HiMFUTOowG6ylfNi4LKxD3ieHbgfgrvC"
 
    3. Show object legal hold recursively for all objects at a prefix
-      $ {{.HelpName}} store/mybucket/prefix --recursive
+      $ {{.FullName}} store/mybucket/prefix --recursive
 
    4. Show object legal hold recursively for all objects versions older than one year
-      $ {{.HelpName}} store/mybucket/prefix --recursive --rewind 365d --versions
+      $ {{.FullName}} store/mybucket/prefix --recursive --rewind 365d --versions
 `,
 }
 
@@ -220,7 +220,7 @@ func showLegalHoldInfo(ctx context.Context, urlStr, versionID string, timeRef ti
 }
 
 // main for legalhold info command.
-func mainLegalHoldInfo(cliCtx *cli.Context) error {
+func mainLegalHoldInfo(cliCtx *cli.Command) error {
 	console.SetColor("LegalHoldSuccess", color.New(color.FgGreen, color.Bold))
 	console.SetColor("LegalHoldNotSet", color.New(color.FgYellow))
 	console.SetColor("LegalHoldOn", color.New(color.FgGreen, color.Bold))

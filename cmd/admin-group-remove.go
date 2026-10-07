@@ -17,54 +17,56 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
-var adminGroupRemoveCmd = cli.Command{
+var adminGroupRemoveCmd = &cli.Command{
 	Name:         "remove",
 	Usage:        "remove group or members from a group",
-	Action:       mainAdminGroupRemove,
+	Action:       commandAction(mainAdminGroupRemove),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET GROUPNAME [USERNAMES...]
+  {{.FullName}} TARGET GROUPNAME [USERNAMES...]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Remove members 'tencent' and 'fivecent' from group 'allcents'.
-     {{.Prompt}} {{.HelpName}} store allcents tencent fivecent
+     {{Prompt}} {{.FullName}} store allcents tencent fivecent
 
   2. Remove group 'allcents'.
-     {{.Prompt}} {{.HelpName}} store allcents
+     {{Prompt}} {{.FullName}} store allcents
 `,
 }
 
 // checkAdminGroupRemoveSyntax - validate all the passed arguments
-func checkAdminGroupRemoveSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) < 2 {
-		cli.ShowCommandHelpAndExit(ctx, "remove", 1) // last argument is exit code
+func checkAdminGroupRemoveSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() < 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "remove", 1) // last argument is exit code
 	}
 }
 
 // mainAdminGroupRemove is the handle for "mc admin group remove" command.
-func mainAdminGroupRemove(ctx *cli.Context) error {
+func mainAdminGroupRemove(ctx *cli.Command) error {
 	checkAdminGroupRemoveSyntax(ctx)
 
 	console.SetColor("GroupMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
@@ -72,10 +74,10 @@ func mainAdminGroupRemove(ctx *cli.Context) error {
 
 	members := []string{}
 	for i := 2; i < ctx.NArg(); i++ {
-		members = append(members, args.Get(i))
+		members = append(members, argumentAt(args, i))
 	}
 	gAddRemove := madmin.GroupAddRemove{
-		Group:    args.Get(1),
+		Group:    argumentAt(args, 1),
 		Members:  members,
 		IsRemove: true,
 	}
@@ -85,7 +87,7 @@ func mainAdminGroupRemove(ctx *cli.Context) error {
 
 	printMsg(groupMessage{
 		op:        "remove",
-		GroupName: args.Get(1),
+		GroupName: argumentAt(args, 1),
 		Members:   members,
 	})
 

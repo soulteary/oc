@@ -16,30 +16,30 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
 var (
 	eventFlags = []cli.Flag{}
 )
 
-var eventSubcommands = []cli.Command{
+var eventSubcommands = []*cli.Command{
 	eventAddCmd,
 	eventRemoveCmd,
 	eventListCmd,
 }
 
-var eventCmd = cli.Command{
+var eventCmd = &cli.Command{
 	Name:            "event",
 	Usage:           "manage object notifications",
 	HideHelpCommand: true,
-	Action:          mainEvent,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainEvent),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           append(eventFlags, globalFlags...),
-	Subcommands:     eventSubcommands,
+	Commands:        eventSubcommands,
 }
 
 // mainEvent is the handle for "mc event" command.
-func mainEvent(ctx *cli.Context) error {
+func mainEvent(ctx *cli.Command) error {
 	commandNotFound(ctx, eventSubcommands)
 	return nil
 	// Sub-commands like "add", "remove", "list" have their own main.

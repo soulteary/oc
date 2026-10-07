@@ -17,26 +17,27 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminPolicyInfoCmd = cli.Command{
+var adminPolicyInfoCmd = &cli.Command{
 	Name:         "info",
 	Usage:        "show info on a policy",
-	Action:       mainAdminPolicyInfo,
+	Action:       commandAction(mainAdminPolicyInfo),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET POLICYNAME
+  {{.FullName}} TARGET POLICYNAME
 
 POLICYNAME:
   Name of the policy on the OtterIO server.
@@ -46,28 +47,28 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Show information on a given policy.
-     {{.Prompt}} {{.HelpName}} store writeonly
+     {{Prompt}} {{.FullName}} store writeonly
 `,
 }
 
 // checkAdminPolicyInfoSyntax - validate all the passed arguments
-func checkAdminPolicyInfoSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
-		cli.ShowCommandHelpAndExit(ctx, "info", 1) // last argument is exit code
+func checkAdminPolicyInfoSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "info", 1) // last argument is exit code
 	}
 }
 
 // mainAdminPolicyInfo is the handler for "mc admin policy info" command.
-func mainAdminPolicyInfo(ctx *cli.Context) error {
+func mainAdminPolicyInfo(ctx *cli.Command) error {
 	checkAdminPolicyInfoSyntax(ctx)
 
 	console.SetColor("PolicyMessage", color.New(color.FgGreen))
 	console.SetColor("Policy", color.New(color.FgBlue))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
-	policyName := args.Get(1)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
+	policyName := argumentAt(args, 1)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

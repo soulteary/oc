@@ -17,30 +17,32 @@
 package cmd
 
 import (
-	"github.com/minio/cli"
+	"context"
+
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
-var adminConfigExportCmd = cli.Command{
+var adminConfigExportCmd = &cli.Command{
 	Name:         "export",
 	Usage:        "export all config keys to STDOUT",
-	Before:       setGlobalsFromContext,
-	Action:       mainAdminConfigExport,
+	Before:       commandBefore(setGlobalsFromContext),
+	Action:       commandAction(mainAdminConfigExport),
 	OnUsageError: onUsageError,
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Export the current config from OtterIO server
-     {{.Prompt}} {{.HelpName}} store/ > config.txt
+     {{Prompt}} {{.FullName}} store/ > config.txt
 `,
 }
 
@@ -65,19 +67,19 @@ func (u configExportMessage) JSON() string {
 }
 
 // checkAdminConfigExportSyntax - validate all the passed arguments
-func checkAdminConfigExportSyntax(ctx *cli.Context) {
-	if !ctx.Args().Present() || len(ctx.Args()) > 1 {
-		cli.ShowCommandHelpAndExit(ctx, "export", 1) // last argument is exit code
+func checkAdminConfigExportSyntax(ctx *cli.Command) {
+	if !ctx.Args().Present() || ctx.Args().Len() > 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "export", 1) // last argument is exit code
 	}
 }
 
-func mainAdminConfigExport(ctx *cli.Context) error {
+func mainAdminConfigExport(ctx *cli.Command) error {
 
 	checkAdminConfigExportSyntax(ctx)
 
 	// Export the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

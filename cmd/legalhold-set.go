@@ -24,43 +24,43 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	lhSetFlags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "apply legal hold recursively",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "apply legal hold to a specific object version",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "apply legal hold on an object version at specified time",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "versions",
 			Usage: "apply legal hold on multiple versions of an object",
 		},
 	}
 )
-var legalHoldSetCmd = cli.Command{
+var legalHoldSetCmd = &cli.Command{
 	Name:         "set",
 	Usage:        "set legal hold for object(s)",
-	Action:       mainLegalHoldSet,
+	Action:       commandAction(mainLegalHoldSet),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(lhSetFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET
+  {{.FullName}} [FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -68,16 +68,16 @@ FLAGS:
 
 EXAMPLES:
    1. Enable legal hold on a specific object
-      $ {{.HelpName}} store/mybucket/prefix/obj.csv
+      $ {{.FullName}} store/mybucket/prefix/obj.csv
 
    2. Enable legal hold on a specific object version
-      $ {{.HelpName}} store/mybucket/prefix/obj.csv --version-id "HiMFUTOowG6ylfNi4LKxD3ieHbgfgrvC"
+      $ {{.FullName}} store/mybucket/prefix/obj.csv --version-id "HiMFUTOowG6ylfNi4LKxD3ieHbgfgrvC"
 
    3. Enable object legal hold recursively for all objects at a prefix
-      $ {{.HelpName}} store/mybucket/prefix --recursive
+      $ {{.FullName}} store/mybucket/prefix --recursive
 
    4. Enable object legal hold recursively for all objects versions older than one year
-      $ {{.HelpName}} store/mybucket/prefix --recursive --rewind 365d --versions
+      $ {{.FullName}} store/mybucket/prefix --recursive --rewind 365d --versions
 `,
 }
 
@@ -171,10 +171,10 @@ func setLegalHold(ctx context.Context, urlStr, versionID string, timeRef time.Ti
 }
 
 // Validate command line arguments.
-func parseLegalHoldArgs(cliCtx *cli.Context) (targetURL, versionID string, timeRef time.Time, recursive, withVersions bool) {
-	args := cliCtx.Args()
+func parseLegalHoldArgs(cliCtx *cli.Command) (targetURL, versionID string, timeRef time.Time, recursive, withVersions bool) {
+	args := cliCtx.Args().Slice()
 	if len(args) != 1 {
-		cli.ShowCommandHelpAndExit(cliCtx, cliCtx.Command.Name, 1)
+		cli.ShowCommandHelpAndExit(context.Background(), cliCtx, cliCtx.Name, 1)
 	}
 
 	targetURL = args[0]
@@ -196,7 +196,7 @@ func parseLegalHoldArgs(cliCtx *cli.Context) (targetURL, versionID string, timeR
 }
 
 // main for legalhold set command.
-func mainLegalHoldSet(cliCtx *cli.Context) error {
+func mainLegalHoldSet(cliCtx *cli.Command) error {
 	console.SetColor("LegalHoldSuccess", color.New(color.FgGreen, color.Bold))
 	console.SetColor("LegalHoldFailure", color.New(color.FgRed, color.Bold))
 	console.SetColor("LegalHoldPartialFailure", color.New(color.FgRed, color.Bold))

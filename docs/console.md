@@ -39,7 +39,7 @@ Storage credentials remain in OC. Browsers receive an HttpOnly/SameSite=Strict c
 
 ## Upload semantics
 
-Create-only is the default. A missing-key HEAD must advertise `X-Otterio-Conditional-Writes: v1`, and the server must enforce `If-None-Match: *` under the destination write lock for PUT and multipart completion. The [conditional-write patch](../buildscripts/otterio-conditional-writes-compat.patch) provides this guarantee for FS and single-pool erasure storage. Gateways, multiple pools and write-back cache reject conditional writes. A HEAD existence check alone is not atomic; servers without this capability reject default uploads.
+Create-only is the default. A missing-key HEAD must advertise `X-Otterio-Conditional-Writes: v1`, and the server must enforce `If-None-Match: *` under the destination write lock for PUT and multipart completion. The pinned server provides this guarantee for FS and single-pool erasure storage. Gateways, multiple pools and write-back cache reject conditional writes. A HEAD existence check alone is not atomic; servers without this capability reject default uploads.
 
 Explicit replacement has a separate confirmation with the exact bucket and complete key. It can replace the current object at execution time or add a version; it is not an ETag compare-and-swap. Write-only identities may enter a bucket/key manually and explicitly allow replacement without listing or HEAD permission. OC never substitutes an administrator for these checks.
 
@@ -61,7 +61,7 @@ Leaving or reloading the page in the browser interrupts browser uploads; the con
 
 ## Browsing and operational limits
 
-Every object operation uses the selected identity. Bucket-root Read/Write hints are informational and do not authorize specific keys or prefixes. Root AccountInfo needs the [account-info patch](../buildscripts/otterio-account-info-compat.patch); unavailable management information does not block S3 operations.
+Every object operation uses the selected identity. Bucket-root Read/Write hints are informational and do not authorize specific keys or prefixes. Root AccountInfo is supported by the pinned server; unavailable management information does not block S3 operations.
 
 Downloads stream through OC into the browser's download manager. Errors open separately, preserving the console; the session is checked before starting. Version selection, Range, ZIP, presigned sharing, OIDC, management editing and centralized deployment remain outside this milestone.
 

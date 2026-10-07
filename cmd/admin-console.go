@@ -23,60 +23,60 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 const logTimeFormat string = "15:04:05 MST 01/02/2006"
 
 var adminConsoleFlags = []cli.Flag{
-	cli.IntFlag{
-		Name:  "limit, l",
+	&cli.IntFlag{
+		Name: "limit", Aliases: []string{"l"},
 		Usage: "show last n log entries",
 		Value: 10,
 	},
-	cli.StringFlag{
-		Name:  "type, t",
+	&cli.StringFlag{
+		Name: "type", Aliases: []string{"t"},
 		Usage: "list error logs by type. Valid options are '[otterio, application, all]' (minio remains an alias)",
 		Value: "all",
 	},
 }
 
-var adminConsoleCmd = cli.Command{
+var adminConsoleCmd = &cli.Command{
 	Name:            "console",
 	Usage:           "show console logs for OtterIO server",
-	Action:          mainAdminConsole,
+	Action:          commandAction(mainAdminConsole),
 	OnUsageError:    onUsageError,
-	Before:          setGlobalsFromContext,
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           append(adminConsoleFlags, globalFlags...),
 	HideHelpCommand: true,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET [NODENAME]
+  {{.FullName}} [FLAGS] TARGET [NODENAME]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Show console logs for a OtterIO server with alias 'store'
-     {{.Prompt}} {{.HelpName}} play
+     {{Prompt}} {{.FullName}} play
 
   2. Show last 5 log entries for node 'node1' on OtterIO server with alias 'cluster1'
-     {{.Prompt}} {{.HelpName}} --limit 5 cluster1 node1
+     {{Prompt}} {{.FullName}} --limit 5 cluster1 node1
 
   3. Show application error logs on OtterIO server with alias 'store'
-     {{.Prompt}} {{.HelpName}} --type application play
+     {{Prompt}} {{.FullName}} --type application play
 `,
 }
 
-func checkAdminLogSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) == 0 || len(ctx.Args()) > 3 {
-		cli.ShowCommandHelpAndExit(ctx, "console", 1) // last argument is exit code
+func checkAdminLogSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() == 0 || ctx.Args().Len() > 3 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "console", 1) // last argument is exit code
 	}
 }
 
@@ -168,7 +168,7 @@ func (l logMessage) String() string {
 }
 
 // mainAdminConsole - the entry function of console command
-func mainAdminConsole(ctx *cli.Context) error {
+func mainAdminConsole(ctx *cli.Command) error {
 	// Check for command syntax
 	checkAdminLogSyntax(ctx)
 	console.SetColor("LogMessage", color.New(color.Bold, color.FgRed))
@@ -178,14 +178,14 @@ func mainAdminConsole(ctx *cli.Context) error {
 	}
 	aliasedURL := ctx.Args().Get(0)
 	var node string
-	if len(ctx.Args()) > 1 {
+	if ctx.Args().Len() > 1 {
 		node = ctx.Args().Get(1)
 	}
 	var limit int
 	if ctx.IsSet("limit") {
 		limit = ctx.Int("limit")
 		if limit <= 0 {
-			fatalIf(errInvalidArgument().Trace(ctx.Args()...), "please set a proper limit, for example: '--limit 5' to display last 5 logs, omit this flag to display all available logs")
+			fatalIf(errInvalidArgument().Trace(ctx.Args().Slice()...), "please set a proper limit, for example: '--limit 5' to display last 5 logs, omit this flag to display all available logs")
 		}
 	}
 	logType, logErr := normalizeConsoleLogType(ctx.String("type"))

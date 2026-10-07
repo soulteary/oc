@@ -1,0 +1,1640 @@
+{
+  "schema": 1,
+  "project": "oc",
+  "cases": [
+    {
+      "id": "no-arguments",
+      "argv": []
+    },
+    {
+      "id": "version",
+      "argv": [
+        "--version"
+      ]
+    },
+    {
+      "id": "help-short",
+      "argv": [
+        "-h"
+      ]
+    },
+    {
+      "id": "unknown-command",
+      "argv": [
+        "srver"
+      ]
+    },
+    {
+      "id": "unknown-root-flag",
+      "argv": [
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "missing-config-value",
+      "argv": [
+        "--config-dir"
+      ]
+    },
+    {
+      "id": "config-root-explicit",
+      "argv": [
+        "--config-dir",
+        "{sandbox}/config-root",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "config-leaf-explicit",
+      "argv": [
+        "alias",
+        "list",
+        "--config-dir",
+        "{sandbox}/config-leaf"
+      ]
+    },
+    {
+      "id": "config-root-leaf-conflict",
+      "argv": [
+        "--config-dir",
+        "{sandbox}/config-root",
+        "alias",
+        "list",
+        "--config-dir",
+        "{sandbox}/config-leaf"
+      ]
+    },
+    {
+      "id": "config-alias",
+      "argv": [
+        "-C",
+        "{sandbox}/config-short",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "config-env-precedence",
+      "argv": [
+        "alias",
+        "list"
+      ],
+      "env": {
+        "OC_CONFIG_DIR": "{sandbox}/config-oc",
+        "MC_CONFIG_DIR": "{sandbox}/config-mc"
+      }
+    },
+    {
+      "id": "config-env-mc-fallback",
+      "argv": [
+        "alias",
+        "list"
+      ],
+      "env": {
+        "MC_CONFIG_DIR": "{sandbox}/config-mc"
+      }
+    },
+    {
+      "id": "config-empty-explicit",
+      "argv": [
+        "--config-dir=",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "quiet-explicit-false",
+      "argv": [
+        "--quiet=false",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "json-explicit-false",
+      "argv": [
+        "--json=false",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "quiet-parent",
+      "argv": [
+        "--quiet",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "quiet-leaf",
+      "argv": [
+        "alias",
+        "list",
+        "--quiet"
+      ]
+    },
+    {
+      "id": "copy-interspersed-flags",
+      "argv": [
+        "cp",
+        "source",
+        "--recursive",
+        "target",
+        "--help"
+      ]
+    },
+    {
+      "id": "end-of-options",
+      "argv": [
+        "cp",
+        "--",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "duration-invalid",
+      "argv": [
+        "mirror",
+        "--watch-verify-interval",
+        "wrong"
+      ]
+    },
+    {
+      "id": "list-comma",
+      "argv": [
+        "mirror",
+        "--exclude",
+        "a,b",
+        "--exclude",
+        "c"
+      ]
+    },
+    {
+      "id": "list-integer-invalid",
+      "argv": [
+        "admin",
+        "trace",
+        "--status-code",
+        "wrong"
+      ]
+    },
+    {
+      "id": "health-cli-invalid",
+      "argv": [
+        "admin",
+        "subnet",
+        "health",
+        "--test",
+        "invalid"
+      ],
+      "comparison": "legacy-panic"
+    },
+    {
+      "id": "health-env-invalid",
+      "argv": [
+        "admin",
+        "subnet",
+        "health"
+      ],
+      "env": {
+        "OC_HEALTH_TEST": "invalid",
+        "MC_HEALTH_TEST": "syscpu"
+      }
+    },
+    {
+      "id": "health-env-primary-empty",
+      "argv": [
+        "admin",
+        "subnet",
+        "health"
+      ],
+      "env": {
+        "OC_HEALTH_TEST": "",
+        "MC_HEALTH_TEST": "syscpu"
+      }
+    },
+    {
+      "id": "health-repeat-disabled-upload",
+      "argv": [
+        "admin",
+        "subnet",
+        "health",
+        "--test",
+        "syscpu",
+        "--test",
+        "sysmem",
+        "--license",
+        "disabled"
+      ]
+    },
+    {
+      "id": "health-dev-explicit-false",
+      "argv": [
+        "admin",
+        "subnet",
+        "health",
+        "--dev=false"
+      ]
+    },
+    {
+      "id": "health-deadline-env-invalid",
+      "argv": [
+        "admin",
+        "subnet",
+        "health"
+      ],
+      "env": {
+        "OC_HEALTH_DEADLINE": "wrong"
+      }
+    },
+    {
+      "id": "admin-parent-endpoint",
+      "argv": [
+        "admin",
+        "--admin-url",
+        "http://127.0.0.1:0",
+        "info"
+      ]
+    },
+    {
+      "id": "admin-leaf-endpoint",
+      "argv": [
+        "admin",
+        "info",
+        "--admin-url",
+        "http://127.0.0.1:0"
+      ]
+    },
+    {
+      "id": "completion-root",
+      "argv": [
+        "oc"
+      ],
+      "env": {
+        "COMP_LINE": "oc ",
+        "COMP_POINT": "3"
+      },
+      "comparison": "completion-lines"
+    },
+    {
+      "id": "completion-admin",
+      "argv": [
+        "oc"
+      ],
+      "env": {
+        "COMP_LINE": "oc admin ",
+        "COMP_POINT": "9"
+      },
+      "comparison": "completion-lines"
+    },
+    {
+      "id": "completion-flags",
+      "argv": [
+        "oc"
+      ],
+      "env": {
+        "COMP_LINE": "oc cp --",
+        "COMP_POINT": "8"
+      },
+      "comparison": "completion-lines"
+    },
+    {
+      "id": "health-deprecated-alias",
+      "argv": [
+        "admin",
+        "health"
+      ]
+    },
+    {
+      "id": "version-true",
+      "argv": [
+        "--version=true"
+      ]
+    },
+    {
+      "id": "version-false",
+      "argv": [
+        "--version=false"
+      ]
+    },
+    {
+      "id": "version-false-subcommand-help",
+      "argv": [
+        "--version=false",
+        "cp",
+        "--help"
+      ]
+    },
+    {
+      "id": "version-before-subcommand-error",
+      "argv": [
+        "--version",
+        "cp",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "version-and-help",
+      "argv": [
+        "--version",
+        "--help"
+      ]
+    },
+    {
+      "id": "version-false-root-error",
+      "argv": [
+        "--version=false",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "help-true",
+      "argv": [
+        "--help=true"
+      ]
+    },
+    {
+      "id": "help-false",
+      "argv": [
+        "--help=false"
+      ]
+    },
+    {
+      "id": "help-false-subcommand-help",
+      "argv": [
+        "--help=false",
+        "cp",
+        "--help"
+      ]
+    },
+    {
+      "id": "help-false-action",
+      "argv": [
+        "--help=false",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "help-leaf-false",
+      "argv": [
+        "cp",
+        "--help=false"
+      ]
+    },
+    {
+      "id": "help-leaf-true",
+      "argv": [
+        "cp",
+        "--help=true"
+      ]
+    },
+    {
+      "id": "help-false-root-error",
+      "argv": [
+        "--help=false",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "help-false-leaf-error",
+      "argv": [
+        "cp",
+        "--help=false",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "config-value-help",
+      "argv": [
+        "--config-dir",
+        "help",
+        "cp",
+        "--help"
+      ]
+    },
+    {
+      "id": "config-value-help-flag",
+      "argv": [
+        "--config-dir",
+        "--help",
+        "cp",
+        "--help"
+      ]
+    },
+    {
+      "id": "negative-value-position",
+      "argv": [
+        "cp",
+        "--",
+        "-1"
+      ]
+    },
+    {
+      "id": "config-both-spellings",
+      "argv": [
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "config-both-spellings-equal",
+      "argv": [
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-a",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "config-repeat-same-spelling",
+      "argv": [
+        "--config-dir",
+        "{sandbox}/config-a",
+        "--config-dir",
+        "{sandbox}/config-b",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "config-alias-cross-scope",
+      "argv": [
+        "-C",
+        "{sandbox}/config-a",
+        "cp",
+        "--config-dir",
+        "{sandbox}/config-b",
+        "--help"
+      ]
+    },
+    {
+      "id": "quiet-both-spellings",
+      "argv": [
+        "--quiet",
+        "-q",
+        "alias",
+        "list"
+      ]
+    },
+    {
+      "id": "recursive-both-spellings",
+      "argv": [
+        "cp",
+        "--recursive",
+        "-r",
+        "source",
+        "target"
+      ]
+    },
+    {
+      "id": "bool-root-invalid",
+      "argv": [
+        "--quiet=invalid"
+      ]
+    },
+    {
+      "id": "bool-leaf-invalid",
+      "argv": [
+        "cp",
+        "--json=invalid"
+      ]
+    },
+    {
+      "id": "bool-deep-invalid",
+      "argv": [
+        "admin",
+        "trace",
+        "--insecure=invalid"
+      ]
+    },
+    {
+      "id": "help-both-spellings",
+      "argv": [
+        "--help",
+        "-h"
+      ]
+    },
+    {
+      "id": "help-leaf-both-spellings",
+      "argv": [
+        "cp",
+        "--help",
+        "-h"
+      ]
+    },
+    {
+      "id": "help-both-spellings-false",
+      "argv": [
+        "--help=false",
+        "-h=false"
+      ]
+    },
+    {
+      "id": "version-both-spellings",
+      "argv": [
+        "--version",
+        "-v"
+      ]
+    },
+    {
+      "id": "version-both-spellings-conflict",
+      "argv": [
+        "--version=false",
+        "-v=true"
+      ]
+    },
+    {
+      "id": "help-then-error-root-unknown-flag",
+      "argv": [
+        "--help",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "help-then-error-root-missing-value",
+      "argv": [
+        "--help",
+        "--config-dir"
+      ]
+    },
+    {
+      "id": "help-then-error-root-invalid-bool",
+      "argv": [
+        "--help",
+        "--quiet=invalid"
+      ]
+    },
+    {
+      "id": "help-then-error-parent-unknown-flag",
+      "argv": [
+        "admin",
+        "--help",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "help-then-error-parent-missing-value",
+      "argv": [
+        "admin",
+        "--help",
+        "--config-dir"
+      ]
+    },
+    {
+      "id": "help-then-error-parent-invalid-bool",
+      "argv": [
+        "admin",
+        "--help",
+        "--quiet=invalid"
+      ]
+    },
+    {
+      "id": "help-then-error-leaf-unknown-flag",
+      "argv": [
+        "cp",
+        "--help",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "help-then-error-leaf-missing-value",
+      "argv": [
+        "cp",
+        "--help",
+        "--config-dir"
+      ]
+    },
+    {
+      "id": "help-then-error-leaf-invalid-bool",
+      "argv": [
+        "cp",
+        "--help",
+        "--quiet=invalid"
+      ]
+    },
+    {
+      "id": "combined-help-version-alias",
+      "argv": [
+        "--help",
+        "--version",
+        "-v"
+      ]
+    },
+    {
+      "id": "combined-version-help-alias",
+      "argv": [
+        "--version",
+        "--help",
+        "-h"
+      ]
+    },
+    {
+      "id": "combined-help-version-alias-false",
+      "argv": [
+        "--help",
+        "--version=false",
+        "-v=false"
+      ]
+    },
+    {
+      "id": "combined-version-help-alias-false",
+      "argv": [
+        "--version",
+        "--help=false",
+        "-h=false"
+      ]
+    },
+    {
+      "id": "help-config-alias-conflict",
+      "argv": [
+        "--help",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b"
+      ]
+    },
+    {
+      "id": "help-other-alias-conflict",
+      "argv": [
+        "--help",
+        "--quiet",
+        "-q"
+      ]
+    },
+    {
+      "id": "help-other-alias-conflict-leaf",
+      "argv": [
+        "cp",
+        "--help",
+        "--recursive",
+        "-r"
+      ]
+    },
+    {
+      "id": "alias-then-error-root-unknown",
+      "argv": [
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "alias-then-error-root-missing",
+      "argv": [
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b",
+        "--config-dir"
+      ]
+    },
+    {
+      "id": "alias-then-error-root-invalid-bool",
+      "argv": [
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b",
+        "--quiet=invalid"
+      ]
+    },
+    {
+      "id": "error-then-alias-root-unknown",
+      "argv": [
+        "--contract-unknown",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b"
+      ]
+    },
+    {
+      "id": "alias-then-error-parent-unknown",
+      "argv": [
+        "admin",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "alias-then-error-parent-missing",
+      "argv": [
+        "admin",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b",
+        "--config-dir"
+      ]
+    },
+    {
+      "id": "alias-then-error-parent-invalid-bool",
+      "argv": [
+        "admin",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b",
+        "--quiet=invalid"
+      ]
+    },
+    {
+      "id": "error-then-alias-parent-unknown",
+      "argv": [
+        "admin",
+        "--contract-unknown",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b"
+      ]
+    },
+    {
+      "id": "alias-then-error-leaf-unknown",
+      "argv": [
+        "cp",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "alias-then-error-leaf-missing",
+      "argv": [
+        "cp",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b",
+        "--config-dir"
+      ]
+    },
+    {
+      "id": "alias-then-error-leaf-invalid-bool",
+      "argv": [
+        "cp",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b",
+        "--quiet=invalid"
+      ]
+    },
+    {
+      "id": "error-then-alias-leaf-unknown",
+      "argv": [
+        "cp",
+        "--contract-unknown",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C",
+        "{sandbox}/config-b"
+      ]
+    },
+    {
+      "id": "alias-failed-set-root-quiet-second-invalid",
+      "argv": [
+        "--quiet",
+        "-q=invalid"
+      ]
+    },
+    {
+      "id": "alias-failed-set-root-quiet-first-invalid",
+      "argv": [
+        "-q=invalid",
+        "--quiet"
+      ]
+    },
+    {
+      "id": "alias-failed-set-root-help-second-invalid",
+      "argv": [
+        "--help",
+        "-h=invalid"
+      ]
+    },
+    {
+      "id": "alias-failed-set-root-help-first-invalid",
+      "argv": [
+        "-h=invalid",
+        "--help"
+      ]
+    },
+    {
+      "id": "alias-failed-set-root-config-second-missing",
+      "argv": [
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C"
+      ]
+    },
+    {
+      "id": "alias-failed-set-root-config-second-missing-reverse",
+      "argv": [
+        "-C",
+        "{sandbox}/config-a",
+        "--config-dir"
+      ]
+    },
+    {
+      "id": "alias-failed-set-leaf-quiet-second-invalid",
+      "argv": [
+        "cp",
+        "--quiet",
+        "-q=invalid"
+      ]
+    },
+    {
+      "id": "alias-failed-set-leaf-quiet-first-invalid",
+      "argv": [
+        "cp",
+        "-q=invalid",
+        "--quiet"
+      ]
+    },
+    {
+      "id": "alias-failed-set-leaf-help-second-invalid",
+      "argv": [
+        "cp",
+        "--help",
+        "-h=invalid"
+      ]
+    },
+    {
+      "id": "alias-failed-set-leaf-help-first-invalid",
+      "argv": [
+        "cp",
+        "-h=invalid",
+        "--help"
+      ]
+    },
+    {
+      "id": "alias-failed-set-leaf-config-second-missing",
+      "argv": [
+        "cp",
+        "--config-dir",
+        "{sandbox}/config-a",
+        "-C"
+      ]
+    },
+    {
+      "id": "alias-failed-set-leaf-config-second-missing-reverse",
+      "argv": [
+        "cp",
+        "-C",
+        "{sandbox}/config-a",
+        "--config-dir"
+      ]
+    },
+    {
+      "id": "position-root-unknown-before-version",
+      "argv": [
+        "unknown",
+        "--version"
+      ]
+    },
+    {
+      "id": "position-root-unknown-before-help",
+      "argv": [
+        "unknown",
+        "--help"
+      ]
+    },
+    {
+      "id": "position-root-help-before-unknown-error",
+      "argv": [
+        "--help",
+        "unknown",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "position-root-version-before-unknown-error",
+      "argv": [
+        "--version",
+        "unknown",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "position-root-error-before-unknown-help",
+      "argv": [
+        "--contract-unknown",
+        "unknown",
+        "--help"
+      ]
+    },
+    {
+      "id": "position-root-help-error-before-unknown",
+      "argv": [
+        "--help",
+        "--contract-unknown",
+        "unknown"
+      ]
+    },
+    {
+      "id": "separator-root-before-unknown-help",
+      "argv": [
+        "--",
+        "unknown",
+        "--help"
+      ]
+    },
+    {
+      "id": "separator-root-help-before-unknown-error",
+      "argv": [
+        "--help",
+        "--",
+        "unknown",
+        "--contract-unknown"
+      ]
+    },
+    {
+      "id": "lexical-root-help-before-negative",
+      "argv": [
+        "--help",
+        "-1"
+      ]
+    },
+    {
+      "id": "lexical-root-negative-before-help",
+      "argv": [
+        "-1",
+        "--help"
+      ]
+    },
+    {
+      "id": "separator-root-help-before-negative",
+      "argv": [
+        "--help",
+        "--",
+        "-1"
+      ]
+    },
+    {
+      "id": "separator-root-negative-before-help",
+      "argv": [
+        "--",
+        "-1",
+        "--help"
+      ]
+    },
+    {
+      "id": "lexical-root-help-trailing-space",
+      "argv": [
+        "--help "
+      ]
+    },
+    {
+      "id": "lexical-root-help-leading-space",
+      "argv": [
+        " --help"
+      ]
+    },
+    {
+      "id": "lexical-root-unknown-leading-space",
+      "argv": [
+        " unknown"
+      ]
+    },
+    {
+      "id": "lexical-root-triple-dash",
+      "argv": [
+        "---x"
+      ]
+    },
+    {
+      "id": "lexical-root-short-equals",
+      "argv": [
+        "-=x"
+      ]
+    },
+    {
+      "id": "lexical-root-long-equals",
+      "argv": [
+        "--=x"
+      ]
+    },
+    {
+      "id": "bool-root-quiet-empty",
+      "argv": [
+        "--quiet="
+      ]
+    },
+    {
+      "id": "bool-root-help-empty",
+      "argv": [
+        "--help="
+      ]
+    },
+    {
+      "id": "bool-root-version-empty",
+      "argv": [
+        "--version="
+      ]
+    },
+    {
+      "id": "bool-root-help-before-quiet-empty",
+      "argv": [
+        "--help",
+        "--quiet="
+      ]
+    },
+    {
+      "id": "lexical-leaf-help-before-negative",
+      "argv": [
+        "cp",
+        "--help",
+        "-1"
+      ]
+    },
+    {
+      "id": "lexical-leaf-negative-before-help",
+      "argv": [
+        "cp",
+        "-1",
+        "--help"
+      ]
+    },
+    {
+      "id": "lexical-list-negative",
+      "argv": [
+        "ls",
+        "-1"
+      ]
+    },
+    {
+      "id": "separator-leaf-help-before-negative",
+      "argv": [
+        "cp",
+        "--help",
+        "--",
+        "-1"
+      ]
+    },
+    {
+      "id": "separator-leaf-negative-before-help",
+      "argv": [
+        "cp",
+        "-1",
+        "--",
+        "--help"
+      ]
+    },
+    {
+      "id": "lexical-leaf-help-trailing-space",
+      "argv": [
+        "cp",
+        "--help "
+      ]
+    },
+    {
+      "id": "lexical-leaf-help-leading-space",
+      "argv": [
+        "cp",
+        " --help"
+      ]
+    },
+    {
+      "id": "lexical-leaf-triple-dash",
+      "argv": [
+        "cp",
+        "---x"
+      ]
+    },
+    {
+      "id": "lexical-leaf-short-equals",
+      "argv": [
+        "cp",
+        "-=x"
+      ]
+    },
+    {
+      "id": "lexical-leaf-long-equals",
+      "argv": [
+        "cp",
+        "--=x"
+      ]
+    },
+    {
+      "id": "lexical-parent-help-before-negative",
+      "argv": [
+        "admin",
+        "--help",
+        "-1"
+      ]
+    },
+    {
+      "id": "lexical-parent-negative-before-help",
+      "argv": [
+        "admin",
+        "-1",
+        "--help"
+      ]
+    },
+    {
+      "id": "bool-leaf-help-empty",
+      "argv": [
+        "ls",
+        "--help="
+      ]
+    },
+    {
+      "id": "bool-leaf-quiet-empty",
+      "argv": [
+        "ls",
+        "--quiet="
+      ]
+    },
+    {
+      "id": "bool-parent-help-empty",
+      "argv": [
+        "admin",
+        "--help="
+      ]
+    },
+    {
+      "id": "negative-int-long-value",
+      "argv": [
+        "head",
+        "--lines",
+        "-1",
+        "--help"
+      ]
+    },
+    {
+      "id": "negative-int-short-value",
+      "argv": [
+        "head",
+        "-n",
+        "-1",
+        "--help"
+      ]
+    },
+    {
+      "id": "negative-int-equals-value",
+      "argv": [
+        "head",
+        "--lines=-1",
+        "--help"
+      ]
+    },
+    {
+      "id": "negative-duration-value",
+      "argv": [
+        "mirror",
+        "--watch-verify-interval",
+        "-1s",
+        "--help"
+      ]
+    },
+    {
+      "id": "negative-duration-invalid-value",
+      "argv": [
+        "mirror",
+        "--watch-verify-interval",
+        "-1",
+        "--help"
+      ]
+    },
+    {
+      "id": "negative-string-root-value",
+      "argv": [
+        "--config-dir",
+        "-1",
+        "--help"
+      ]
+    },
+    {
+      "id": "negative-string-leaf-value",
+      "argv": [
+        "cp",
+        "--config-dir",
+        "-1",
+        "--help"
+      ]
+    },
+    {
+      "id": "bash-completion-root",
+      "argv": [
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-group",
+      "argv": [
+        "admin",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-subgroup",
+      "argv": [
+        "admin",
+        "subnet",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-subgroup-alias",
+      "argv": [
+        "admin",
+        "obd",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-leaf",
+      "argv": [
+        "ls",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-unknown-command",
+      "argv": [
+        "unknown",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-root-help",
+      "argv": [
+        "--help",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-root-version",
+      "argv": [
+        "--version",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-group-help",
+      "argv": [
+        "admin",
+        "--help",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-leaf-help",
+      "argv": [
+        "ls",
+        "--help",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-root-unknown-flag",
+      "argv": [
+        "--unknown",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-root-unknown-before-leaf",
+      "argv": [
+        "--unknown",
+        "ls",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-group-unknown-flag",
+      "argv": [
+        "admin",
+        "--unknown",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-leaf-unknown-flag",
+      "argv": [
+        "ls",
+        "--unknown",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-root-invalid-bool",
+      "argv": [
+        "--quiet=invalid",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-leaf-invalid-bool",
+      "argv": [
+        "ls",
+        "--quiet=invalid",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-root-alias-conflict",
+      "argv": [
+        "--quiet",
+        "-q",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-leaf-alias-conflict",
+      "argv": [
+        "ls",
+        "--quiet",
+        "-q",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-nonterminal-root",
+      "argv": [
+        "--generate-bash-completion",
+        "--help"
+      ]
+    },
+    {
+      "id": "bash-completion-nonterminal-group",
+      "argv": [
+        "admin",
+        "--generate-bash-completion",
+        "--help"
+      ]
+    },
+    {
+      "id": "bash-completion-nonterminal-leaf",
+      "argv": [
+        "ls",
+        "--generate-bash-completion",
+        "--help"
+      ]
+    },
+    {
+      "id": "bash-completion-equals-false",
+      "argv": [
+        "--generate-bash-completion=false"
+      ]
+    },
+    {
+      "id": "bash-completion-after-separator",
+      "argv": [
+        "--",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-leaf-after-separator",
+      "argv": [
+        "ls",
+        "--",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-root-missing-string-value",
+      "argv": [
+        "--config-dir",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-leaf-missing-string-value",
+      "argv": [
+        "ls",
+        "--config-dir",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "bash-completion-string-value-nonterminal",
+      "argv": [
+        "ls",
+        "--config-dir",
+        "--generate-bash-completion",
+        "--help"
+      ]
+    },
+    {
+      "id": "bash-completion-config-initialization",
+      "argv": [
+        "--config-dir",
+        "{sandbox}/completion-config",
+        "alias",
+        "list",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "shell-completion-remains-unknown-root",
+      "argv": [
+        "--generate-shell-completion"
+      ]
+    },
+    {
+      "id": "shell-completion-remains-unknown-group",
+      "argv": [
+        "admin",
+        "--generate-shell-completion"
+      ]
+    },
+    {
+      "id": "shell-completion-remains-unknown-leaf",
+      "argv": [
+        "ls",
+        "--generate-shell-completion"
+      ]
+    },
+    {
+      "id": "hidden-config-host-help",
+      "argv": [
+        "config",
+        "host",
+        "--help"
+      ]
+    },
+    {
+      "id": "hidden-config-host-add-help",
+      "argv": [
+        "config",
+        "host",
+        "add",
+        "--help"
+      ]
+    },
+    {
+      "id": "hidden-config-host-list-help",
+      "argv": [
+        "config",
+        "host",
+        "list",
+        "--help"
+      ]
+    },
+    {
+      "id": "hidden-config-host-remove-help",
+      "argv": [
+        "config",
+        "host",
+        "remove",
+        "--help"
+      ]
+    },
+    {
+      "id": "hidden-config-host-a-help",
+      "argv": [
+        "config",
+        "host",
+        "a",
+        "--help"
+      ]
+    },
+    {
+      "id": "hidden-config-host-ls-help",
+      "argv": [
+        "config",
+        "host",
+        "ls",
+        "--help"
+      ]
+    },
+    {
+      "id": "hidden-config-host-rm-help",
+      "argv": [
+        "config",
+        "host",
+        "rm",
+        "--help"
+      ]
+    },
+    {
+      "id": "hidden-admin-health-no-args",
+      "argv": [
+        "admin",
+        "health"
+      ]
+    },
+    {
+      "id": "hidden-admin-health-help",
+      "argv": [
+        "admin",
+        "health",
+        "--help"
+      ]
+    },
+    {
+      "id": "hidden-admin-obd-no-args",
+      "argv": [
+        "admin",
+        "obd"
+      ]
+    },
+    {
+      "id": "hidden-admin-obd-help",
+      "argv": [
+        "admin",
+        "obd",
+        "--help"
+      ]
+    },
+    {
+      "id": "help-command-retention-bash-completion",
+      "argv": [
+        "retention",
+        "help",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "help-command-legalhold-error-bash-completion",
+      "argv": [
+        "legalhold",
+        "help",
+        "--unknown",
+        "--generate-bash-completion"
+      ]
+    },
+    {
+      "id": "help-command-retention-help",
+      "argv": [
+        "retention",
+        "help",
+        "--help"
+      ]
+    },
+    {
+      "id": "help-command-retention-error",
+      "argv": [
+        "retention",
+        "help",
+        "--unknown"
+      ]
+    },
+    {
+      "id": "help-command-retention-parent-topic",
+      "argv": [
+        "retention",
+        "help",
+        "retention"
+      ]
+    },
+    {
+      "id": "help-command-legalhold-parent-topic",
+      "argv": [
+        "legalhold",
+        "help",
+        "legalhold"
+      ]
+    },
+    {
+      "id": "health-deadline-invalid",
+      "argv": [
+        "admin",
+        "subnet",
+        "health",
+        "--deadline",
+        "wrong"
+      ],
+      "comparison": "legacy-panic"
+    },
+    {
+      "id": "health-dev-invalid",
+      "argv": [
+        "admin",
+        "subnet",
+        "health",
+        "--dev=wrong"
+      ],
+      "comparison": "legacy-panic"
+    },
+    {
+      "id": "health-unknown-flag",
+      "argv": [
+        "admin",
+        "subnet",
+        "health",
+        "--unknown"
+      ],
+      "comparison": "legacy-panic"
+    }
+  ]
+}

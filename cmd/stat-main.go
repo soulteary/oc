@@ -22,45 +22,45 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 // stat specific flags.
 var (
 	statFlags = []cli.Flag{
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "stat on older version(s)",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "versions",
 			Usage: "stat all versions",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "stat a specific object version",
 		},
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "stat all objects recursively",
 		},
 	}
 )
 
 // show object metadata
-var statCmd = cli.Command{
+var statCmd = &cli.Command{
 	Name:         "stat",
 	Usage:        "show object metadata",
-	Action:       mainStat,
+	Action:       commandAction(mainStat),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(append(statFlags, ioFlags...), globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET [TARGET ...]
+  {{.FullName}} [FLAGS] TARGET [TARGET ...]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -70,36 +70,36 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
   1. Stat all contents of mybucket on Amazon S3 cloud storage.
-     {{.Prompt}} {{.HelpName}} s3/mybucket/
+     {{Prompt}} {{.FullName}} s3/mybucket/
 
   2. Stat all contents of mybucket on Amazon S3 cloud storage on Microsoft Windows.
-     {{.Prompt}} {{.HelpName}} s3\mybucket\
+     {{Prompt}} {{.FullName}} s3\mybucket\
 
   3. Stat files recursively on a local filesystem on Microsoft Windows.
-     {{.Prompt}} {{.HelpName}} --recursive C:\Users\Worf\
+     {{Prompt}} {{.FullName}} --recursive C:\Users\Worf\
 
   4. Stat encrypted files on Amazon S3 cloud storage.
-     {{.Prompt}} {{.HelpName}} --encrypt-key "s3/personal-docs/=32byteslongsecretkeymustbegiven1" s3/personal-docs/2018-account_report.docx
+     {{Prompt}} {{.FullName}} --encrypt-key "s3/personal-docs/=32byteslongsecretkeymustbegiven1" s3/personal-docs/2018-account_report.docx
 
   5. Stat encrypted files on Amazon S3 cloud storage. In case the encryption key contains non-printable character like tab, pass the
      base64 encoded string as key.
-     {{.Prompt}} {{.HelpName}} --encrypt-key "s3/personal-document/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=" s3/personal-document/2019-account_report.docx
+     {{Prompt}} {{.FullName}} --encrypt-key "s3/personal-document/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=" s3/personal-document/2019-account_report.docx
 
   6. Stat a specific object version.
-     {{.Prompt}} {{.HelpName}} --version-id "CL3sWgdSN2pNntSf6UnZAuh2kcu8E8si" s3/personal-docs/2018-account_report.docx
+     {{Prompt}} {{.FullName}} --version-id "CL3sWgdSN2pNntSf6UnZAuh2kcu8E8si" s3/personal-docs/2018-account_report.docx
 
   7. Stat all objects versions recursively created before 1st January 2020.
-     {{.Prompt}} {{.HelpName}} --versions --rewind 2020.01.01T00:00 s3/personal-docs/
+     {{Prompt}} {{.FullName}} --versions --rewind 2020.01.01T00:00 s3/personal-docs/
 `,
 }
 
 // parseAndCheckStatSyntax - parse and validate all the passed arguments
-func parseAndCheckStatSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[string][]prefixSSEPair) ([]string, bool, string, time.Time, bool) {
+func parseAndCheckStatSyntax(ctx context.Context, cliCtx *cli.Command, encKeyDB map[string][]prefixSSEPair) ([]string, bool, string, time.Time, bool) {
 	if !cliCtx.Args().Present() {
-		cli.ShowCommandHelpAndExit(cliCtx, "stat", 1) // last argument is exit code
+		cli.ShowCommandHelpAndExit(context.Background(), cliCtx, "stat", 1) // last argument is exit code
 	}
 
-	args := cliCtx.Args()
+	args := cliCtx.Args().Slice()
 	for _, arg := range args {
 		if strings.TrimSpace(arg) == "" {
 			fatalIf(errInvalidArgument().Trace(args...), "Unable to validate empty argument.")
@@ -112,7 +112,7 @@ func parseAndCheckStatSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB 
 	rewind := parseRewindFlag(cliCtx.String("rewind"))
 
 	// extract URLs.
-	URLs := cliCtx.Args()
+	URLs := cliCtx.Args().Slice()
 	isIncomplete := false
 
 	if versionID != "" && len(args) > 1 {
@@ -134,7 +134,7 @@ func parseAndCheckStatSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB 
 }
 
 // mainStat - is a handler for mc stat command
-func mainStat(cliCtx *cli.Context) error {
+func mainStat(cliCtx *cli.Command) error {
 	ctx, cancelStat := context.WithCancel(globalContext)
 	defer cancelStat()
 

@@ -17,27 +17,28 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 var adminQuotaFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "fifo",
 		Usage: "set fifo quota, allowing automatic deletion of older content",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "hard",
 		Usage: "set a hard quota, disallowing writes after quota is reached",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "clear",
 		Usage: "clears bucket quota configured for bucket",
 	},
@@ -73,18 +74,18 @@ func (q quotaMessage) JSON() string {
 	return string(jsonMessageBytes)
 }
 
-var adminBucketQuotaCmd = cli.Command{
+var adminBucketQuotaCmd = &cli.Command{
 	Name:         "quota",
 	Usage:        "manage bucket quota",
-	Action:       mainAdminBucketQuota,
+	Action:       commandAction(mainAdminBucketQuota),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(adminQuotaFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET [--fifo QUOTA | --hard QUOTA | --clear]
+  {{.FullName}} TARGET [--fifo QUOTA | --hard QUOTA | --clear]
 
 QUOTA
   quota accepts human-readable case-insensitive number
@@ -98,46 +99,46 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Display bucket quota configured for "mybucket" on OtterIO.
-     {{.Prompt}} {{.HelpName}} store/mybucket
+     {{Prompt}} {{.FullName}} store/mybucket
 
   2. Set FIFO quota for a bucket "mybucket" on OtterIO.
-     {{.Prompt}} {{.HelpName}} store/mybucket --fifo 10GB
+     {{Prompt}} {{.FullName}} store/mybucket --fifo 10GB
 
   3. Set hard quota of 1gb for a bucket "mybucket" on OtterIO.
-     {{.Prompt}} {{.HelpName}} store/mybucket --hard 1GB
+     {{Prompt}} {{.FullName}} store/mybucket --hard 1GB
 
   4. Clear bucket quota configured for bucket "mybucket" on OtterIO.
-     {{.Prompt}} {{.HelpName}} store/mybucket --clear
+     {{Prompt}} {{.FullName}} store/mybucket --clear
 `,
 }
 
 // checkAdminBucketQuotaSyntax - validate all the passed arguments
-func checkAdminBucketQuotaSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) == 0 || len(ctx.Args()) > 1 {
-		cli.ShowCommandHelpAndExit(ctx, ctx.Command.Name, 1) // last argument is exit code
+func checkAdminBucketQuotaSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() == 0 || ctx.Args().Len() > 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, ctx.Name, 1) // last argument is exit code
 	}
 
 	if ctx.IsSet("hard") && ctx.IsSet("fifo") {
 		fatalIf(errInvalidArgument(), "Only one of --hard or --fifo flags can be set")
 	}
-	if (ctx.IsSet("hard") || ctx.IsSet("fifo")) && len(ctx.Args()) == 0 {
-		fatalIf(errInvalidArgument().Trace(ctx.Args()...), "please specify bucket and quota")
+	if (ctx.IsSet("hard") || ctx.IsSet("fifo")) && ctx.Args().Len() == 0 {
+		fatalIf(errInvalidArgument().Trace(ctx.Args().Slice()...), "please specify bucket and quota")
 	}
-	if ctx.IsSet("clear") && len(ctx.Args()) == 0 {
-		fatalIf(errInvalidArgument().Trace(ctx.Args()...), "clear flag must be passed with target alone")
+	if ctx.IsSet("clear") && ctx.Args().Len() == 0 {
+		fatalIf(errInvalidArgument().Trace(ctx.Args().Slice()...), "clear flag must be passed with target alone")
 	}
 }
 
 // mainAdminBucketQuota is the handler for "mc admin bucket quota" command.
-func mainAdminBucketQuota(ctx *cli.Context) error {
+func mainAdminBucketQuota(ctx *cli.Command) error {
 	checkAdminBucketQuotaSyntax(ctx)
 
 	console.SetColor("QuotaMessage", color.New(color.FgGreen))
 	console.SetColor("QuotaInfo", color.New(color.FgBlue))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

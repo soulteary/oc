@@ -69,25 +69,19 @@ CI 使用 golangci-lint `v2.14.0` 和 [.golangci.yml](../../.golangci.yml)。安
 
 集成脚本启动临时 OtterIO 进程，使用随机凭据、独立客户端配置、本地端口和临时存储。测试会写入和删除测试对象，并对这些临时进程执行管理操作；脚本不接收已有部署的服务地址。
 
-OC 的 SDK 依赖仍固定在 `go.mod` 中。对应服务端源码需要按顺序应用 `docs/compatibility.json` 列出的五项补丁。先把模块源码复制到可写的临时目录，不要修改共享 Go module 缓存或生产源码目录。
+OC 的 SDK 依赖固定在 `go.mod` 中，服务端必须从该版本源码构建；原有兼容修复已包含在源码中。先把模块源码复制到可写的临时目录，不修改共享 module 缓存。完整源码 SHA 记录在 `docs/compatibility.json` 中。
 
 下面准备与 CI 相同的 `CGO_ENABLED=0` 测试环境。保持在同一个 shell 中执行，以便后续使用这些目录变量：
 
 ```sh
 export GOTOOLCHAIN=local
 export CGO_ENABLED=0
-OC_SOURCE="$(pwd)"
 OC_INTEGRATION="$(mktemp -d)"
 go mod download
 go build -mod=readonly -trimpath -o "$OC_INTEGRATION/oc" .
 otterio_source="$(go list -m -f '{{.Dir}}' github.com/soulteary/otterio)"
 cp -R "$otterio_source" "$OC_INTEGRATION/otterio-source"
 chmod -R u+w "$OC_INTEGRATION/otterio-source"
-git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-core-compat.patch"
-git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-runtime-compat.patch"
-git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-http-api-compat.patch"
-git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-account-info-compat.patch"
-git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-conditional-writes-compat.patch"
 (
   cd "$OC_INTEGRATION/otterio-source"
   go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio" .
@@ -110,7 +104,7 @@ python3 buildscripts/test-core-integration.py \
 
 这项检查耗时较长，并需要本地磁盘和内存。失败报告包含部分结果；把本次运行作为验收依据前，逐项检查场景状态。先保存供审查的报告和已脱敏的证据，再清理本次创建的临时目录。脚本会回收服务器进程和场景数据，显式指定的报告与证据目录会保留。排查 cgo 相关问题时，使用 `CGO_ENABLED=1` 重新构建并运行。
 
-服务端回归测试的具体命令，以及 Linux/macOS 的 cgo 矩阵，见 [Go 工作流](../../.github/workflows/go.yml)。[兼容说明](compatibility.md)介绍检查能证明的范围和尚未验证的部分。服务端测试补丁不改变 OC 的 SDK 依赖，也不证明其他 OtterIO 版本已经兼容。
+服务端回归测试的具体命令，以及 Linux/macOS 的 cgo 矩阵，见 [Go 工作流](../../.github/workflows/go.yml)。[兼容说明](compatibility.md)介绍检查能证明的范围和尚未验证的部分。固定源码的通过结果不证明其他 OtterIO 版本已经兼容；旧补丁仅保留为历史 fixture。
 
 ## 理解 CI 的覆盖范围
 

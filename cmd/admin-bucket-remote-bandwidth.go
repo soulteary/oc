@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -24,42 +25,42 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 var adminBandwidthInfoCmdFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "unit",
 		Value: "b",
 		Usage: "[b|bi|B|Bi] Display bandwidth in bits (IEC [bi] or SI [b]) or bytes (IEC [Bi] or SI [B])",
 	},
 }
 
-var adminBwInfoCmd = cli.Command{
+var adminBwInfoCmd = &cli.Command{
 	Name:         "bandwidth",
 	Usage:        "Show bandwidth info for buckets on the OtterIO server in bits or bytes per second. Ki,Bi,Mi,Gi represent IEC units.",
-	Action:       mainAdminBwInfo,
-	Before:       setGlobalsFromContext,
+	Action:       commandAction(mainAdminBwInfo),
+	Before:       commandBefore(setGlobalsFromContext),
 	OnUsageError: onUsageError,
 	Flags:        append(globalFlags, adminBandwidthInfoCmdFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} FLAGS TARGET
+  {{.FullName}} FLAGS TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Show the bandwidth usage for all the buckets in a OtterIO server setup
-     {{.Prompt}} {{.HelpName}} store/
+     {{Prompt}} {{.FullName}} store/
   2. Show the bandwidth usage for the bucket 'source-bucket' in a OtterIO server setup
-     {{.Prompt}} {{.HelpName}} store/source-bucket
+     {{Prompt}} {{.FullName}} store/source-bucket
 `,
 }
 
@@ -131,21 +132,21 @@ func printTable(report madmin.Report, bits bool, iec bool) {
 		}
 	}
 }
-func checkAdminBwInfoSyntax(ctx *cli.Context) {
+func checkAdminBwInfoSyntax(ctx *cli.Command) {
 	u := ctx.String("unit")
 	if u != "bi" &&
 		u != "b" &&
 		u != "Bi" &&
 		u != "B" &&
 		u != "" {
-		cli.ShowCommandHelpAndExit(ctx, "bandwidth", globalErrorExitStatus)
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "bandwidth", globalErrorExitStatus)
 	}
-	if len(ctx.Args()) > 1 || len(ctx.Args()) == 0 {
-		cli.ShowCommandHelpAndExit(ctx, "bandwidth", globalErrorExitStatus)
+	if ctx.Args().Len() > 1 || ctx.Args().Len() == 0 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "bandwidth", globalErrorExitStatus)
 	}
 }
 
-func mainAdminBwInfo(ctx *cli.Context) {
+func mainAdminBwInfo(ctx *cli.Command) error {
 	checkAdminBwInfoSyntax(ctx)
 	aliasURL, bucket := getAliasAndBucket(ctx)
 	client := getClient(aliasURL)
@@ -168,7 +169,7 @@ func mainAdminBwInfo(ctx *cli.Context) {
 				bandwidthUnitsString == "bi" || bandwidthUnitsString == "Bi")
 			firstPrint = false
 		case <-globalContext.Done():
-			return
+			return nil
 		}
 	}
 }

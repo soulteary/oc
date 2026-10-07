@@ -16,9 +16,9 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var adminConfigSubcommands = []cli.Command{
+var adminConfigSubcommands = []*cli.Command{
 	adminConfigGetCmd,
 	adminConfigSetCmd,
 	adminConfigResetCmd,
@@ -28,18 +28,18 @@ var adminConfigSubcommands = []cli.Command{
 	adminConfigImportCmd,
 }
 
-var adminConfigCmd = cli.Command{
+var adminConfigCmd = &cli.Command{
 	Name:            "config",
 	Usage:           "manage OtterIO server configuration",
-	Action:          mainAdminConfig,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainAdminConfig),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     adminConfigSubcommands,
+	Commands:        adminConfigSubcommands,
 	HideHelpCommand: true,
 }
 
 // mainAdminConfig is the handle for "mc admin config" command.
-func mainAdminConfig(ctx *cli.Context) error {
+func mainAdminConfig(ctx *cli.Command) error {
 	commandNotFound(ctx, adminConfigSubcommands)
 	return nil
 	// Sub-commands like "get", "set" have their own main.

@@ -17,43 +17,44 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminKMSKeyStatusCmd = cli.Command{
+var adminKMSKeyStatusCmd = &cli.Command{
 	Name:         "status",
 	Usage:        "request status information for a KMS master key",
-	Action:       mainAdminKMSKeyStatus,
+	Action:       commandAction(mainAdminKMSKeyStatus),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET [KEY_NAME]
+  {{.FullName}} TARGET [KEY_NAME]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Get default master key and its status from a OtterIO server/cluster.
-     $ {{.HelpName}} play
+     $ {{.FullName}} play
   2. Get the status of one particular master key from a OtterIO server/cluster.
-     $ {{.HelpName}} play my-master-key
+     $ {{.FullName}} play my-master-key
 `,
 }
 
 // adminKMSKeyCmd is the handle for the "mc admin kms key" command.
-func mainAdminKMSKeyStatus(ctx *cli.Context) error {
-	if len(ctx.Args()) == 0 || len(ctx.Args()) > 2 {
-		cli.ShowCommandHelpAndExit(ctx, "status", 1) // last argument is exit code
+func mainAdminKMSKeyStatus(ctx *cli.Command) error {
+	if ctx.Args().Len() == 0 || ctx.Args().Len() > 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "status", 1) // last argument is exit code
 	}
 
 	console.SetColor("StatusSuccess", color.New(color.FgGreen, color.Bold))
@@ -63,7 +64,7 @@ func mainAdminKMSKeyStatus(ctx *cli.Context) error {
 	fatalIf(err, "Unable to get a configured admin connection.")
 
 	var keyID string
-	if len(ctx.Args()) == 2 {
+	if ctx.Args().Len() == 2 {
 		keyID = ctx.Args().Get(1)
 	}
 	status, e := client.GetKeyStatus(globalContext, keyID)

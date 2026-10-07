@@ -25,38 +25,38 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	policyFlags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "list recursively",
 		},
 	}
 )
 
 // Manage anonymous access to buckets and objects.
-var policyCmd = cli.Command{
+var policyCmd = &cli.Command{
 	Name:         "policy",
 	Usage:        "manage anonymous access to buckets and objects",
-	Action:       mainPolicy,
+	Action:       commandAction(mainPolicy),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(policyFlags, globalFlags...),
 	CustomHelpTemplate: `Name:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] set PERMISSION TARGET
-  {{.HelpName}} [FLAGS] set-json FILE TARGET
-  {{.HelpName}} [FLAGS] get TARGET
-  {{.HelpName}} [FLAGS] get-json TARGET
-  {{.HelpName}} [FLAGS] list TARGET
+  {{.FullName}} [FLAGS] set PERMISSION TARGET
+  {{.FullName}} [FLAGS] set-json FILE TARGET
+  {{.FullName}} [FLAGS] get TARGET
+  {{.FullName}} [FLAGS] get-json TARGET
+  {{.FullName}} [FLAGS] list TARGET
 {{if .VisibleFlags}}
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -69,31 +69,31 @@ FILE:
 
 EXAMPLES:
   1. Set bucket to "download" on Amazon S3 cloud storage.
-     {{.Prompt}} {{.HelpName}} set download s3/burningman2011
+     {{Prompt}} {{.FullName}} set download s3/burningman2011
 
   2. Set bucket to "public" on Amazon S3 cloud storage.
-     {{.Prompt}} {{.HelpName}} set public s3/shared
+     {{Prompt}} {{.FullName}} set public s3/shared
 
   3. Set bucket to "upload" on Amazon S3 cloud storage.
-     {{.Prompt}} {{.HelpName}} set upload s3/incoming
+     {{Prompt}} {{.FullName}} set upload s3/incoming
 
   4. Set policy to "public" for bucket with prefix on Amazon S3 cloud storage.
-     {{.Prompt}} {{.HelpName}} set public s3/public-commons/images
+     {{Prompt}} {{.FullName}} set public s3/public-commons/images
 
   5. Set a custom prefix based bucket policy on Amazon S3 cloud storage using a JSON file.
-     {{.Prompt}} {{.HelpName}} set-json /path/to/policy.json s3/public-commons/images
+     {{Prompt}} {{.FullName}} set-json /path/to/policy.json s3/public-commons/images
 
   6. Get bucket permissions.
-     {{.Prompt}} {{.HelpName}} get s3/shared
+     {{Prompt}} {{.FullName}} get s3/shared
 
   7. Get bucket permissions in JSON format.
-     {{.Prompt}} {{.HelpName}} get-json s3/shared
+     {{Prompt}} {{.FullName}} get-json s3/shared
 
   8. List policies set to a specified bucket.
-     {{.Prompt}} {{.HelpName}} list s3/shared
+     {{Prompt}} {{.FullName}} list s3/shared
 
   9. List public object URLs recursively.
-     {{.Prompt}} {{.HelpName}} --recursive links s3/shared/
+     {{Prompt}} {{.FullName}} --recursive links s3/shared/
 `,
 }
 
@@ -175,15 +175,15 @@ func (s policyLinksMessage) JSON() string {
 }
 
 // checkPolicySyntax check for incoming syntax.
-func checkPolicySyntax(ctx *cli.Context) {
-	argsLength := len(ctx.Args())
+func checkPolicySyntax(ctx *cli.Command) {
+	argsLength := ctx.Args().Len()
 	// Always print a help message when we have extra arguments
 	if argsLength > 3 {
-		cli.ShowCommandHelpAndExit(ctx, "policy", 1) // last argument is exit code.
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "policy", 1) // last argument is exit code.
 	}
 	// Always print a help message when no arguments specified
 	if argsLength < 1 {
-		cli.ShowCommandHelpAndExit(ctx, "policy", 1)
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "policy", 1)
 	}
 
 	firstArg := ctx.Args().Get(0)
@@ -194,7 +194,7 @@ func checkPolicySyntax(ctx *cli.Context) {
 	case "set":
 		// Always expect three arguments when setting a policy permission.
 		if argsLength != 3 {
-			cli.ShowCommandHelpAndExit(ctx, "policy", 1)
+			cli.ShowCommandHelpAndExit(context.Background(), ctx, "policy", 1)
 		}
 		if accessPerms(secondArg) != accessNone &&
 			accessPerms(secondArg) != accessDownload &&
@@ -207,25 +207,25 @@ func checkPolicySyntax(ctx *cli.Context) {
 	case "set-json":
 		// Always expect three arguments when setting a policy permission.
 		if argsLength != 3 {
-			cli.ShowCommandHelpAndExit(ctx, "policy", 1)
+			cli.ShowCommandHelpAndExit(context.Background(), ctx, "policy", 1)
 		}
 	case "get", "get-json":
 		// get or get-json always expects two arguments
 		if argsLength != 2 {
-			cli.ShowCommandHelpAndExit(ctx, "policy", 1)
+			cli.ShowCommandHelpAndExit(context.Background(), ctx, "policy", 1)
 		}
 	case "list":
 		// Always expect an argument after list cmd
 		if argsLength != 2 {
-			cli.ShowCommandHelpAndExit(ctx, "policy", 1)
+			cli.ShowCommandHelpAndExit(context.Background(), ctx, "policy", 1)
 		}
 	case "links":
 		// Always expect an argument after links cmd
 		if argsLength != 2 {
-			cli.ShowCommandHelpAndExit(ctx, "policy", 1)
+			cli.ShowCommandHelpAndExit(context.Background(), ctx, "policy", 1)
 		}
 	default:
-		cli.ShowCommandHelpAndExit(ctx, "policy", 1)
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "policy", 1)
 	}
 }
 
@@ -331,11 +331,11 @@ func doGetAccessRules(ctx context.Context, targetURL string) (r map[string]strin
 }
 
 // Run policy list command
-func runPolicyListCmd(args cli.Args) {
+func runPolicyListCmd(args []string) {
 	ctx, cancelPolicyList := context.WithCancel(globalContext)
 	defer cancelPolicyList()
 
-	targetURL := args.First()
+	targetURL := argumentAt(args, 0)
 	policies, err := doGetAccessRules(ctx, targetURL)
 	if err != nil {
 		switch err.ToGoError().(type) {
@@ -351,12 +351,12 @@ func runPolicyListCmd(args cli.Args) {
 }
 
 // Run policy links command
-func runPolicyLinksCmd(args cli.Args, recursive bool) {
+func runPolicyLinksCmd(args []string, recursive bool) {
 	ctx, cancelPolicyLinks := context.WithCancel(globalContext)
 	defer cancelPolicyLinks()
 
 	// Get alias/bucket/prefix argument
-	targetURL := args.First()
+	targetURL := argumentAt(args, 0)
 
 	// Fetch all policies associated to the passed url
 	policies, err := doGetAccessRules(ctx, targetURL)
@@ -419,14 +419,14 @@ func runPolicyLinksCmd(args cli.Args, recursive bool) {
 }
 
 // Run policy cmd to fetch set permission
-func runPolicyCmd(args cli.Args) {
+func runPolicyCmd(args []string) {
 	ctx, cancelPolicy := context.WithCancel(globalContext)
 	defer cancelPolicy()
 
 	var operation, policyStr string
 	var probeErr *probe.Error
-	perms := accessPerms(args.Get(1))
-	targetURL := args.Get(2)
+	perms := accessPerms(argumentAt(args, 1))
+	targetURL := argumentAt(args, 2)
 	if perms.isValidAccessPERM() {
 		operation = "set"
 		probeErr = doSetAccess(ctx, targetURL, perms)
@@ -437,9 +437,9 @@ func runPolicyCmd(args cli.Args) {
 		probeErr = doSetAccessJSON(ctx, targetURL, perms)
 		operation = "set-json"
 	} else {
-		targetURL = args.Get(1)
+		targetURL = argumentAt(args, 1)
 		operation = "get"
-		if args.First() == "get-json" {
+		if argumentAt(args, 0) == "get-json" {
 			operation = "get-json"
 		}
 		perms, policyStr, probeErr = doGetAccess(ctx, targetURL)
@@ -469,7 +469,7 @@ func runPolicyCmd(args cli.Args) {
 	})
 }
 
-func mainPolicy(ctx *cli.Context) error {
+func mainPolicy(ctx *cli.Command) error {
 	// check 'policy' cli arguments.
 	checkPolicySyntax(ctx)
 
@@ -482,7 +482,7 @@ func mainPolicy(ctx *cli.Context) error {
 		// policy set-json path-to-policy-json-file alias/bucket/prefix
 		// policy get alias/bucket/prefix
 		// policy get-json alias/bucket/prefix
-		runPolicyCmd(ctx.Args())
+		runPolicyCmd(ctx.Args().Slice())
 	case "list":
 		// policy list alias/bucket/prefix
 		runPolicyListCmd(ctx.Args().Tail())
@@ -491,7 +491,7 @@ func mainPolicy(ctx *cli.Context) error {
 		runPolicyLinksCmd(ctx.Args().Tail(), ctx.Bool("recursive"))
 	default:
 		// Shows command example and exit
-		cli.ShowCommandHelpAndExit(ctx, "policy", 1)
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "policy", 1)
 	}
 	return nil
 }

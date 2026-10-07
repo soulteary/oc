@@ -21,39 +21,39 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/replication"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var replicateStatusCmd = cli.Command{
+var replicateStatusCmd = &cli.Command{
 	Name:         "status",
 	Usage:        "show server side replication status",
-	Action:       mainReplicateStatus,
+	Action:       commandAction(mainReplicateStatus),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-   {{.HelpName}} - {{.Usage}}
+   {{.FullName}} - {{.Usage}}
 
 USAGE:
-   {{.HelpName}} TARGET
+   {{.FullName}} TARGET
 
 FLAGS:
    {{range .VisibleFlags}}{{.}}
    {{end}}
 EXAMPLES:
   1. Get server side replication metrics for bucket "mybucket" for alias "store".
-	   {{.Prompt}} {{.HelpName}} store/mybucket
+	   {{Prompt}} {{.FullName}} store/mybucket
 `,
 }
 
 // checkReplicateStatusSyntax - validate all the passed arguments
-func checkReplicateStatusSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "status", 1) // last argument is exit code
+func checkReplicateStatusSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "status", 1) // last argument is exit code
 	}
 }
 
@@ -108,7 +108,7 @@ func (s replicateStatusMessage) String() string {
 	return console.Colorize("replicateStatusMessage", rows)
 }
 
-func mainReplicateStatus(cliCtx *cli.Context) error {
+func mainReplicateStatus(cliCtx *cli.Command) error {
 	ctx, cancelReplicateStatus := context.WithCancel(globalContext)
 	defer cancelReplicateStatus()
 
@@ -120,8 +120,8 @@ func mainReplicateStatus(cliCtx *cli.Context) error {
 	checkReplicateStatusSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(0)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")

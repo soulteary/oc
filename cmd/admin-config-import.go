@@ -17,35 +17,36 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminConfigImportCmd = cli.Command{
+var adminConfigImportCmd = &cli.Command{
 	Name:         "import",
 	Usage:        "import multiple config keys from STDIN",
-	Before:       setGlobalsFromContext,
-	Action:       mainAdminConfigImport,
+	Before:       commandBefore(setGlobalsFromContext),
+	Action:       commandAction(mainAdminConfigImport),
 	OnUsageError: onUsageError,
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Import the new local config and apply to the OtterIO server
-     {{.Prompt}} {{.HelpName}} store/ < config.txt
+     {{Prompt}} {{.FullName}} store/ < config.txt
 `,
 }
 
@@ -75,13 +76,13 @@ func (u configImportMessage) JSON() string {
 }
 
 // checkAdminConfigImportSyntax - validate all the passed arguments
-func checkAdminConfigImportSyntax(ctx *cli.Context) {
-	if !ctx.Args().Present() || len(ctx.Args()) > 1 {
-		cli.ShowCommandHelpAndExit(ctx, "import", 1) // last argument is exit code
+func checkAdminConfigImportSyntax(ctx *cli.Command) {
+	if !ctx.Args().Present() || ctx.Args().Len() > 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "import", 1) // last argument is exit code
 	}
 }
 
-func mainAdminConfigImport(ctx *cli.Context) error {
+func mainAdminConfigImport(ctx *cli.Command) error {
 
 	checkAdminConfigImportSyntax(ctx)
 
@@ -89,8 +90,8 @@ func mainAdminConfigImport(ctx *cli.Context) error {
 	console.SetColor("SetConfigSuccess", color.New(color.FgGreen, color.Bold))
 
 	// Import the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

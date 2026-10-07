@@ -23,46 +23,46 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/replication"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var replicateListFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "status",
 		Usage: "show rules by status. Valid options are [enabled,disabled]",
 	},
 }
 
-var replicateListCmd = cli.Command{
+var replicateListCmd = &cli.Command{
 	Name:         "ls",
 	Usage:        "list server side replication configuration rules",
-	Action:       mainReplicateList,
+	Action:       commandAction(mainReplicateList),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(globalFlags, replicateListFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 	 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 	 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. List server side replication configuration rules on bucket "mybucket" for alias "store".
-     {{.Prompt}} {{.HelpName}} store/mybucket
+     {{Prompt}} {{.FullName}} store/mybucket
 `,
 }
 
 // checkReplicateListSyntax - validate all the passed arguments
-func checkReplicateListSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "ls", 1) // last argument is exit code
+func checkReplicateListSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "ls", 1) // last argument is exit code
 	}
 }
 func printReplicateListHeader() {
@@ -121,7 +121,7 @@ func (l replicateListMessage) String() string {
 	).buildRow(r.ID, strconv.Itoa(r.Priority), string(r.Status), r.Filter.And.Prefix, r.Tags(), r.Destination.Bucket, r.Destination.StorageClass))
 }
 
-func mainReplicateList(cliCtx *cli.Context) error {
+func mainReplicateList(cliCtx *cli.Command) error {
 	ctx, cancelReplicateList := context.WithCancel(globalContext)
 	defer cancelReplicateList()
 
@@ -130,8 +130,8 @@ func mainReplicateList(cliCtx *cli.Context) error {
 	checkReplicateListSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(0)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")

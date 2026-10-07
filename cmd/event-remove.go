@@ -21,64 +21,64 @@ import (
 	"errors"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	eventRemoveFlags = []cli.Flag{
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "force",
 			Usage: "force removing all bucket notifications",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "event",
 			Usage: "filter specific type of event. Defaults to all event",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "prefix",
 			Usage: "filter event associated to the specified prefix",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "suffix",
 			Usage: "filter event associated to the specified suffix",
 		},
 	}
 )
 
-var eventRemoveCmd = cli.Command{
+var eventRemoveCmd = &cli.Command{
 	Name:         "remove",
 	Usage:        "remove a bucket notification; '--force' removes all bucket notifications",
-	Action:       mainEventRemove,
+	Action:       commandAction(mainEventRemove),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(eventRemoveFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET [ARN] [FLAGS]
+  {{.FullName}} TARGET [ARN] [FLAGS]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Remove bucket notification associated to a specific arn
-    {{.Prompt}} {{.HelpName}} store/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue
+    {{Prompt}} {{.FullName}} store/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue
 
   2. Remove all bucket notifications. --force flag is mandatory here
-    {{.Prompt}} {{.HelpName}} store/mybucket --force
+    {{Prompt}} {{.FullName}} store/mybucket --force
 `,
 }
 
 // checkEventRemoveSyntax - validate all the passed arguments
-func checkEventRemoveSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) == 0 || len(ctx.Args()) > 2 {
-		cli.ShowCommandHelpAndExit(ctx, "remove", 1) // last argument is exit code
+func checkEventRemoveSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() == 0 || ctx.Args().Len() > 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "remove", 1) // last argument is exit code
 	}
-	if len(ctx.Args()) == 1 && !ctx.Bool("force") {
+	if ctx.Args().Len() == 1 && !ctx.Bool("force") {
 		fatalIf(probe.NewError(errors.New("")), "--force flag needs to be passed to remove all bucket notifications.")
 	}
 }
@@ -102,7 +102,7 @@ func (u eventRemoveMessage) String() string {
 	return msg
 }
 
-func mainEventRemove(cliCtx *cli.Context) error {
+func mainEventRemove(cliCtx *cli.Command) error {
 	ctx, cancelEventRemove := context.WithCancel(globalContext)
 	defer cancelEventRemove()
 
@@ -110,12 +110,12 @@ func mainEventRemove(cliCtx *cli.Context) error {
 
 	checkEventRemoveSyntax(cliCtx)
 
-	args := cliCtx.Args()
-	path := args.Get(0)
+	args := cliCtx.Args().Slice()
+	path := argumentAt(args, 0)
 
 	arn := ""
 	if len(args) == 2 {
-		arn = args.Get(1)
+		arn = argumentAt(args, 1)
 	}
 
 	client, err := newClient(path)

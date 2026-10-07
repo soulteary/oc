@@ -18,60 +18,60 @@ package cmd
 
 import (
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var aliasRemoveCmd = cli.Command{
-	Name:      "remove",
-	ShortName: "rm",
-	Usage:     "remove an alias from configuration file",
-	Action: func(ctx *cli.Context) error {
+var aliasRemoveCmd = &cli.Command{
+	Name:    "remove",
+	Aliases: []string{"rm"},
+	Usage:   "remove an alias from configuration file",
+	Action: commandAction(func(ctx *cli.Command) error {
 		return mainAliasRemove(ctx, false)
-	},
-	Before:          setGlobalsFromContext,
+	}),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
 	HideHelpCommand: true,
 	OnUsageError:    onUsageError,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} ALIAS
+  {{.FullName}} ALIAS
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Remove "goodisk" alias from the configuration.
-     {{.Prompt}} {{.HelpName}} goodisk
+     {{Prompt}} {{.FullName}} goodisk
 
 `,
 }
 
 // checkAliasRemoveSyntax - verifies input arguments to 'alias remove'.
-func checkAliasRemoveSyntax(ctx *cli.Context) {
-	args := ctx.Args()
+func checkAliasRemoveSyntax(ctx *cli.Command) {
+	args := ctx.Args().Slice()
 
-	if len(ctx.Args()) != 1 {
+	if ctx.Args().Len() != 1 {
 		fatalIf(errInvalidArgument().Trace(args...),
 			"Incorrect number of arguments for alias remove command.")
 	}
 
-	alias := cleanAlias(args.Get(0))
+	alias := cleanAlias(argumentAt(args, 0))
 	if !isValidAlias(alias) {
 		fatalIf(errDummy().Trace(alias), "Invalid alias `"+alias+"`.")
 	}
 }
 
 // mainAliasRemove is the handle for "mc alias rm" command.
-func mainAliasRemove(ctx *cli.Context, deprecated bool) error {
+func mainAliasRemove(ctx *cli.Command, deprecated bool) error {
 	checkAliasRemoveSyntax(ctx)
 
 	console.SetColor("AliasMessage", color.New(color.FgGreen))
 
-	args := ctx.Args()
-	alias := args.Get(0)
+	args := ctx.Args().Slice()
+	alias := argumentAt(args, 0)
 
 	aliasMsg := removeAlias(alias) // Remove an alias
 	aliasMsg.op = "remove"

@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -24,49 +25,49 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/auth"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 var adminBucketRemoteEditFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "arn",
 		Usage: "ARN of target",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "sync",
 		Usage: "enable synchronous replication for this target. Valid values are enable,disable.Defaults to disable if unset",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "bandwidth",
 		Usage: "Set bandwidth limit in bits per second (K,B,G,T for metric and Ki,Bi,Gi,Ti for IEC units)",
 	},
-	cli.UintFlag{
+	&cli.UintFlag{
 		Name:  "healthcheck-seconds",
 		Usage: "health check duration in seconds",
 		Value: 60,
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "path",
 		Value: "auto",
 		Usage: "bucket path lookup supported by the server. Valid options are '[on,off,auto]'",
 	},
 }
-var adminBucketRemoteEditCmd = cli.Command{
+var adminBucketRemoteEditCmd = &cli.Command{
 	Name:         "edit",
 	Usage:        "edit remote target",
-	Action:       mainAdminBucketRemoteEdit,
-	Before:       setGlobalsFromContext,
+	Action:       commandAction(mainAdminBucketRemoteEdit),
+	Before:       commandBefore(setGlobalsFromContext),
 	OnUsageError: onUsageError,
 	Flags:        append(globalFlags, adminBucketRemoteEditFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET http(s)://ACCESSKEY:SECRETKEY@DEST_URL/DEST_BUCKET --arn arn
+  {{.FullName}} TARGET http(s)://ACCESSKEY:SECRETKEY@DEST_URL/DEST_BUCKET --arn arn
 
 TARGET:
   Also called as alias/sourcebucketname
@@ -88,32 +89,32 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Edit credentials for existing remote target with arn where a remote target has been configured between sourcebucket on sitea to targetbucket on siteb.
-    {{.DisableHistory}}
-  	{{.Prompt}} {{.HelpName}} sitea/sourcebucket \
+    {{DisableHistory}}
+  {{"\t"}}{{Prompt}} {{.FullName}} sitea/sourcebucket \
                  https://foobar:newpassword@minio.siteb.example.com/targetbucket \
 				 --arn "arn:minio:replication:us-west-1:993bc6b6-accd-45e3-884f-5f3e652aed2a:dest1"
-    {{.EnableHistory}}
+    {{EnableHistory}}
 
   2. Edit remote target for sourceBucket on sitea with specified ARN to enable synchronous replication
-	   {{.Prompt}} {{.HelpName}} sitea/sourcebucket --sync "enable" \
+	   {{Prompt}} {{.FullName}} sitea/sourcebucket --sync "enable" \
 				--arn "arn:minio:replication:us-west-1:993bc6b6-accd-45e3-884f-5f3e652aed2a:dest1"
 `,
 }
 
 // checkAdminBucketRemoteEditSyntax - validate all the passed arguments
-func checkAdminBucketRemoteEditSyntax(ctx *cli.Context) {
-	argsNr := len(ctx.Args())
+func checkAdminBucketRemoteEditSyntax(ctx *cli.Command) {
+	argsNr := ctx.Args().Len()
 	if argsNr > 2 || argsNr == 0 {
-		cli.ShowCommandHelpAndExit(ctx, ctx.Command.Name, 1) // last argument is exit code
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, ctx.Name, 1) // last argument is exit code
 	}
 	if !ctx.IsSet("arn") {
-		fatalIf(errInvalidArgument().Trace(ctx.Args()...), "--arn flag needs to be set")
+		fatalIf(errInvalidArgument().Trace(ctx.Args().Slice()...), "--arn flag needs to be set")
 	}
 }
 
 // modifyRemoteTarget - modifies the dest credentials or updates sync settings
-func modifyRemoteTarget(cli *cli.Context, targets []madmin.BucketTarget) *madmin.BucketTarget {
-	args := cli.Args()
+func modifyRemoteTarget(cli *cli.Command, targets []madmin.BucketTarget) *madmin.BucketTarget {
+	args := cli.Args().Slice()
 	foundIdx := -1
 	arn := cli.String("arn")
 	for i, t := range targets {
@@ -195,14 +196,14 @@ func modifyRemoteTarget(cli *cli.Context, targets []madmin.BucketTarget) *madmin
 }
 
 // mainAdminBucketRemoteEdit is the handle for "mc admin bucket remote edit" command.
-func mainAdminBucketRemoteEdit(ctx *cli.Context) error {
+func mainAdminBucketRemoteEdit(ctx *cli.Command) error {
 	checkAdminBucketRemoteEditSyntax(ctx)
 
 	console.SetColor("RemoteMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new MinIO Admin Client
 	client, cerr := newAdminClient(aliasedURL)
 	fatalIf(cerr, "Unable to initialize admin connection.")
@@ -219,7 +220,7 @@ func mainAdminBucketRemoteEdit(ctx *cli.Context) error {
 	}
 
 	printMsg(RemoteMessage{
-		op:           ctx.Command.Name,
+		op:           ctx.Name,
 		TargetURL:    bktTarget.URL().String(),
 		TargetBucket: bktTarget.TargetBucket,
 		AccessKey:    bktTarget.Credentials.AccessKey,

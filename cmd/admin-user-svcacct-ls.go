@@ -17,22 +17,22 @@
 package cmd
 
 import (
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
-var adminUserSvcAcctListCmd = cli.Command{
+var adminUserSvcAcctListCmd = &cli.Command{
 	Name:         "ls",
 	Usage:        "List services accounts",
-	Action:       mainAdminUserSvcAcctList,
+	Action:       commandAction(mainAdminUserSvcAcctList),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} ALIAS TARGET-ACCOUNT
+  {{.FullName}} ALIAS TARGET-ACCOUNT
 
 TARGET-ACCOUNT:
   Could be a OtterIO user, STS or LDAP account.
@@ -42,26 +42,26 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. List all service accounts for user 'foobar'.
-     {{.Prompt}} {{.HelpName}} store/ foobar
+     {{Prompt}} {{.FullName}} store/ foobar
 `,
 }
 
 // checkAdminUserSvcAcctListSyntax - validate all the passed arguments
-func checkAdminUserSvcAcctListSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
+func checkAdminUserSvcAcctListSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
 		fatalIf(errInvalidArgument().Trace(ctx.Args().Tail()...),
 			"Incorrect number of arguments for user svcacct ls command.")
 	}
 }
 
 // mainAdminUserSvcAcctList is the handle for "mc admin user svcacct ls" command.
-func mainAdminUserSvcAcctList(ctx *cli.Context) error {
+func mainAdminUserSvcAcctList(ctx *cli.Command) error {
 	checkAdminUserSvcAcctListSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
-	user := args.Get(1)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
+	user := argumentAt(args, 1)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

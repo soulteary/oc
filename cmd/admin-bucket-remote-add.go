@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -25,54 +26,54 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/auth"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 var adminBucketRemoteAddFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "path",
 		Value: "auto",
 		Usage: "bucket path lookup supported by the server. Valid options are '[on,off,auto]'",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "service",
 		Usage: "type of service. Valid options are '[replication]'",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "region",
 		Usage: "region of the destination bucket (optional)",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "bandwidth",
 		Usage: "Set bandwidth limit in bits per second (K,B,G,T for metric and Ki,Bi,Gi,Ti for IEC units)",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "sync",
 		Usage: "enable synchronous replication for this target. Default is async",
 	},
-	cli.UintFlag{
+	&cli.UintFlag{
 		Name:  "healthcheck-seconds",
 		Usage: "health check duration in seconds",
 		Value: 60,
 	},
 }
-var adminBucketRemoteAddCmd = cli.Command{
+var adminBucketRemoteAddCmd = &cli.Command{
 	Name:         "add",
 	Usage:        "add a new remote target",
-	Action:       mainAdminBucketRemoteAdd,
+	Action:       commandAction(mainAdminBucketRemoteAdd),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(globalFlags, adminBucketRemoteAddFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET http(s)://ACCESSKEY:SECRETKEY@DEST_URL/DEST_BUCKET [--path | --region | --bandwidth] --service
+  {{.FullName}} TARGET http(s)://ACCESSKEY:SECRETKEY@DEST_URL/DEST_BUCKET [--path | --region | --bandwidth] --service
 
 TARGET:
   Also called as alias/sourcebucketname
@@ -94,22 +95,22 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Set a new remote replication target "targetbucket" in region "us-west-1" on https://minio.siteb.example.com for bucket 'sourcebucket'.
-     {{.Prompt}} {{.HelpName}} sitea/sourcebucket https://foobar:foo12345@minio.siteb.example.com/targetbucket \
+     {{Prompt}} {{.FullName}} sitea/sourcebucket https://foobar:foo12345@minio.siteb.example.com/targetbucket \
          --service "replication" --region "us-west-1"
 
   2. Set a new remote replication target 'targetbucket' in region "us-west-1" on https://minio.siteb.example.com for
 	 bucket 'sourcebucket' with bandwidth set to 2 gigabits per second. Enable synchronous replication to the target
 	 and perform health check of target every 100 seconds
-     {{.Prompt}} {{.HelpName}} sitea/sourcebucket https://foobar:foo12345@minio.siteb.example.com/targetbucket \
+     {{Prompt}} {{.FullName}} sitea/sourcebucket https://foobar:foo12345@minio.siteb.example.com/targetbucket \
          --service "replication" --region "us-west-1 --bandwidth "2G" --sync
 `,
 }
 
 // checkAdminBucketRemoteAddSyntax - validate all the passed arguments
-func checkAdminBucketRemoteAddSyntax(ctx *cli.Context) {
-	argsNr := len(ctx.Args())
+func checkAdminBucketRemoteAddSyntax(ctx *cli.Command) {
+	argsNr := ctx.Args().Len()
 	if argsNr < 2 {
-		cli.ShowCommandHelpAndExit(ctx, ctx.Command.Name, 1) // last argument is exit code
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, ctx.Name, 1) // last argument is exit code
 	}
 	if argsNr > 2 {
 		fatalIf(errInvalidArgument().Trace(ctx.Args().Tail()...),
@@ -179,8 +180,8 @@ func (r RemoteMessage) JSON() string {
 var targetKeys = regexp.MustCompile("^(https?://)(.*?):(.*?)@(.*?)/(.*?)$")
 
 // fetchRemoteTarget - returns the dest bucket, dest endpoint, access and secret key
-func fetchRemoteTarget(cli *cli.Context) (sourceBucket string, bktTarget *madmin.BucketTarget) {
-	args := cli.Args()
+func fetchRemoteTarget(cli *cli.Command) (sourceBucket string, bktTarget *madmin.BucketTarget) {
+	args := cli.Args().Slice()
 	argCount := len(args)
 	if argCount < 2 {
 		fatalIf(probe.NewError(fmt.Errorf("missing remote target configuration")), "Unable to parse remote target")
@@ -248,13 +249,13 @@ func getBandwidthInBytes(bandwidthStr string) (bandwidth uint64, err error) {
 }
 
 // mainAdminBucketRemoteAdd is the handle for "mc admin bucket remote set" command.
-func mainAdminBucketRemoteAdd(ctx *cli.Context) error {
+func mainAdminBucketRemoteAdd(ctx *cli.Command) error {
 	checkAdminBucketRemoteAddSyntax(ctx)
 	console.SetColor("RemoteMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new MinIO Admin Client
 	client, cerr := newAdminClient(aliasedURL)
 	fatalIf(cerr, "Unable to initialize admin connection.")
@@ -266,7 +267,7 @@ func mainAdminBucketRemoteAdd(ctx *cli.Context) error {
 	}
 
 	printMsg(RemoteMessage{
-		op:              ctx.Command.Name,
+		op:              ctx.Name,
 		TargetURL:       bktTarget.URL().String(),
 		TargetBucket:    bktTarget.TargetBucket,
 		AccessKey:       bktTarget.Credentials.AccessKey,

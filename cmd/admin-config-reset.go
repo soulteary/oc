@@ -17,42 +17,43 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var adminConfigEnvFlags = []cli.Flag{
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "env",
 		Usage: "list all the env only help",
 	},
 }
 
-var adminConfigResetCmd = cli.Command{
+var adminConfigResetCmd = &cli.Command{
 	Name:         "reset",
 	Usage:        "interactively reset a config key parameters",
-	Before:       setGlobalsFromContext,
-	Action:       mainAdminConfigReset,
+	Before:       commandBefore(setGlobalsFromContext),
+	Action:       commandAction(mainAdminConfigReset),
 	OnUsageError: onUsageError,
 	Flags:        append(adminConfigEnvFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Reset MQTT notifcation target 'name1' settings to default values.
-     {{.Prompt}} {{.HelpName}} store/ notify_mqtt:name1
+     {{Prompt}} {{.FullName}} store/ notify_mqtt:name1
 `,
 }
 
@@ -82,14 +83,14 @@ func (u configResetMessage) JSON() string {
 }
 
 // checkAdminConfigResetSyntax - validate all the passed arguments
-func checkAdminConfigResetSyntax(ctx *cli.Context) {
+func checkAdminConfigResetSyntax(ctx *cli.Command) {
 	if !ctx.Args().Present() {
-		cli.ShowCommandHelpAndExit(ctx, "reset", 1) // last argument is exit code
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "reset", 1) // last argument is exit code
 	}
 }
 
 // main config set function
-func mainAdminConfigReset(ctx *cli.Context) error {
+func mainAdminConfigReset(ctx *cli.Command) error {
 
 	// Check command arguments
 	checkAdminConfigResetSyntax(ctx)
@@ -99,14 +100,14 @@ func mainAdminConfigReset(ctx *cli.Context) error {
 	console.SetColor("ResetConfigFailure", color.New(color.FgRed, color.Bold))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
-	if len(ctx.Args()) == 1 {
+	if ctx.Args().Len() == 1 {
 		// Call get config API
 		hr, e := client.HelpConfigKV(globalContext, "", "", ctx.IsSet("env"))
 		fatalIf(probe.NewError(e), "Unable to get help for the sub-system")
@@ -121,7 +122,7 @@ func mainAdminConfigReset(ctx *cli.Context) error {
 	}
 
 	// Call reset config API
-	input := strings.Join(args.Tail(), " ")
+	input := strings.Join(argumentTail(args), " ")
 	fatalIf(probe.NewError(client.DelConfigKV(globalContext, input)),
 		"Unable to reset '%s' on the server", input)
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"flag"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,9 +11,9 @@ import (
 	"testing"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 func TestDoctorEffectiveAliasConfiguration(t *testing.T) {
@@ -114,12 +113,9 @@ func TestDoctorEffectiveAliasConfiguration(t *testing.T) {
 				globalInsecure, globalContext = previousInsecure, previousContext
 				s3AdminNew = previousFactory
 			})
-			flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
-			flags.Bool("online", test.online, "")
-			if err := flags.Parse([]string{"store"}); err != nil {
-				t.Fatal(err)
-			}
-			err := mainDoctor(cli.NewContext(cli.NewApp(), flags, nil))
+			command := &cli.Command{Name: "doctor", Flags: []cli.Flag{&cli.BoolFlag{Name: "online", Value: test.online}},
+				Action: commandAction(mainDoctor), ExitErrHandler: ignoreCLIExit}
+			err := runCLICommand(context.Background(), command, []string{"doctor", "store"})
 			if test.invalid {
 				if err == nil {
 					t.Fatal("invalid environment alias was accepted")

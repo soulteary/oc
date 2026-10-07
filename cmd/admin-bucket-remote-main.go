@@ -16,9 +16,9 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var adminBucketRemoteSubcommands = []cli.Command{
+var adminBucketRemoteSubcommands = []*cli.Command{
 	adminBucketRemoteAddCmd,
 	adminBucketRemoteEditCmd,
 	adminBucketRemoteListCmd,
@@ -26,18 +26,18 @@ var adminBucketRemoteSubcommands = []cli.Command{
 	adminBwInfoCmd,
 }
 
-var adminBucketRemoteCmd = cli.Command{
+var adminBucketRemoteCmd = &cli.Command{
 	Name:            "remote",
 	Usage:           "configure remote target buckets",
-	Action:          mainadminBucketRemote,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainadminBucketRemote),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     adminBucketRemoteSubcommands,
+	Commands:        adminBucketRemoteSubcommands,
 	HideHelpCommand: true,
 }
 
 // mainadminBucketRemote is the handle for "mc admin bucket remote" command.
-func mainadminBucketRemote(ctx *cli.Context) error {
+func mainadminBucketRemote(ctx *cli.Command) error {
 	commandNotFound(ctx, adminBucketRemoteSubcommands)
 	return nil
 	// Sub-commands like "add", "ls", "rm" have their own main.

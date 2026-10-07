@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -24,28 +25,28 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 // du specific flags.
 var (
 	duFlags = []cli.Flag{
-		cli.IntFlag{
-			Name:  "depth, d",
+		&cli.IntFlag{
+			Name: "depth", Aliases: []string{"d"},
 			Usage: "print the total for a folder prefix only if it is N or fewer levels below the command line argument",
 		},
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "recursively print the total for a folder prefix",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "include all object versions no later than specified date",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "versions",
 			Usage: "include all object versions",
 		},
@@ -53,18 +54,18 @@ var (
 )
 
 // Summarize disk usage.
-var duCmd = cli.Command{
+var duCmd = &cli.Command{
 	Name:         "du",
 	Usage:        "summarize disk usage recursively",
-	Action:       mainDu,
+	Action:       commandAction(mainDu),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(append(duFlags, ioFlags...), globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET
+  {{.FullName}} [FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -74,16 +75,16 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
   1. Summarize disk usage of 'jazz-songs' bucket recursively.
-     {{.Prompt}} {{.HelpName}} s3/jazz-songs
+     {{Prompt}} {{.FullName}} s3/jazz-songs
 
   2. Summarize disk usage of 'louis' prefix in 'jazz-songs' bucket upto two levels.
-     {{.Prompt}} {{.HelpName}} --depth=2 s3/jazz-songs/louis/
+     {{Prompt}} {{.FullName}} --depth=2 s3/jazz-songs/louis/
 
   3. Summarize disk usage of 'jazz-songs' bucket at a fixed date/time
-     {{.Prompt}} {{.HelpName}} --rewind "2020.01.01" s3/jazz-songs/
+     {{Prompt}} {{.FullName}} --rewind "2020.01.01" s3/jazz-songs/
 
   4. Summarize disk usage of 'jazz-songs' bucket with all objects versions
-     {{.Prompt}} {{.HelpName}} --versions s3/jazz-songs/
+     {{Prompt}} {{.FullName}} --versions s3/jazz-songs/
 `,
 }
 
@@ -182,9 +183,9 @@ func du(urlStr string, timeRef time.Time, withVersions bool, depth int, encKeyDB
 }
 
 // main for du command.
-func mainDu(ctx *cli.Context) error {
+func mainDu(ctx *cli.Command) error {
 	if !ctx.Args().Present() {
-		cli.ShowCommandHelpAndExit(ctx, "du", 1)
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "du", 1)
 	}
 
 	// Set colors.
@@ -212,7 +213,7 @@ func mainDu(ctx *cli.Context) error {
 	timeRef := parseRewindFlag(ctx.String("rewind"))
 
 	var duErr error
-	for _, urlStr := range ctx.Args() {
+	for _, urlStr := range ctx.Args().Slice() {
 		if _, err := du(urlStr, timeRef, withVersions, depth, encKeyDB); duErr == nil {
 			duErr = err
 		}

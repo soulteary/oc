@@ -24,46 +24,46 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	undoFlags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "undo last S3 put/delete operations",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "force",
 			Usage: "force recursive operation",
 		},
-		cli.IntFlag{
+		&cli.IntFlag{
 			Name:  "last",
 			Usage: "undo N last changes",
 			Value: 1,
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "dry-run",
 			Usage: "fake an undo operation",
 		},
 	}
 )
 
-var undoCmd = cli.Command{
+var undoCmd = &cli.Command{
 	Name:         "undo",
 	Usage:        "undo PUT/DELETE operations",
-	Action:       mainUndo,
+	Action:       commandAction(mainUndo),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(undoFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] SOURCE [SOURCE...]
+  {{.FullName}} [FLAGS] SOURCE [SOURCE...]
 {{if .VisibleFlags}}
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -71,10 +71,10 @@ FLAGS:
 
 EXAMPLES:
   1. Undo the last 3 uploads and/or removals of a particular object
-     {{.Prompt}} {{.HelpName}} s3/backups/file.zip --last 3
+     {{Prompt}} {{.FullName}} s3/backups/file.zip --last 3
 
   2. Undo the last upload/removal change of all objects under a prefix
-     {{.Prompt}} {{.HelpName}} --recursive --force s3/backups/prefix/
+     {{Prompt}} {{.FullName}} --recursive --force s3/backups/prefix/
 `,
 }
 
@@ -111,7 +111,7 @@ func (c undoMessage) JSON() string {
 }
 
 // parseUndoSyntax performs command-line input validation for cat command.
-func parseUndoSyntax(ctx *cli.Context) (targetAliasedURL string, last int, recursive, dryRun bool) {
+func parseUndoSyntax(ctx *cli.Command) (targetAliasedURL string, last int, recursive, dryRun bool) {
 	targetAliasedURL = ctx.Args().Get(0)
 	if targetAliasedURL == "" {
 		fatalIf(errInvalidArgument().Trace(), "The argument should not be empty")
@@ -259,7 +259,7 @@ func checkIfBucketIsVersioned(ctx context.Context, aliasedURL string) (versioned
 }
 
 // mainUndo is the main entry point for undo command.
-func mainUndo(cliCtx *cli.Context) error {
+func mainUndo(cliCtx *cli.Command) error {
 	ctx, cancelCat := context.WithCancel(globalContext)
 	defer cancelCat()
 

@@ -17,24 +17,26 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminPolicyRemoveCmd = cli.Command{
+var adminPolicyRemoveCmd = &cli.Command{
 	Name:         "remove",
 	Usage:        "remove policy",
-	Action:       mainAdminPolicyRemove,
+	Action:       commandAction(mainAdminPolicyRemove),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET POLICYNAME
+  {{.FullName}} TARGET POLICYNAME
 
 POLICYNAME:
   Name of the canned policy on OtterIO server.
@@ -44,36 +46,36 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Remove 'writeonly' policy on OtterIO server.
-     {{.Prompt}} {{.HelpName}} store writeonly
+     {{Prompt}} {{.FullName}} store writeonly
 `,
 }
 
 // checkAdminPolicyRemoveSyntax - validate all the passed arguments
-func checkAdminPolicyRemoveSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
-		cli.ShowCommandHelpAndExit(ctx, "remove", 1) // last argument is exit code
+func checkAdminPolicyRemoveSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "remove", 1) // last argument is exit code
 	}
 }
 
 // mainAdminPolicyRemove is the handle for "mc admin policy remove" command.
-func mainAdminPolicyRemove(ctx *cli.Context) error {
+func mainAdminPolicyRemove(ctx *cli.Command) error {
 	checkAdminPolicyRemoveSyntax(ctx)
 
 	console.SetColor("PolicyMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
-	fatalIf(probe.NewError(client.RemoveCannedPolicy(globalContext, args.Get(1))).Trace(args...), "Unable to remove policy")
+	fatalIf(probe.NewError(client.RemoveCannedPolicy(globalContext, argumentAt(args, 1))).Trace(args...), "Unable to remove policy")
 
 	printMsg(userPolicyMessage{
 		op:     "remove",
-		Policy: args.Get(1),
+		Policy: argumentAt(args, 1),
 	})
 
 	return nil

@@ -18,29 +18,30 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	iampolicy "github.com/soulteary/otterio/pkg/iam/policy"
+	"github.com/urfave/cli/v3"
 )
 
-var adminPolicyAddCmd = cli.Command{
+var adminPolicyAddCmd = &cli.Command{
 	Name:         "add",
 	Usage:        "add new policy",
-	Action:       mainAdminPolicyAdd,
+	Action:       commandAction(mainAdminPolicyAdd),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET POLICYNAME POLICYFILE
+  {{.FullName}} TARGET POLICYNAME POLICYFILE
 
 POLICYNAME:
   Name of the canned policy on OtterIO server.
@@ -53,14 +54,14 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Add a new canned policy 'writeonly'.
-     {{.Prompt}} {{.HelpName}} store writeonly /tmp/writeonly.json
+     {{Prompt}} {{.FullName}} store writeonly /tmp/writeonly.json
  `,
 }
 
 // checkAdminPolicyAddSyntax - validate all the passed arguments
-func checkAdminPolicyAddSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 3 {
-		cli.ShowCommandHelpAndExit(ctx, "add", 1) // last argument is exit code
+func checkAdminPolicyAddSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 3 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "add", 1) // last argument is exit code
 	}
 }
 
@@ -121,16 +122,16 @@ func (u userPolicyMessage) JSON() string {
 }
 
 // mainAdminPolicyAdd is the handle for "mc admin policy add" command.
-func mainAdminPolicyAdd(ctx *cli.Context) error {
+func mainAdminPolicyAdd(ctx *cli.Command) error {
 	checkAdminPolicyAddSyntax(ctx)
 
 	console.SetColor("PolicyMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
-	policy, e := os.ReadFile(args.Get(2))
+	policy, e := os.ReadFile(argumentAt(args, 2))
 	fatalIf(probe.NewError(e).Trace(args...), "Unable to get policy")
 
 	// Create a new MinIO Admin Client
@@ -140,11 +141,11 @@ func mainAdminPolicyAdd(ctx *cli.Context) error {
 	iamp, e := iampolicy.ParseConfig(bytes.NewReader(policy))
 	fatalIf(probe.NewError(e).Trace(args...), "Unable to parse the input policy")
 
-	fatalIf(probe.NewError(client.AddCannedPolicy(globalContext, args.Get(1), iamp)).Trace(args...), "Unable to add new policy")
+	fatalIf(probe.NewError(client.AddCannedPolicy(globalContext, argumentAt(args, 1), iamp)).Trace(args...), "Unable to add new policy")
 
 	printMsg(userPolicyMessage{
 		op:     "add",
-		Policy: args.Get(1),
+		Policy: argumentAt(args, 1),
 	})
 
 	return nil

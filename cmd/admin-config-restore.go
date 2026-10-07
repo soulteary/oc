@@ -17,34 +17,35 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminConfigRestoreCmd = cli.Command{
+var adminConfigRestoreCmd = &cli.Command{
 	Name:         "restore",
 	Usage:        "rollback back changes to a specific config history",
-	Before:       setGlobalsFromContext,
-	Action:       mainAdminConfigRestore,
+	Before:       commandBefore(setGlobalsFromContext),
+	Action:       commandAction(mainAdminConfigRestore),
 	OnUsageError: onUsageError,
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET RESTOREID
+  {{.FullName}} TARGET RESTOREID
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Restore 'restore-id' history key value on OtterIO server.
-     {{.Prompt}} {{.HelpName}} store/ <restore-id>
+     {{Prompt}} {{.FullName}} store/ <restore-id>
 `,
 }
 
@@ -74,32 +75,32 @@ func (u configRestoreMessage) JSON() string {
 }
 
 // checkAdminConfigRestoreSyntax - validate all the passed arguments
-func checkAdminConfigRestoreSyntax(ctx *cli.Context) {
-	if !ctx.Args().Present() || len(ctx.Args()) > 2 {
-		cli.ShowCommandHelpAndExit(ctx, "restore", 1) // last argument is exit code
+func checkAdminConfigRestoreSyntax(ctx *cli.Command) {
+	if !ctx.Args().Present() || ctx.Args().Len() > 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "restore", 1) // last argument is exit code
 	}
 }
 
-func mainAdminConfigRestore(ctx *cli.Context) error {
+func mainAdminConfigRestore(ctx *cli.Command) error {
 
 	checkAdminConfigRestoreSyntax(ctx)
 
 	console.SetColor("ConfigRestoreMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
 	// Call get config API
-	fatalIf(probe.NewError(client.RestoreConfigHistoryKV(globalContext, args.Get(1))), "Unable to restore server configuration.")
+	fatalIf(probe.NewError(client.RestoreConfigHistoryKV(globalContext, argumentAt(args, 1))), "Unable to restore server configuration.")
 
 	// Print
 	printMsg(configRestoreMessage{
-		RestoreID:   args.Get(1),
+		RestoreID:   argumentAt(args, 1),
 		targetAlias: aliasedURL,
 	})
 

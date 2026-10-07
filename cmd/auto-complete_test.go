@@ -20,16 +20,16 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/minio/cli"
+	"github.com/urfave/cli/v3"
 )
 
 func TestAutoCompletionCompletness(t *testing.T) {
 
-	var checkCompletion func(cmd cli.Command, cmdPath string) error
+	var checkCompletion func(cmd *cli.Command, cmdPath string) error
 
-	checkCompletion = func(cmd cli.Command, cmdPath string) error {
-		if cmd.Subcommands != nil {
-			for _, subCmd := range cmd.Subcommands {
+	checkCompletion = func(cmd *cli.Command, cmdPath string) error {
+		if cmd.Commands != nil {
+			for _, subCmd := range cmd.Commands {
 				if cmd.Hidden {
 					continue
 				}
@@ -56,5 +56,32 @@ func TestAutoCompletionCompletness(t *testing.T) {
 			t.Fatalf("Missing completion function: %v", err)
 		}
 
+	}
+}
+
+func TestAutoCompletionVisibilityAndAliases(t *testing.T) {
+	command := cmdToCompleteCmd(&cli.Command{
+		Name: "admin",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{Name: "hidden-option", Aliases: []string{"x"}, Hidden: true},
+		},
+		Commands: []*cli.Command{
+			{Name: "visible", Aliases: []string{"short"}},
+			{Name: "hidden-command", Hidden: true},
+		},
+	}, "")
+	if _, present := command.Flags["--hidden-option"]; !present {
+		t.Fatal("legacy completion includes hidden flags")
+	}
+	if _, present := command.Flags["-x"]; !present {
+		t.Fatal("flag alias missing")
+	}
+	if _, present := command.Sub["visible"]; !present {
+		t.Fatal("visible command missing")
+	}
+	for _, excluded := range []string{"short", "hidden-command"} {
+		if _, present := command.Sub[excluded]; present {
+			t.Fatalf("legacy completion excludes %q", excluded)
+		}
 	}
 }

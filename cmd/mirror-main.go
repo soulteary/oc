@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/minio/minio-go/v7/pkg/notification"
@@ -40,89 +39,90 @@ import (
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 // mirror specific flags.
 var (
 	mirrorFlags = []cli.Flag{
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:   "force",
 			Usage:  "force allows forced overwrite or removal of object(s) on target",
 			Hidden: true, // Hidden since this option is deprecated.
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "overwrite",
 			Usage: "overwrite object(s) on target if it differs from source",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "fake",
 			Usage: "perform a fake mirror operation",
 		},
-		cli.BoolFlag{
-			Name:  "watch, w",
+		&cli.BoolFlag{
+			Name: "watch", Aliases: []string{"w"},
 			Usage: "watch and synchronize changes",
 		},
-		cli.DurationFlag{
+		&cli.DurationFlag{
 			Name:  "watch-rescan-interval",
 			Value: time.Minute,
 			Usage: "periodically reconcile local watch sources to recover missed notifications (minimum 1s)",
 		},
-		cli.DurationFlag{Name: "watch-verify-interval", Usage: "deep-verify unchanged local watch objects at this interval (0 disables, minimum 1s)"},
-		cli.BoolFlag{
+		&cli.DurationFlag{Name: "watch-verify-interval", Usage: "deep-verify unchanged local watch objects at this interval (0 disables, minimum 1s)"},
+		&cli.BoolFlag{
 			Name:  "remove",
 			Usage: "remove extraneous object(s) on target",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "region",
 			Usage: "specify region when creating new bucket(s) on target",
 			Value: "us-east-1",
 		},
-		cli.BoolFlag{
-			Name:  "preserve, a",
+		&cli.BoolFlag{
+			Name: "preserve", Aliases: []string{"a"},
 			Usage: "preserve file(s)/object(s) attributes and bucket(s) policy/locking configuration(s) on target bucket(s)",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "md5",
 			Usage: "force all upload(s) to calculate md5sum checksum",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:   "multi-master",
 			Usage:  "enable multi-master multi-site setup",
 			Hidden: true,
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "active-active",
 			Usage: "enable active-active multi-site setup",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "disable-multipart",
 			Usage: "disable multipart upload feature",
 		},
-		cli.StringSliceFlag{
+		&cli.StringSliceFlag{
 			Name:  "exclude",
 			Usage: "exclude object(s) that match specified object name pattern",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "older-than",
 			Usage: "filter object(s) older than L days, M hours and N minutes",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "newer-than",
 			Usage: "filter object(s) newer than L days, M hours and N minutes",
 		},
-		cli.StringFlag{
-			Name:  "storage-class, sc",
+		&cli.StringFlag{
+			Name: "storage-class", Aliases: []string{"sc"},
 			Usage: "specify storage class for new object(s) on target",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "encrypt",
 			Usage: "encrypt/decrypt objects (using server-side encryption with server managed keys)",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "attr",
 			Usage: "add custom metadata for all objects",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "monitoring-address",
 			Usage: "if specified, a new prometheus endpoint will be created to report mirroring activity. (eg: localhost:8081)",
 		},
@@ -130,18 +130,18 @@ var (
 )
 
 // Mirror folders recursively from a single source to many destinations
-var mirrorCmd = cli.Command{
+var mirrorCmd = &cli.Command{
 	Name:         "mirror",
 	Usage:        "synchronize object(s) to a remote site",
-	Action:       mainMirror,
+	Action:       commandAction(mainMirror),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(append(mirrorFlags, ioFlags...), globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] SOURCE TARGET
+  {{.FullName}} [FLAGS] SOURCE TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -152,57 +152,57 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
   01. Mirror a bucket recursively from OtterIO cloud storage to a bucket on Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} store/photos/2014 s3/backup-photos
+      {{Prompt}} {{.FullName}} store/photos/2014 s3/backup-photos
 
   02. Mirror a local folder recursively to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} backup/ s3/archive
+      {{Prompt}} {{.FullName}} backup/ s3/archive
 
   03. Only mirror files that are newer than 7 days, 10 hours and 30 minutes to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --newer-than "7d10h30m" backup/ s3/archive
+      {{Prompt}} {{.FullName}} --newer-than "7d10h30m" backup/ s3/archive
 
   04. Mirror a bucket from aliased Amazon S3 cloud storage to a folder on Windows.
-      {{.Prompt}} {{.HelpName}} s3\documents\2014\ C:\backup\2014
+      {{Prompt}} {{.FullName}} s3\documents\2014\ C:\backup\2014
 
   05. Mirror a bucket from aliased Amazon S3 cloud storage to a local folder use '--overwrite' to overwrite destination.
-      {{.Prompt}} {{.HelpName}} --overwrite s3/miniocloud miniocloud-backup
+      {{Prompt}} {{.FullName}} --overwrite s3/miniocloud miniocloud-backup
 
   06. Mirror a bucket from OtterIO cloud storage to a bucket on Amazon S3 cloud storage and remove any extraneous
       files on Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --remove store/photos/2014 s3/backup-photos/2014
+      {{Prompt}} {{.FullName}} --remove store/photos/2014 s3/backup-photos/2014
 
   07. Continuously mirror a local folder recursively to OtterIO cloud storage. '--watch' continuously watches for
       new objects, uploads and removes extraneous files on Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --remove --watch /var/lib/backups store/backups
+      {{Prompt}} {{.FullName}} --remove --watch /var/lib/backups store/backups
 
   08. Continuously mirror all buckets and objects from site 1 to site 2, removed buckets and objects will be reflected as well.
-      {{.Prompt}} {{.HelpName}} --remove --watch site1-alias/ site2-alias/
+      {{Prompt}} {{.FullName}} --remove --watch site1-alias/ site2-alias/
 
   09. Mirror a bucket from aliased Amazon S3 cloud storage to a local folder.
       Exclude all .* files and *.temp files when mirroring.
-      {{.Prompt}} {{.HelpName}} --exclude ".*" --exclude "*.temp" s3/test ~/test
+      {{Prompt}} {{.FullName}} --exclude ".*" --exclude "*.temp" s3/test ~/test
 
   10. Mirror objects newer than 10 days from bucket test to a local folder.
-      {{.Prompt}} {{.HelpName}} --newer-than 10d s3/test ~/localfolder
+      {{Prompt}} {{.FullName}} --newer-than 10d s3/test ~/localfolder
 
   11. Mirror objects older than 30 days from Amazon S3 bucket test to a local folder.
-      {{.Prompt}} {{.HelpName}} --older-than 30d s3/test ~/test
+      {{Prompt}} {{.FullName}} --older-than 30d s3/test ~/test
 
   12. Mirror server encrypted objects from OtterIO cloud storage to a bucket on Amazon S3 cloud storage
-      {{.Prompt}} {{.HelpName}} --encrypt-key "minio/photos=32byteslongsecretkeymustbegiven1,s3/archive=32byteslongsecretkeymustbegiven2" minio/photos/ s3/archive/
+      {{Prompt}} {{.FullName}} --encrypt-key "minio/photos=32byteslongsecretkeymustbegiven1,s3/archive=32byteslongsecretkeymustbegiven2" minio/photos/ s3/archive/
 
   13. Mirror server encrypted objects from OtterIO cloud storage to a bucket on Amazon S3 cloud storage. In case the encryption key contains
       non-printable character like tab, pass the base64 encoded string as key.
-      {{.Prompt}} {{.HelpName}} --encrypt-key "s3/photos/=32byteslongsecretkeymustbegiven1,store/archive/=MzJieXRlc2xvbmdzZWNyZXRrZQltdXN0YmVnaXZlbjE=" s3/photos/ store/archive/
+      {{Prompt}} {{.FullName}} --encrypt-key "s3/photos/=32byteslongsecretkeymustbegiven1,store/archive/=MzJieXRlc2xvbmdzZWNyZXRrZQltdXN0YmVnaXZlbjE=" s3/photos/ store/archive/
 
   14. Update 'Cache-Control' header on all existing objects recursively.
-      {{.Prompt}} {{.HelpName}} --attr "Cache-Control=max-age=90000,min-fresh=9000" store/video-files store/video-files
+      {{Prompt}} {{.FullName}} --attr "Cache-Control=max-age=90000,min-fresh=9000" store/video-files store/video-files
 
   15. Mirror a local folder recursively to Amazon S3 cloud storage and preserve all local file attributes.
-      {{.Prompt}} {{.HelpName}} -a backup/ s3/archive
+      {{Prompt}} {{.FullName}} -a backup/ s3/archive
 
   16. Cross mirror between sites in a active-active deployment.
-      Site-A: {{.Prompt}} {{.HelpName}} --active-active siteA siteB
-      Site-B: {{.Prompt}} {{.HelpName}} --active-active siteB siteA
+      Site-A: {{Prompt}} {{.FullName}} --active-active siteA siteB
+      Site-B: {{Prompt}} {{.FullName}} --active-active siteB siteA
 `,
 }
 
@@ -899,7 +899,7 @@ type mirrorRecovery struct {
 }
 
 // runMirror - mirrors all buckets to another S3 server
-func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Context, encKeyDB map[string][]prefixSSEPair, recovery *mirrorRecovery) bool {
+func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Command, encKeyDB map[string][]prefixSSEPair, recovery *mirrorRecovery) bool {
 	ctx, cancelMirror := context.WithCancel(ctx)
 	defer cancelMirror()
 	// Parse metadata.
@@ -1050,7 +1050,7 @@ func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Context, enc
 }
 
 // Main entry point for mirror command.
-func mainMirror(cliCtx *cli.Context) error {
+func mainMirror(cliCtx *cli.Command) error {
 	// Additional command specific theme customization.
 	console.SetColor("Mirror", color.New(color.FgGreen, color.Bold))
 

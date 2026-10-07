@@ -20,73 +20,71 @@ import (
 	"context"
 	gojson "encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/fatih/color"
 	"github.com/klauspost/compress/gzip"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 var adminHealthFlags = []cli.Flag{
-	HealthDataTypeFlag{
-		Name:   "test",
-		Usage:  "choose health tests to run [" + options.String() + "]",
-		Value:  nil,
-		EnvVar: "OC_HEALTH_TEST,OC_OBD_TEST,MC_HEALTH_TEST,MC_OBD_TEST",
-		Hidden: true,
+	&cli.GenericFlag{
+		Name:    "test",
+		Usage:   "choose health tests to run [" + options.String() + "]",
+		Value:   &HealthDataTypeSlice{},
+		Sources: cli.EnvVars("OC_HEALTH_TEST", "OC_OBD_TEST", "MC_HEALTH_TEST", "MC_OBD_TEST"),
+		Hidden:  true,
 	},
-	cli.DurationFlag{
-		Name:   "deadline",
-		Usage:  "maximum duration that health tests should be allowed to run",
-		Value:  3600 * time.Second,
-		EnvVar: "OC_HEALTH_DEADLINE,OC_OBD_DEADLINE,MC_HEALTH_DEADLINE,MC_OBD_DEADLINE",
+	&cli.DurationFlag{
+		Name:    "deadline",
+		Usage:   "maximum duration that health tests should be allowed to run",
+		Value:   3600 * time.Second,
+		Sources: cli.EnvVars("OC_HEALTH_DEADLINE", "OC_OBD_DEADLINE", "MC_HEALTH_DEADLINE", "MC_OBD_DEADLINE"),
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "license",
 		Usage: "unsupported: SUBNET uploads are disabled",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:   "dev",
 		Usage:  "Development mode",
 		Hidden: true,
 	},
 }
 
-var adminSubnetHealthCmd = cli.Command{
+var adminSubnetHealthCmd = &cli.Command{
 	Name:         "health",
 	Usage:        "generate a local health report (no SUBNET upload)",
 	OnUsageError: onUsageError,
-	Action:       mainAdminHealth,
-	Before:       setGlobalsFromContext,
+	Action:       commandAction(mainAdminHealth),
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(adminHealthFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Get server information of the 'play' OtterIO server.
-     {{.Prompt}} {{.HelpName}} store/
+     {{Prompt}} {{.FullName}} store/
 `,
 }
 
 // checkAdminHealthSyntax - validate arguments passed by a user
-func checkAdminHealthSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) == 0 || len(ctx.Args()) > 1 {
-		cli.ShowCommandHelpAndExit(ctx, "health", 1) // last argument is exit code
+func checkAdminHealthSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() == 0 || ctx.Args().Len() > 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "health", 1) // last argument is exit code
 	}
 }
 
@@ -151,22 +149,22 @@ func warnText(s string) string {
 }
 
 // Reject legacy upload flags before connecting to the server or writing a report.
-func rejectHealthUpload(ctx *cli.Context) error {
+func rejectHealthUpload(ctx *cli.Command) error {
 	if ctx.IsSet("license") || ctx.IsSet("dev") {
-		return cli.NewExitError("SUBNET uploads are disabled in OC; omit --license and --dev to generate a local health report.", 1)
+		return cli.Exit("SUBNET uploads are disabled in OC; omit --license and --dev to generate a local health report.", 1)
 	}
 	return nil
 }
 
-func mainAdminHealth(ctx *cli.Context) error {
+func mainAdminHealth(ctx *cli.Command) error {
 	if err := rejectHealthUpload(ctx); err != nil {
 		return err
 	}
 	checkAdminHealthSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
@@ -192,7 +190,7 @@ func mainAdminHealth(ctx *cli.Context) error {
 	return nil
 }
 
-func fetchServerHealthInfo(ctx *cli.Context, client *madmin.AdminClient) (madmin.HealthInfo, error) {
+func fetchServerHealthInfo(ctx *cli.Command, client *madmin.AdminClient) (madmin.HealthInfo, error) {
 	opts := GetHealthDataTypeSlice(ctx, "test")
 	if len(*opts) == 0 {
 		opts = &options
@@ -364,75 +362,28 @@ func (d *HealthDataTypeSlice) Get() interface{} {
 	return *d
 }
 
-// HealthDataTypeFlag is a typed flag to represent health datatypes
-type HealthDataTypeFlag struct {
-	Name   string
-	Usage  string
-	EnvVar string
-	Hidden bool
-	Value  *HealthDataTypeSlice
-}
-
-// String - returns the string to be shown in the help message
-func (f HealthDataTypeFlag) String() string {
-	return fmt.Sprintf("--%s                       %s", f.Name, f.Usage)
-}
-
-// GetName - returns the name of the flag
-func (f HealthDataTypeFlag) GetName() string {
-	return f.Name
-}
-
 // GetHealthDataTypeSlice - returns the list of set health tests
-func GetHealthDataTypeSlice(c *cli.Context, name string) *HealthDataTypeSlice {
-	generic := c.Generic(name)
-	if generic == nil {
+func GetHealthDataTypeSlice(c *cli.Command, name string) *HealthDataTypeSlice {
+	values, ok := c.Value(name).(HealthDataTypeSlice)
+	if !ok {
 		return nil
 	}
-	return generic.(*HealthDataTypeSlice)
+	result := HealthDataTypeSlice(values)
+	return &result
 }
 
 // GetGlobalHealthDataTypeSlice - returns the list of set health tests set globally
-func GetGlobalHealthDataTypeSlice(c *cli.Context, name string) *HealthDataTypeSlice {
-	generic := c.GlobalGeneric(name)
+func GetGlobalHealthDataTypeSlice(c *cli.Command, name string) *HealthDataTypeSlice {
+	generic := commandGlobalGeneric(c, name)
 	if generic == nil {
 		return nil
 	}
-	return generic.(*HealthDataTypeSlice)
-}
-
-// Apply - applies the flag
-func (f HealthDataTypeFlag) Apply(set *flag.FlagSet) {
-	f.ApplyWithError(set)
-}
-
-// ApplyWithError - applies with error
-func (f HealthDataTypeFlag) ApplyWithError(set *flag.FlagSet) error {
-	if f.EnvVar != "" {
-		for _, envVar := range strings.Split(f.EnvVar, ",") {
-			envVar = strings.TrimSpace(envVar)
-			if envVal, ok := syscall.Getenv(envVar); ok {
-				newVal := &HealthDataTypeSlice{}
-				for _, s := range strings.Split(envVal, ",") {
-					s = strings.TrimSpace(s)
-					if err := newVal.Set(s); err != nil {
-						return fmt.Errorf("could not parse %s as health datatype value for flag %s: %s", envVal, f.Name, err)
-					}
-				}
-				f.Value = newVal
-				break
-			}
-		}
+	values, ok := generic.(HealthDataTypeSlice)
+	if !ok {
+		return nil
 	}
-
-	for _, name := range strings.Split(f.Name, ",") {
-		name = strings.Trim(name, " ")
-		if f.Value == nil {
-			f.Value = &HealthDataTypeSlice{}
-		}
-		set.Var(f.Value, name, f.Usage)
-	}
-	return nil
+	result := HealthDataTypeSlice(values)
+	return &result
 }
 
 var options = HealthDataTypeSlice(madmin.HealthDataTypesList)

@@ -17,61 +17,63 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminUserInfoCmd = cli.Command{
+var adminUserInfoCmd = &cli.Command{
 	Name:         "info",
 	Usage:        "display info of a user",
-	Action:       mainAdminUserInfo,
+	Action:       commandAction(mainAdminUserInfo),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET USERNAME
+  {{.FullName}} TARGET USERNAME
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Display the info of a user "foobar".
-     {{.Prompt}} {{.HelpName}} store foobar
+     {{Prompt}} {{.FullName}} store foobar
 `,
 }
 
 // checkAdminUserAddSyntax - validate all the passed arguments
-func checkAdminUserInfoSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
-		cli.ShowCommandHelpAndExit(ctx, "info", 1) // last argument is exit code
+func checkAdminUserInfoSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "info", 1) // last argument is exit code
 	}
 }
 
 // mainAdminUserInfo is the handler for "mc admin user info" command.
-func mainAdminUserInfo(ctx *cli.Context) error {
+func mainAdminUserInfo(ctx *cli.Command) error {
 	checkAdminUserInfoSyntax(ctx)
 
 	console.SetColor("UserMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
-	user, e := client.GetUserInfo(globalContext, args.Get(1))
+	user, e := client.GetUserInfo(globalContext, argumentAt(args, 1))
 	fatalIf(probe.NewError(e).Trace(args...), "Unable to get user info")
 
 	printMsg(userMessage{
 		op:         "info",
-		AccessKey:  args.Get(1),
+		AccessKey:  argumentAt(args, 1),
 		PolicyName: user.PolicyName,
 		UserStatus: string(user.Status),
 		MemberOf:   user.MemberOf,

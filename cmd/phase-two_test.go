@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"flag"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,8 +15,8 @@ import (
 	"time"
 
 	jwtgo "github.com/dgrijalva/jwt-go"
-	"github.com/minio/cli"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -202,30 +201,27 @@ func TestAliasAdminSettingsRoundTrip(t *testing.T) {
 }
 
 func TestAdminCommandOverrideAcrossNestedContexts(t *testing.T) {
-	app := cli.NewApp()
-	rootFlags := flag.NewFlagSet("root", flag.ContinueOnError)
-	rootFlags.String("admin-url", "", "")
-	if err := rootFlags.Parse([]string{"--admin-url=http://root:9001"}); err != nil {
-		t.Fatal(err)
-	}
-	root := cli.NewContext(app, rootFlags, nil)
-	childFlags := flag.NewFlagSet("admin", flag.ContinueOnError)
-	childFlags.String("admin-url", "", "")
-	child := cli.NewContext(app, childFlags, root)
-	leafFlags := flag.NewFlagSet("info", flag.ContinueOnError)
-	leafFlags.String("admin-url", "", "")
-	leaf := cli.NewContext(app, leafFlags, child)
-	if actual := commandStringOverride(leaf, "admin-url"); actual != "http://root:9001" {
-		t.Fatal(actual)
-	}
-	if err := child.Set("admin-url", "http://child:9001"); err != nil {
-		t.Fatal(err)
-	}
-	// IsSet caches its snapshot; create a fresh context after changing the flag.
-	child = cli.NewContext(app, childFlags, root)
-	leaf = cli.NewContext(app, leafFlags, child)
-	if actual := commandStringOverride(leaf, "admin-url"); actual != "http://child:9001" {
-		t.Fatal(actual)
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--admin-url=http://root:9001", "admin", "info"}, "http://root:9001"},
+		{[]string{"--admin-url=http://root:9001", "admin", "--admin-url=http://child:9001", "info"}, "http://child:9001"},
+		{[]string{"--admin-url=http://root:9001", "admin", "info", "--admin-url=http://leaf:9001"}, "http://leaf:9001"},
+		{[]string{"--admin-url=http://root:9001", "admin", "info", "--admin-url="}, ""},
+		{[]string{"admin", "info"}, ""},
+	} {
+		leaf := &cli.Command{Name: "info", Flags: []cli.Flag{&cli.StringFlag{Name: "admin-url"}}, Action: commandAction(func(command *cli.Command) error {
+			if actual := commandStringOverride(command, "admin-url"); actual != test.want {
+				t.Fatalf("args=%v want=%q got=%q", test.args, test.want, actual)
+			}
+			return nil
+		})}
+		parent := &cli.Command{Name: "admin", Flags: []cli.Flag{&cli.StringFlag{Name: "admin-url"}}, Commands: []*cli.Command{leaf}}
+		root := cloneCommand(&cli.Command{Name: "oc", Flags: []cli.Flag{&cli.StringFlag{Name: "admin-url"}}, Commands: []*cli.Command{parent}, ExitErrHandler: ignoreCLIExit})
+		if err := runCLICommand(context.Background(), root, append([]string{"oc"}, test.args...)); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

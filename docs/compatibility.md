@@ -6,17 +6,9 @@ OC's compatibility claim is limited to versions, deployments and operations with
 
 ## SDK pin and tested server baseline
 
-The current build baseline is Go `1.27.1` and OtterIO SDK module `v0.0.0-20261004215341-be8596f0d69d`, corresponding to commit `be8596f0d69d530586f35366fb2d5c79bdc54399`. The OC module still uses `github.com/soulteary/mc`; that name does not select an old update or publishing channel.
+The current Go toolchain, fixed OtterIO SDK version, full server source SHA and CLI framework version are recorded in [compatibility.json](compatibility.json). The OC module remains `github.com/soulteary/mc`.
 
-The client consumes the pinned remote module without a local `replace`. Real-service acceptance uses a server built from that same baseline with these patches applied in order:
-
-1. [otterio-core-compat.patch](../buildscripts/otterio-core-compat.patch): management query-parameter bridging and regression tests.
-2. [otterio-runtime-compat.patch](../buildscripts/otterio-runtime-compat.patch): bounded HTTP shutdown and Darwin restart supervision.
-3. [otterio-http-api-compat.patch](../buildscripts/otterio-http-api-compat.patch): HTTP, object-path, management stream and resource-lifetime corrections.
-4. [otterio-account-info-compat.patch](../buildscripts/otterio-account-info-compat.patch): authenticated root AccountInfo without an IAM-user lookup; ordinary and temporary identities retain their scoped permissions.
-5. [otterio-conditional-writes-compat.patch](../buildscripts/otterio-conditional-writes-compat.patch): Atomic create-only PUT/multipart completion in FS and single-pool erasure storage. Write-back cache, gateways and multiple pools fail closed.
-
-The SDK version and patched server fixture are different parts of the baseline. A deployment using the unpatched SDK/server commit does not inherit the fixture's passing results. Use a server that includes the required fixes; extending the baseline requires pinning the new version and rerunning the matrix. The [development guide](development.md) describes the reproducible checks.
+The client and integration server use the same pinned remote OtterIO source, without local replacements or compatibility patches. The management query bridge, runtime/shutdown, HTTP API, account information and conditional-write fixes are included in that source. The old patch files and earlier reports are retained as historical evidence, not current setup instructions. Upgrading the pin requires rerunning the recorded matrix. See [development](development.md) and [CLI migration](cli-migration.md).
 
 ## Deployments exercised by the test harness
 
@@ -28,7 +20,7 @@ The core deployment matrix contains:
 - `dual-tls`: separate TLS listeners with independent certificate trust.
 - `dual-http-public`: separate HTTP listeners with public metrics.
 
-Stability tests use `dual-tls`. The extended acceptance uses single-node, four-disk erasure storage. These configurations do not constitute a distributed multi-node or gateway matrix.
+Stability tests use `dual-tls`. The extended acceptance uses single-node, four-disk erasure storage. These configurations do not constitute a distributed multi-node matrix. Separate CLI fixtures cover NAS backed by local files and S3 gateway backed by a local OtterIO server, including CRUD and signal shutdown; they do not establish external-provider or other-backend compatibility.
 
 Object acceptance covers bucket operations, empty and small objects, unusual and non-ASCII names, 65 MiB multipart transfers with download hash checks, server-side copy, stat, mirror, sharing and permission failures. The extended checks cover selected IAM and service-account operations, configuration round trips, quotas, object versions and tags, object lock and retention, lifecycle configuration, CSV Select, SSE-C, live event subscriptions, administrative streams, profile/health output, heal status and service control.
 
@@ -36,7 +28,7 @@ Those checks have specific limits: lifecycle configuration is not timed-expirati
 
 ## Runtime CI and cross-compilation
 
-[Go CI](../.github/workflows/go.yml) configures native unit/race tests on Linux, macOS and Windows. Real OtterIO integration runs are configured on Linux and macOS with `CGO_ENABLED=0` and `1`, building the patched server fixture before testing. The workflow archives reports and diagnostic evidence even on failure.
+[Go CI](../.github/workflows/go.yml) configures native unit/race tests on Linux, macOS and Windows. Real OtterIO integration runs are configured on Linux and macOS with `CGO_ENABLED=0` and `1`, building the exact pinned server before testing. The workflow archives reports and diagnostic evidence even on failure.
 
 Cross-compilation covers eleven targets:
 
@@ -71,13 +63,15 @@ The current [budget values](compatibility.json) are:
 
 The harness transfers 65 MiB objects with concurrency 1 and 4, verifies downloaded bytes, checks cancellation and multipart cleanup, and exercises throttled and interrupted connections. CI requests 30 seconds of soak sampling; the recorded local acceptance also contains 60-second sampling.
 
+Console write acceptance uses five fixed CLI/console upload pairs with alternating order. Every object is downloaded and checked for size and SHA256. The median pair ratio must remain at least 50%, and median console throughput at least 5 MiB/s; all observations are retained without extra trials after a failure.
+
 These are regression gates, not production sizing advice or a performance SLA. RSS is sampled every 100 ms for the main OC process on Linux/macOS; it does not include the whole process tree or server, and sampling can miss short peaks. Throughput includes process startup and local filesystem overhead. A 30- or 60-second sample does not prove long-duration stability. Use your own representative workload before adopting a deployment.
 
 ## Features requiring separate acceptance
 
 The compatibility manifest lists these unvalidated areas:
 
-- Distributed topology and gateways.
+- Distributed topology, other gateway backends and external gateway upstreams.
 - External KMS and external notification targets.
 - Cross-instance replication.
 - Third-party S3 services and historical OtterIO versions.
@@ -87,9 +81,21 @@ For another S3 provider, validate the object operations, authentication, address
 
 Live notifications have no durable replay cursor. Reconnecting cannot guarantee delivery of events emitted during a disconnection. Use a persistent notification target and appropriate consumer acknowledgements when an event history is required. Periodic `mirror --watch` reconciliation concerns current state, not a complete event audit trail; see [usage](usage.md).
 
-SDK stream fixes, SDK extraction and an independently released SDK remain deferred in the baseline. OC's adaptations do not change the pinned SDK version. `MC_*` environment compatibility remains throughout OC 0.x; removal requires at least one minor-release notice. See [migration](migration.md).
+SDK stream fixes, SDK extraction and an independently released SDK remain deferred in the baseline. The CLI migration updates the pinned SDK source; SDK stream delivery behavior remains outside this change. `MC_*` environment compatibility remains throughout OC 0.x; removal requires at least one minor-release notice. See [migration](migration.md).
 
 ## Read the recorded evidence
+
+The current CLI migration and its exact-commit checks are tracked in
+[OC PR #7](https://github.com/soulteary/oc/pull/7) and
+[OtterIO PR #30](https://github.com/soulteary/otterio/pull/30).
+CLI reports, compiled-module inventories and joint acceptance reports are
+uploaded by the workflows linked from those checks.
+
+The current catalogs cover 339 OC and 133 OtterIO CLI invocations. The reviewed
+health usage-error renderer fix replaces the archived panic and exit code 2
+with a specific argument error and exit code 1. Invalid selectors, durations,
+booleans and unknown flags have separate exact approved deltas; see
+[CLI migration](cli-migration.md) for their scope and retained raw evidence.
 
 [Phase two](oc-phase-two.md) describes core endpoint and CA acceptance. [Phase three](oc-phase-three.md) and its [results](oc-phase-three-results.json) describe migration and extended operations. [Phase four](oc-phase-four.md) and its [results](oc-phase-four-results.json) record stability and subsequent joint review, including binary hashes and local platform details.
 

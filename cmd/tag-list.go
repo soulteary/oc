@@ -25,40 +25,40 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var tagListFlags = []cli.Flag{
-	cli.StringFlag{
-		Name:  "version-id, vid",
+	&cli.StringFlag{
+		Name: "version-id", Aliases: []string{"vid"},
 		Usage: "list tags of particular object version",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "rewind",
 		Usage: "list tags of particular object version at specified time",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "versions",
 		Usage: "list tags on all versions for an object",
 	},
 }
 
-var tagListCmd = cli.Command{
+var tagListCmd = &cli.Command{
 	Name:         "list",
 	Usage:        "list tags of a bucket or an object",
-	Action:       mainListTag,
+	Action:       commandAction(mainListTag),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(tagListFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [COMMAND FLAGS] TARGET
+  {{.FullName}} [COMMAND FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -68,22 +68,22 @@ DESCRIPTION:
 
 EXAMPLES:
   1. List the tags assigned to an object.
-     {{.Prompt}} {{.HelpName}} store/testbucket/testobject
+     {{Prompt}} {{.FullName}} store/testbucket/testobject
 
   2. List the tags assigned to particular version of an object.
-     {{.Prompt}} {{.HelpName}} --version-id "ieQq7aXsyhlhDt47YURGlrucYY3GxWHa" store/testbucket/testobject
+     {{Prompt}} {{.FullName}} --version-id "ieQq7aXsyhlhDt47YURGlrucYY3GxWHa" store/testbucket/testobject
 
   3. List the tags assigned to an object versions that are older than one week.
-     {{.Prompt}} {{.HelpName}} --versions --rewind 7d store/testbucket/testobject
+     {{Prompt}} {{.FullName}} --versions --rewind 7d store/testbucket/testobject
 
   4. List the tags assigned to an object in JSON format.
-     {{.Prompt}} {{.HelpName}} --json store/testbucket/testobject
+     {{Prompt}} {{.FullName}} --json store/testbucket/testobject
 
   5. List the tags assigned to a bucket.
-     {{.Prompt}} {{.HelpName}} store/testbucket
+     {{Prompt}} {{.FullName}} store/testbucket
 
   6. List the tags assigned to a bucket in JSON format.
-     {{.Prompt}} {{.HelpName}} --json s3/testbucket
+     {{Prompt}} {{.FullName}} --json s3/testbucket
 `,
 }
 
@@ -132,9 +132,9 @@ func (t tagListMessage) String() string {
 }
 
 // parseTagListSyntax performs command-line input validation for tag list command.
-func parseTagListSyntax(ctx *cli.Context) (targetURL, versionID string, timeRef time.Time, withOlderVersions bool) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "list", globalErrorExitStatus)
+func parseTagListSyntax(ctx *cli.Command) (targetURL, versionID string, timeRef time.Time, withOlderVersions bool) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "list", globalErrorExitStatus)
 	}
 
 	targetURL = ctx.Args().Get(0)
@@ -174,7 +174,7 @@ func showTags(ctx context.Context, clnt Client, versionID string, verbose bool) 
 	})
 }
 
-func mainListTag(cliCtx *cli.Context) error {
+func mainListTag(cliCtx *cli.Command) error {
 	ctx, cancelListTag := context.WithCancel(globalContext)
 	defer cancelListTag()
 

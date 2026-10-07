@@ -21,57 +21,57 @@ import (
 	"errors"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/replication"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var replicateRemoveFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "id",
 		Usage: "id for the rule, should be a unique value",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "force",
 		Usage: "force remove all the replication configuration rules on the bucket",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "all",
 		Usage: "remove all replication configuration rules of the bucket, force flag enforced",
 	},
 }
 
-var replicateRemoveCmd = cli.Command{
+var replicateRemoveCmd = &cli.Command{
 	Name:         "rm",
 	Usage:        "remove a server side replication configuration rule",
-	Action:       mainReplicateRemove,
+	Action:       commandAction(mainReplicateRemove),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(globalFlags, replicateRemoveFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
    
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 	   
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Remove replication configuration rule on bucket "mybucket" for alias "store" with rule id "bsib5mgt874bi56l0fmg".
-     {{.Prompt}} {{.HelpName}} --id "bsib5mgt874bi56l0fmg" store/mybucket
+     {{Prompt}} {{.FullName}} --id "bsib5mgt874bi56l0fmg" store/mybucket
 
   2. Remove all the replication configuration rules on bucket "mybucket" for alias "store". --force flag is required.
-     {{.Prompt}} {{.HelpName}} --all --force store/mybucket
+     {{Prompt}} {{.FullName}} --all --force store/mybucket
 `,
 }
 
 // checkReplicateRemoveSyntax - validate all the passed arguments
-func checkReplicateRemoveSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "rm", 1) // last argument is exit code
+func checkReplicateRemoveSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "rm", 1) // last argument is exit code
 	}
 	rmAll := ctx.Bool("all")
 	rmForce := ctx.Bool("force")
@@ -80,7 +80,7 @@ func checkReplicateRemoveSyntax(ctx *cli.Context) {
 	rmChk := (rmAll && rmForce) || (!rmAll && !rmForce)
 	if !rmChk {
 		fatalIf(errInvalidArgument(),
-			"It is mandatory to specify --all and --force flag together for mc "+ctx.Command.FullName()+".")
+			"It is mandatory to specify --all and --force flag together for mc "+ctx.FullName()+".")
 	}
 	if rmAll && rmForce {
 		return
@@ -112,7 +112,7 @@ func (l replicateRemoveMessage) String() string {
 	return console.Colorize("replicateRemoveMessage", "Replication configuration removed from "+l.URL+" successfully.")
 }
 
-func mainReplicateRemove(cliCtx *cli.Context) error {
+func mainReplicateRemove(cliCtx *cli.Command) error {
 	ctx, cancelReplicateRemove := context.WithCancel(globalContext)
 	defer cancelReplicateRemove()
 
@@ -121,8 +121,8 @@ func mainReplicateRemove(cliCtx *cli.Context) error {
 	checkReplicateRemoveSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(0)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")

@@ -22,32 +22,32 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
-var adminServiceRestartCmd = cli.Command{
+var adminServiceRestartCmd = &cli.Command{
 	Name:         "restart",
 	Usage:        "restart all OtterIO servers",
-	Action:       mainAdminServiceRestart,
+	Action:       commandAction(mainAdminServiceRestart),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
-	Flags:        append([]cli.Flag{cli.DurationFlag{Name: "timeout", Value: time.Minute, Usage: "maximum time to wait for restart readiness"}}, globalFlags...),
+	Before:       commandBefore(setGlobalsFromContext),
+	Flags:        append([]cli.Flag{&cli.DurationFlag{Name: "timeout", Value: time.Minute, Usage: "maximum time to wait for restart readiness"}}, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Restart OtterIO server represented by its alias 'store'.
-     {{.Prompt}} {{.HelpName}} store/
+     {{Prompt}} {{.FullName}} store/
 `,
 }
 
@@ -94,13 +94,13 @@ func (s serviceRestartMessage) JSON() string {
 }
 
 // checkAdminServiceRestartSyntax - validate all the passed arguments
-func checkAdminServiceRestartSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) == 0 || len(ctx.Args()) > 2 {
-		cli.ShowCommandHelpAndExit(ctx, "restart", 1) // last argument is exit code
+func checkAdminServiceRestartSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() == 0 || ctx.Args().Len() > 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "restart", 1) // last argument is exit code
 	}
 }
 
-func mainAdminServiceRestart(ctx *cli.Context) error {
+func mainAdminServiceRestart(ctx *cli.Command) error {
 
 	// Validate serivce restart syntax.
 	checkAdminServiceRestartSyntax(ctx)
@@ -112,8 +112,8 @@ func mainAdminServiceRestart(ctx *cli.Context) error {
 	console.SetColor("FailedServiceRestart", color.New(color.FgRed, color.Bold))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")

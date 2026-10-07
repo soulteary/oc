@@ -23,50 +23,50 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	retentionInfoFlags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "show retention info recursively",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "show retention info of specific object version",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "roll back object(s) to current version at specified time",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "versions",
 			Usage: "show retention info on object(s) and all its versions",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "default",
 			Usage: "show bucket default retention mode",
 		},
 	}
 )
 
-var retentionInfoCmd = cli.Command{
+var retentionInfoCmd = &cli.Command{
 	Name:         "info",
 	Usage:        "show retention for object(s)",
-	Action:       mainRetentionInfo,
+	Action:       commandAction(mainRetentionInfo),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(retentionInfoFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] [governance | compliance] VALIDITY TARGET
+  {{.FullName}} [FLAGS] [governance | compliance] VALIDITY TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -74,23 +74,23 @@ FLAGS:
 
 EXAMPLES:
   1. Show object retention for a specific object
-     $ {{.HelpName}} store/mybucket/prefix/obj.csv
+     $ {{.FullName}} store/mybucket/prefix/obj.csv
 
   2. Show object retention for recursively for all objects at a given prefix
-     $ {{.HelpName}} store/mybucket/prefix --recursive
+     $ {{.FullName}} store/mybucket/prefix --recursive
 
   3. Show object retention to a specific version of a specific object
-     $ {{.HelpName}} store/mybucket/prefix/obj.csv --version-id "3Jr2x6fqlBUsVzbvPihBO3HgNpgZgAnp"
+     $ {{.FullName}} store/mybucket/prefix/obj.csv --version-id "3Jr2x6fqlBUsVzbvPihBO3HgNpgZgAnp"
 
   4. Show object retention for recursively for all versions of all objects under prefix
-     $ {{.HelpName}} store/mybucket/prefix --recursive --versions
+     $ {{.FullName}} store/mybucket/prefix --recursive --versions
 
   5. Show default lock retention configuration for a bucket
-     $ {{.HelpName}} --default store/mybucket/
+     $ {{.FullName}} --default store/mybucket/
 `}
 
-func parseInfoRetentionArgs(cliCtx *cli.Context) (target, versionID string, recursive bool, timeRef time.Time, withVersions, defaultMode bool) {
-	args := cliCtx.Args()
+func parseInfoRetentionArgs(cliCtx *cli.Command) (target, versionID string, recursive bool, timeRef time.Time, withVersions, defaultMode bool) {
+	args := cliCtx.Args().Slice()
 
 	target = args[0]
 	if target == "" {
@@ -355,7 +355,7 @@ func getRetention(ctx context.Context, target, versionID string, timeRef time.Ti
 }
 
 // main for retention info command.
-func mainRetentionInfo(cliCtx *cli.Context) error {
+func mainRetentionInfo(cliCtx *cli.Command) error {
 	ctx, cancelSetRetention := context.WithCancel(globalContext)
 	defer cancelSetRetention()
 
@@ -365,8 +365,8 @@ func mainRetentionInfo(cliCtx *cli.Context) error {
 	console.SetColor("RetentionExpired", color.New(color.FgRed, color.Bold))
 	console.SetColor("RetentionFailure", color.New(color.FgYellow))
 
-	if len(cliCtx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(cliCtx, "info", 1)
+	if cliCtx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), cliCtx, "info", 1)
 	}
 
 	target, versionID, recursive, rewind, withVersions, bucketMode := parseInfoRetentionArgs(cliCtx)

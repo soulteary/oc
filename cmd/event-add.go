@@ -21,69 +21,69 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	eventAddFlags = []cli.Flag{
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "event",
 			Value: "put,delete,get",
 			Usage: "filter specific type of event. Defaults to all event",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "prefix",
 			Usage: "filter event associated to the specified prefix",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "suffix",
 			Usage: "filter event associated to the specified suffix",
 		},
-		cli.BoolFlag{
-			Name:  "ignore-existing, p",
+		&cli.BoolFlag{
+			Name: "ignore-existing", Aliases: []string{"p"},
 			Usage: "ignore if event already exists",
 		},
 	}
 )
 
-var eventAddCmd = cli.Command{
+var eventAddCmd = &cli.Command{
 	Name:         "add",
 	Usage:        "add a new bucket notification",
-	Action:       mainEventAdd,
+	Action:       commandAction(mainEventAdd),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(eventAddFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET ARN [FLAGS]
+  {{.FullName}} TARGET ARN [FLAGS]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Enable bucket notification with a specific ARN
-    {{.Prompt}} {{.HelpName}} store/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue
+    {{Prompt}} {{.FullName}} store/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue
 
   2. Enable bucket notification with filters parameters
-    {{.Prompt}} {{.HelpName}} s3/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue --event put,delete,get --prefix photos/ --suffix .jpg
+    {{Prompt}} {{.FullName}} s3/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue --event put,delete,get --prefix photos/ --suffix .jpg
 
   3. Ignore duplicate bucket notification with -p flag
-    {{.Prompt}} {{.HelpName}} s3/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue -p --event put,delete,get --prefix photos/ --suffix .jpg
+    {{Prompt}} {{.FullName}} s3/mybucket arn:aws:sqs:us-west-2:444455556666:your-queue -p --event put,delete,get --prefix photos/ --suffix .jpg
 
   4. Enable bucket notification for Replication and ILM transition events to a specific ARN
-    {{.Prompt}} {{.HelpName}} store/mysourcebucket arn:aws:sqs:us-west-2:444455556666:your-queue --event replica,ilm
+    {{Prompt}} {{.FullName}} store/mysourcebucket arn:aws:sqs:us-west-2:444455556666:your-queue --event replica,ilm
 `,
 }
 
 // checkEventAddSyntax - validate all the passed arguments
-func checkEventAddSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
-		cli.ShowCommandHelpAndExit(ctx, "add", 1) // last argument is exit code
+func checkEventAddSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "add", 1) // last argument is exit code
 	}
 }
 
@@ -109,7 +109,7 @@ func (u eventAddMessage) String() string {
 	return msg
 }
 
-func mainEventAdd(cliCtx *cli.Context) error {
+func mainEventAdd(cliCtx *cli.Command) error {
 	ctx, cancelEventAdd := context.WithCancel(globalContext)
 	defer cancelEventAdd()
 
@@ -117,7 +117,7 @@ func mainEventAdd(cliCtx *cli.Context) error {
 
 	checkEventAddSyntax(cliCtx)
 
-	args := cliCtx.Args()
+	args := cliCtx.Args().Slice()
 	path := args[0]
 	arn := args[1]
 	ignoreExisting := cliCtx.Bool("p")

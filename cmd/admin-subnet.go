@@ -18,26 +18,26 @@ package cmd
 
 import (
 	"github.com/fatih/color"
-	"github.com/minio/cli"
+	"github.com/urfave/cli/v3"
 )
 
-var subnetHealthSubcommands = []cli.Command{
+var subnetHealthSubcommands = []*cli.Command{
 	adminSubnetHealthCmd,
 	// adminSubnetRegister to be added
 }
 
-var adminSubnetCmd = cli.Command{
+var adminSubnetCmd = &cli.Command{
 	Name:            "subnet",
 	Usage:           "local health reports (SUBNET uploads disabled)",
-	Action:          mainAdminSubnet,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainAdminSubnet),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     subnetHealthSubcommands,
+	Commands:        subnetHealthSubcommands,
 	HideHelpCommand: true,
 }
 
 // mainAdminSubnet is the handle for "mc admin subnet" command.
-func mainAdminSubnet(ctx *cli.Context) error {
+func mainAdminSubnet(ctx *cli.Command) error {
 	commandNotFound(ctx, subnetHealthSubcommands)
 	return nil
 	// Sub-commands like "health", "register" have their own main.
@@ -45,16 +45,16 @@ func mainAdminSubnet(ctx *cli.Context) error {
 
 // Deprecated - to be removed in a future release
 // mainAdminSubnet is the handle for "mc admin subnet" command.
-func mainAdminOBD(ctx *cli.Context) error {
+func mainAdminOBD(ctx *cli.Command) error {
 	color.Yellow("Deprecated - please use 'oc admin subnet health'")
 	return nil
 }
 
-var adminHealthCmd = cli.Command{
+var adminHealthCmd = &cli.Command{
 	Name:               "health",
 	Aliases:            []string{"obd"},
 	Usage:              "Deprecated - please use 'oc admin subnet health'",
-	Action:             mainAdminOBD,
+	Action:             commandAction(mainAdminOBD),
 	CustomHelpTemplate: `{{.Usage}}`,
 	Hidden:             true,
 }

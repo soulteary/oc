@@ -55,6 +55,7 @@ jobs:
           export OC_TEST_BASH
           go mod download
           python3 buildscripts/test-maintenance.py
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_console_*.py' -v
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_release_*.py' -v
           python3 buildscripts/verify-release-boundaries.py
           go mod verify
@@ -129,17 +130,20 @@ jobs:
           cp -R "$otterio_source" "$RUNNER_TEMP/otterio-source"
           chmod -R u+w "$RUNNER_TEMP/otterio-source"
           cd "$RUNNER_TEMP/otterio-source"
-          # The SDK pin remains unchanged; this explicit server fix is required
-          # until a release includes the query bridge and runtime fixes.
-          git apply "$GITHUB_WORKSPACE/buildscripts/otterio-core-compat.patch"
-          git apply "$GITHUB_WORKSPACE/buildscripts/otterio-runtime-compat.patch"
-          git apply "$GITHUB_WORKSPACE/buildscripts/otterio-http-api-compat.patch"
-          git apply "$GITHUB_WORKSPACE/buildscripts/otterio-account-info-compat.patch"
-          git apply "$GITHUB_WORKSPACE/buildscripts/otterio-conditional-writes-compat.patch"
+          # The pinned module includes the server fixes. Build its exact source
+          # without layering patches or using an adjacent developer checkout.
           go test -mod=readonly ./cmd/http -run TestShutdownBoundsActiveFiberRequest -count=1
           go test -mod=readonly ./cmd/http -run 'TestHTTPListenerClose|TestServerCounts|TestShutdown|TestTLSServer' -count=3
           go test -mod=readonly ./cmd -run 'TestAdminQueryBridge|TestDarwinRestartSupervisor|TestEncodedObjectPath|TestAdminHealWildcard|TestStreamContext|TestFiberRequestContextValues|TestAccountInfoOwnerAndScopedPrincipals|TestConditional' -count=3
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio" .
+      - name: Verify CLI startup, gateways, management routing and signal exits
+        env:
+          CLI_TEST_OTTERIO_BINARY: ${{ runner.temp }}/otterio
+          CLI_TEST_OC_BINARY: ${{ runner.temp }}/oc
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          cd "$RUNNER_TEMP/otterio-source"
+          python3 -m unittest discover -s buildscripts -p test_cli_integration.py -v
       - name: Verify ports, TLS, permissions, streams and performance budgets
         run: |
           python3 buildscripts/test-core-integration.py --oc "$RUNNER_TEMP/oc" --otterio "$RUNNER_TEMP/otterio" --extended --stability --soak-seconds 30 --report "$RUNNER_TEMP/core-integration.json" --artifacts-dir "$RUNNER_TEMP/core-evidence"
@@ -148,24 +152,14 @@ jobs:
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio" \
-            --server-source be8596f0d69d530586f35366fb2d5c79bdc54399 \
-            --server-patch buildscripts/otterio-core-compat.patch \
-            --server-patch buildscripts/otterio-runtime-compat.patch \
-            --server-patch buildscripts/otterio-http-api-compat.patch \
-            --server-patch buildscripts/otterio-account-info-compat.patch \
-            --server-patch buildscripts/otterio-conditional-writes-compat.patch \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
             --output "$RUNNER_TEMP/console-integration.json"
       - name: Verify opt-in console writes and cancellation
         run: |
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio" --writes \
-            --server-source be8596f0d69d530586f35366fb2d5c79bdc54399 \
-            --server-patch buildscripts/otterio-core-compat.patch \
-            --server-patch buildscripts/otterio-runtime-compat.patch \
-            --server-patch buildscripts/otterio-http-api-compat.patch \
-            --server-patch buildscripts/otterio-account-info-compat.patch \
-            --server-patch buildscripts/otterio-conditional-writes-compat.patch \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
             --output "$RUNNER_TEMP/console-write-integration.json"
       - name: Upload compatibility results
         if: always()

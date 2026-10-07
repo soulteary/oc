@@ -69,25 +69,19 @@ CI uses golangci-lint `v2.14.0` with [.golangci.yml](../.golangci.yml). With tha
 
 The integration test starts disposable local OtterIO processes with random credentials, temporary client configuration, local ports and temporary storage. It writes and deletes test objects and performs administration against those processes. It does not take the address of an existing deployment.
 
-The SDK dependency remains pinned in `go.mod`. The corresponding server source needs the five patches listed in `docs/compatibility.json`. Copy the module source to a writable temporary directory; never apply these patches inside the shared Go module cache or against a production checkout.
+The SDK dependency remains pinned in `go.mod`. Build the integration server from that exact version; it already includes the former compatibility fixes. Copy its source to a writable temporary directory and do not modify the shared module cache. The exact source SHA is recorded in `docs/compatibility.json`.
 
 The following prepares a `CGO_ENABLED=0` fixture matching the CI setup. Keep the same shell open so the paths remain available:
 
 ```sh
 export GOTOOLCHAIN=local
 export CGO_ENABLED=0
-OC_SOURCE="$(pwd)"
 OC_INTEGRATION="$(mktemp -d)"
 go mod download
 go build -mod=readonly -trimpath -o "$OC_INTEGRATION/oc" .
 otterio_source="$(go list -m -f '{{.Dir}}' github.com/soulteary/otterio)"
 cp -R "$otterio_source" "$OC_INTEGRATION/otterio-source"
 chmod -R u+w "$OC_INTEGRATION/otterio-source"
-git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-core-compat.patch"
-git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-runtime-compat.patch"
-git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-http-api-compat.patch"
-git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-account-info-compat.patch"
-git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-conditional-writes-compat.patch"
 (
   cd "$OC_INTEGRATION/otterio-source"
   go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio" .
@@ -110,7 +104,7 @@ python3 buildscripts/test-core-integration.py \
 
 This is a longer check with local disk and memory requirements. A failure report contains partial results; check every scenario's status before treating the run as acceptance. Save the report and relevant redacted evidence for review, then remove only the temporary directory you created. The script cleans up its servers and scenario storage; the supplied report/evidence directory remains for inspection. Repeat with `CGO_ENABLED=1` when investigating a cgo-specific issue.
 
-The exact server regression tests and the Linux/macOS cgo matrix live in the [Go workflow](../.github/workflows/go.yml). [Compatibility](compatibility.md) describes what these checks establish and what remains unverified. Server fixture patches do not change the OC SDK dependency or certify another OtterIO version.
+The exact server regression tests and the Linux/macOS cgo matrix live in the [Go workflow](../.github/workflows/go.yml). [Compatibility](compatibility.md) describes what these checks establish and what remains unverified. Passing tests for one fixed source do not certify another OtterIO version. The old patch files are historical fixtures.
 
 ## Understand the CI scope
 

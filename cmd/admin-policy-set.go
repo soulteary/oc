@@ -17,27 +17,28 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminPolicySetCmd = cli.Command{
+var adminPolicySetCmd = &cli.Command{
 	Name:         "set",
 	Usage:        "set IAM policy on a user or group",
-	Action:       mainAdminPolicySet,
+	Action:       commandAction(mainAdminPolicySet),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET POLICYNAME [ user=username1 | group=groupname1 ]
+  {{.FullName}} TARGET POLICYNAME [ user=username1 | group=groupname1 ]
 
 POLICYNAME:
   Name of the policy on the OtterIO server.
@@ -47,10 +48,10 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Set the "readwrite" policy for user "james".
-     {{.Prompt}} {{.HelpName}} store readwrite user=james
+     {{Prompt}} {{.FullName}} store readwrite user=james
 
   2. Set the "readonly" policy for group "auditors".
-     {{.Prompt}} {{.HelpName}} store readonly group=auditors
+     {{Prompt}} {{.FullName}} store readonly group=auditors
 `,
 }
 
@@ -58,9 +59,9 @@ var (
 	errBadUserGroupArg = errors.New("last argument must be of the form user=xx or group=xx")
 )
 
-func checkAdminPolicySetSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 3 {
-		cli.ShowCommandHelpAndExit(ctx, "set", 1) // last argument is exit code
+func checkAdminPolicySetSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 3 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "set", 1) // last argument is exit code
 	}
 }
 
@@ -83,17 +84,17 @@ func parseEntityArg(arg string) (userOrGroup string, isGroup bool, err error) {
 }
 
 // mainAdminPolicySet is the handler for "mc admin policy set" command.
-func mainAdminPolicySet(ctx *cli.Context) error {
+func mainAdminPolicySet(ctx *cli.Command) error {
 	checkAdminPolicySetSyntax(ctx)
 
 	console.SetColor("PolicyMessage", color.New(color.FgGreen))
 	console.SetColor("Policy", color.New(color.FgBlue))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
-	policyName := strings.TrimSpace(args.Get(1))
-	entityArg := args.Get(2)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
+	policyName := strings.TrimSpace(argumentAt(args, 1))
+	entityArg := argumentAt(args, 2)
 
 	userOrGroup, isGroup, e1 := parseEntityArg(entityArg)
 	fatalIf(probe.NewError(e1).Trace(args...), "Bad last argument")

@@ -23,86 +23,86 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/replication"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var replicateEditFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "id",
 		Usage: "id for the rule, should be a unique value",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "tags",
 		Usage: "format '<key1>=<value1>&<key2>=<value2>&<key3>=<value3>', multiple values allowed for multiple key/value pairs",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "storage-class",
 		Usage: "storage class for destination (STANDARD_IA,REDUCED_REDUNDANCY etc)",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "state",
 		Usage: "change rule status. Valid values are [enable|disable]",
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "priority",
 		Usage: "priority of the rule, should be unique and is a required field",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "remote-bucket",
 		Usage: "destination bucket, should be a unique value for the configuration",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "replicate",
 		Usage: "comma separated list to enable replication of delete markers, and/or deletion of versioned objects.Valid options are \"delete-marker\", \"delete\" and \"\"",
 	},
 }
 
-var replicateEditCmd = cli.Command{
+var replicateEditCmd = &cli.Command{
 	Name:         "edit",
 	Usage:        "modify an existing server side replication configuration rule",
-	Action:       mainReplicateEdit,
+	Action:       commandAction(mainReplicateEdit),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(globalFlags, replicateEditFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
    
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 	   
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Change priority of rule with rule ID "bsibgh8t874dnjst8hkg" on bucket "mybucket" for alias "store".
-     {{.Prompt}} {{.HelpName}} store/mybucket --id "bsibgh8t874dnjst8hkg"  --priority 3
+     {{Prompt}} {{.FullName}} store/mybucket --id "bsibgh8t874dnjst8hkg"  --priority 3
  
   2. Disable a replication configuration rule with rule ID "bsibgh8t874dnjst8hkg" on target store/bucket
-     {{.Prompt}} {{.HelpName}} store/mybucket --id "bsibgh8t874dnjst8hkg" --state disable
+     {{Prompt}} {{.FullName}} store/mybucket --id "bsibgh8t874dnjst8hkg" --state disable
 
   3. Set tags and storage class on a replication configuration with rule ID "kMYD.491" on target store/bucket/prefix.
-     {{.Prompt}} {{.HelpName}} store/mybucket --id "kMYD.491" --tags "key1=value1&key2=value2" \
+     {{Prompt}} {{.FullName}} store/mybucket --id "kMYD.491" --tags "key1=value1&key2=value2" \
 								  --storage-class "STANDARD" --priority 2
   4. Clear tags for replication configuration rule with ID "kMYD.491" on a target store/bucket.
-     {{.Prompt}} {{.HelpName}} store/mybucket --id "kMYD.491" --tags ""
+     {{Prompt}} {{.FullName}} store/mybucket --id "kMYD.491" --tags ""
 
   5. Enable delete marker replication on a replication configuration rule with ID "kxYD.491" on a target store/bucket.
-     {{.Prompt}} {{.HelpName}} store/mybucket --id "kxYD.491" --replicate "delete-marker"
+     {{Prompt}} {{.FullName}} store/mybucket --id "kxYD.491" --replicate "delete-marker"
 
   6. Disable delete marker and versioned delete replication on a replication configuration rule with ID "kxYD.491" on a target store/bucket.
-     {{.Prompt}} {{.HelpName}} store/mybucket --id "kxYD.491" --replicate ""
+     {{Prompt}} {{.FullName}} store/mybucket --id "kxYD.491" --replicate ""
 
 `,
 }
 
 // checkReplicateEditSyntax - validate all the passed arguments
-func checkReplicateEditSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "edit", 1) // last argument is exit code
+func checkReplicateEditSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "edit", 1) // last argument is exit code
 	}
 }
 
@@ -127,7 +127,7 @@ func (l replicateEditMessage) String() string {
 	return console.Colorize("replicateEditMessage", "Replication configuration rule applied to "+l.URL+" successfully.")
 }
 
-func mainReplicateEdit(cliCtx *cli.Context) error {
+func mainReplicateEdit(cliCtx *cli.Command) error {
 	ctx, cancelReplicateEdit := context.WithCancel(globalContext)
 	defer cancelReplicateEdit()
 
@@ -136,8 +136,8 @@ func mainReplicateEdit(cliCtx *cli.Context) error {
 	checkReplicateEditSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(0)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")

@@ -22,23 +22,23 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-func checkCopySyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[string][]prefixSSEPair, isMvCmd bool) {
-	if len(cliCtx.Args()) < 2 {
+func checkCopySyntax(ctx context.Context, cliCtx *cli.Command, encKeyDB map[string][]prefixSSEPair, isMvCmd bool) {
+	if cliCtx.Args().Len() < 2 {
 		if isMvCmd {
-			cli.ShowCommandHelpAndExit(cliCtx, "mv", 1) // last argument is exit code.
+			cli.ShowCommandHelpAndExit(context.Background(), cliCtx, "mv", 1) // last argument is exit code.
 		}
-		cli.ShowCommandHelpAndExit(cliCtx, "cp", 1) // last argument is exit code.
+		cli.ShowCommandHelpAndExit(context.Background(), cliCtx, "cp", 1) // last argument is exit code.
 	}
 
 	// extract URLs.
-	URLs := cliCtx.Args()
+	URLs := cliCtx.Args().Slice()
 	if len(URLs) < 2 {
-		fatalIf(errDummy().Trace(cliCtx.Args()...), "Unable to parse source and target arguments.")
+		fatalIf(errDummy().Trace(cliCtx.Args().Slice()...), "Unable to parse source and target arguments.")
 	}
 
 	srcURLs := URLs[:len(URLs)-1]
@@ -48,7 +48,7 @@ func checkCopySyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[stri
 	versionID := cliCtx.String("version-id")
 
 	if versionID != "" && len(srcURLs) > 1 {
-		fatalIf(errDummy().Trace(cliCtx.Args()...), "Unable to pass --version flag with multiple copy sources arguments.")
+		fatalIf(errDummy().Trace(cliCtx.Args().Slice()...), "Unable to pass --version flag with multiple copy sources arguments.")
 	}
 
 	// Verify if source(s) exists.

@@ -24,76 +24,76 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/notification"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	watchFlags = []cli.Flag{
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "events",
 			Value: "put,delete,get",
 			Usage: "filter specific types of events; defaults to all events by default",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "prefix",
 			Usage: "filter events for a prefix",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "suffix",
 			Usage: "filter events for a suffix",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "recursive",
 			Usage: "recursively watch for events",
 		},
 	}
 )
 
-var watchCmd = cli.Command{
+var watchCmd = &cli.Command{
 	Name:         "watch",
 	Usage:        "listen for object notification events",
-	Action:       mainWatch,
+	Action:       commandAction(mainWatch),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(watchFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] PATH
+  {{.FullName}} [FLAGS] PATH
 {{if .VisibleFlags}}
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}{{end}}
 EXAMPLES:
   1. Watch new S3 operations on a OtterIO server
-     {{.Prompt}} {{.HelpName}} store/testbucket
+     {{Prompt}} {{.FullName}} store/testbucket
 
   2. Watch new events for a specific prefix "output/"  on OtterIO server.
-     {{.Prompt}} {{.HelpName}} --prefix "output/" store/testbucket
+     {{Prompt}} {{.FullName}} --prefix "output/" store/testbucket
 
   3. Watch new events for a specific suffix ".jpg" on OtterIO server.
-     {{.Prompt}} {{.HelpName}} --suffix ".jpg" store/testbucket
+     {{Prompt}} {{.FullName}} --suffix ".jpg" store/testbucket
 
   4. Watch new events on a specific prefix and suffix on OtterIO server.
-     {{.Prompt}} {{.HelpName}} --suffix ".jpg" --prefix "photos/" store/testbucket
+     {{Prompt}} {{.FullName}} --suffix ".jpg" --prefix "photos/" store/testbucket
 
   5. Site level watch (except new buckets created after running this command)
-     {{.Prompt}} {{.HelpName}} store/
+     {{Prompt}} {{.FullName}} store/
 
   6. Watch for events on local directory.
-     {{.Prompt}} {{.HelpName}} /usr/share
+     {{Prompt}} {{.FullName}} /usr/share
 `,
 }
 
 // checkWatchSyntax - validate all the passed arguments
-func checkWatchSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "watch", 1) // last argument is exit code
+func checkWatchSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "watch", 1) // last argument is exit code
 	}
 }
 
@@ -132,7 +132,7 @@ func (u watchMessage) String() string {
 	return msg
 }
 
-func mainWatch(cliCtx *cli.Context) error {
+func mainWatch(cliCtx *cli.Command) error {
 	console.SetColor("Time", color.New(color.FgGreen))
 	console.SetColor("Size", color.New(color.FgYellow))
 	console.SetColor("EventType", color.New(color.FgCyan, color.Bold))
@@ -140,7 +140,7 @@ func mainWatch(cliCtx *cli.Context) error {
 
 	checkWatchSyntax(cliCtx)
 
-	args := cliCtx.Args()
+	args := cliCtx.Args().Slice()
 	path := args[0]
 
 	prefix := cliCtx.String("prefix")

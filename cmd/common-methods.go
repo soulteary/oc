@@ -31,10 +31,10 @@ import (
 	"golang.org/x/net/http/httpguts"
 	"gopkg.in/h2non/filetype.v1"
 
-	"github.com/minio/cli"
 	minio "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
 // decode if the key is encoded key and returns the key
@@ -72,7 +72,7 @@ func parseKey(sseKeys string) (sse string, err *probe.Error) {
 }
 
 // parse and return encryption key pairs per alias.
-func getEncKeys(ctx *cli.Context) (map[string][]prefixSSEPair, *probe.Error) {
+func getEncKeys(ctx *cli.Command) (map[string][]prefixSSEPair, *probe.Error) {
 	sseServer := clientEnv("MC_ENCRYPT")
 	if prefix := ctx.String("encrypt"); prefix != "" {
 		sseServer = prefix
@@ -81,7 +81,7 @@ func getEncKeys(ctx *cli.Context) (map[string][]prefixSSEPair, *probe.Error) {
 	sseKeys := clientEnv("MC_ENCRYPT_KEY")
 	if keyPrefix := ctx.String("encrypt-key"); keyPrefix != "" {
 		if sseServer != "" && strings.Contains(keyPrefix, sseServer) {
-			return nil, errConflictSSE(sseServer, keyPrefix).Trace(ctx.Args()...)
+			return nil, errConflictSSE(sseServer, keyPrefix).Trace(ctx.Args().Slice()...)
 		}
 		sseKeys = keyPrefix
 	}

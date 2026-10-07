@@ -1,7 +1,9 @@
 """Write acceptance helpers; invoked only inside the disposable console fixture."""
 import http.client
 import datetime
+import hashlib
 import json
+import math
 import shutil
 import statistics
 import subprocess
@@ -9,6 +11,43 @@ import threading
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
+
+
+UPLOAD_TRIAL_COUNT = 5
+MINIMUM_UPLOAD_MIB_PER_SECOND = 5
+MINIMUM_CONSOLE_TO_CLI_RATIO = 0.5
+
+
+def verify_transfer_payload(payload, expected_size, expected_sha256):
+    actual_sha256 = hashlib.sha256(payload).hexdigest()
+    assert len(payload) == expected_size and actual_sha256 == expected_sha256, {
+        'expectedBytes': expected_size, 'actualBytes': len(payload),
+        'expectedSHA256': expected_sha256, 'actualSHA256': actual_sha256,
+    }
+    return actual_sha256
+
+
+def summarize_upload_trials(trials, object_size_mib):
+    """Compare each same-host pair before taking the fixed sample's median."""
+    if len(trials) != UPLOAD_TRIAL_COUNT:
+        raise ValueError(f'expected exactly {UPLOAD_TRIAL_COUNT} paired upload trials')
+    cli_rates, console_rates, ratios = [], [], []
+    for trial in trials:
+        cli_seconds, console_seconds = trial['cliUploadSeconds'], trial['consoleUploadSeconds']
+        if any(not math.isfinite(value) or value <= 0 for value in (cli_seconds, console_seconds)):
+            raise ValueError('upload trial times must be finite and positive')
+        cli_rates.append(object_size_mib / cli_seconds)
+        console_rates.append(object_size_mib / console_seconds)
+        ratios.append(cli_seconds / console_seconds)
+    return {'cliMiBPerSecond': statistics.median(cli_rates),
+            'consoleMiBPerSecond': statistics.median(console_rates),
+            'pairedConsoleToCLIRatios': ratios,
+            'medianConsoleToCLIRatio': statistics.median(ratios)}
+
+
+def require_upload_budget(summary):
+    assert (summary['consoleMiBPerSecond'] >= MINIMUM_UPLOAD_MIB_PER_SECOND and
+            summary['medianConsoleToCLIRatio'] >= MINIMUM_CONSOLE_TO_CLI_RATIO), summary
 
 
 def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_session,
@@ -325,10 +364,13 @@ def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_sess
                        query=urllib.parse.urlencode({'uploadId': foreign_id}))
     checks.append('slow multipart cancellation within 5s, owned cleanup and unrelated-upload preservation')
 
-    # Alternate three identical-size CLI/console trials: sub-second transfers
-    # are noisy, so keep every observation and gate their medians, never best-of.
+    # Use a fixed five same-size pairs, alternating which path goes first. Keep
+    # every observation; compare each adjacent pair before taking the median,
+    # so changing host load cannot pair unrelated CLI and console observations.
+    # Never add trials after a failure, discard samples, or use the best result.
     # Include browser job registration and final acknowledgement in each time.
     large = b'0123456789abcdef' * (65 * 1024 * 1024 // 16)
+    large_sha256 = hashlib.sha256(large).hexdigest()
     large_path = root / 'transfer-65m.bin'
     large_path.write_bytes(large)
     cli_seconds, console_seconds, download_seconds, single_windows = [], [], [], []
@@ -350,22 +392,37 @@ def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_sess
 
     sampler = threading.Thread(target=sample_rss, daemon=True)
     sampler.start()
-    timings, outcomes = {}, []
+    timings, outcomes, upload_trials, throughput = {}, [], [], {}
     try:
-        for trial in range(3):
-            started = time.monotonic()
-            cli('cp', str(large_path), f'store/{bucket}/write/cli-reference-{trial}.bin')
-            cli_seconds.append(time.monotonic() - started)
-            key = f'write/performance-single-{trial}.bin'
-            started = time.monotonic()
-            result = upload(key, large)
-            console_seconds.append(time.monotonic() - started)
-            single_windows.append((started, time.monotonic()))
-            assert result['status'] == 'succeeded', result
-            started = time.monotonic()
-            assert download(key) == large
-            download_seconds.append(time.monotonic() - started)
-        baseline_seconds = statistics.median(cli_seconds)
+        for trial in range(UPLOAD_TRIAL_COUNT):
+            order = ['cli', 'console'] if trial % 2 == 0 else ['console', 'cli']
+            sample = {'trial': trial + 1, 'order': order}
+            upload_trials.append(sample)
+            keys = {'cli': f'write/cli-reference-{trial}.bin', 'console': f'write/performance-single-{trial}.bin'}
+            for path in order:
+                key = keys[path]
+                started = time.monotonic()
+                if path == 'cli':
+                    cli('cp', str(large_path), f'store/{bucket}/{key}')
+                else:
+                    result = upload(key, large)
+                    assert result['status'] == 'succeeded', result
+                finished = time.monotonic()
+                sample[path + 'UploadSeconds'] = finished - started
+                (cli_seconds if path == 'cli' else console_seconds).append(finished - started)
+                if path == 'console':
+                    single_windows.append((started, finished))
+            sample['consoleToCLIRatio'] = sample['cliUploadSeconds'] / sample['consoleUploadSeconds']
+            # Keep the measured uploads adjacent; verify both objects outside
+            # those times before starting the next pair.
+            for path in order:
+                started = time.monotonic()
+                payload = download(keys[path])
+                sample[path + 'VerificationDownloadSeconds'] = time.monotonic() - started
+                sample[path + 'SHA256'] = verify_transfer_payload(payload, len(large), large_sha256)
+                if path == 'console':
+                    download_seconds.append(sample[path + 'VerificationDownloadSeconds'])
+        throughput = summarize_upload_trials(upload_trials, 65)
         timings['singleUploadSeconds'] = statistics.median(console_seconds)
         timings['singleDownloadSeconds'] = statistics.median(download_seconds)
 
@@ -391,13 +448,16 @@ def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_sess
         sample_stop.set()
         sampler.join(timeout=3)
         # Preserve measured evidence even when a transfer or sampler fails.
-        metrics.update({**timings, 'throughputAggregation': 'median-of-three-alternating-trials',
+        metrics.update({**timings, **throughput, 'throughputAggregation': 'median-of-five-counterbalanced-paired-ratios',
+                        'pairedUploadTrials': upload_trials, 'uploadTrialCount': UPLOAD_TRIAL_COUNT,
+                        'expectedTransferSHA256': large_sha256,
                         'cliUploadTrialsSeconds': cli_seconds, 'consoleUploadTrialsSeconds': console_seconds,
                         'downloadTrialsSeconds': download_seconds, 'samplerErrors': sampler_errors,
                         'rssSampleCount': len(samples_rss), 'rssSampleIntervalSeconds': 0.1,
                         'cancellationSeconds': cancellation_seconds,
                         'objectSizeMiB': 65, 'maximumWriteConcurrency': 2,
-                        'minimumConsoleToCLIRatio': 0.5, 'minimumUploadMiBPerSecond': 5})
+                        'minimumConsoleToCLIRatio': MINIMUM_CONSOLE_TO_CLI_RATIO,
+                        'minimumUploadMiBPerSecond': MINIMUM_UPLOAD_MIB_PER_SECOND})
         if samples_rss:
             metrics['peakConsoleRSSMiB'] = max(value for _, value in samples_rss)
         if cli_seconds:
@@ -410,11 +470,9 @@ def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_sess
     assert samples_rss, 'no console RSS samples'
     assert all(any(begin <= stamp <= end for stamp, _ in samples_rss) for begin, end in [*single_windows, concurrent_window]), 'no samples during one transfer phase'
     peak_rss = max(value for _, value in samples_rss)
-    rate = 65 / timings['singleUploadSeconds']
-    reference_rate = 65 / baseline_seconds
     assert peak_rss <= 512 and all(value <= 120 for value in [*timings.values(), *cli_seconds, *console_seconds, *download_seconds])
-    assert rate >= 5 and rate >= reference_rate * 0.5, {'consoleMiBPerSecond': rate, 'cliMiBPerSecond': reference_rate}
-    checks.append('65MiB byte fidelity, two concurrent uploads, sampled RSS and three-trial median same-host CLI throughput budget')
+    require_upload_budget(throughput)
+    checks.append('65MiB SHA256 fidelity per CLI/console trial, two concurrent uploads, sampled RSS and fixed five-pair median throughput budget')
     jobs = job('/api/jobs')['jobs']
     assert len(jobs) <= 16 and all('confirmToken' not in item for item in jobs)
 

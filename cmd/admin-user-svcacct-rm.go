@@ -17,48 +17,48 @@
 package cmd
 
 import (
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
-var adminUserSvcAcctRemoveCmd = cli.Command{
+var adminUserSvcAcctRemoveCmd = &cli.Command{
 	Name:         "rm",
 	Usage:        "Remove a service account",
-	Action:       mainAdminUserSvcAcctRemove,
+	Action:       commandAction(mainAdminUserSvcAcctRemove),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} ALIAS SERVICE-ACCOUNT
+  {{.FullName}} ALIAS SERVICE-ACCOUNT
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Remove the service account 'J123C4ZXEQN8RK6ND35I' from OtterIO server.
-     {{.Prompt}} {{.HelpName}} store/ J123C4ZXEQN8RK6ND35I
+     {{Prompt}} {{.FullName}} store/ J123C4ZXEQN8RK6ND35I
 `,
 }
 
 // checkAdminUserSvcAcctRemoveSyntax - validate all the passed arguments
-func checkAdminUserSvcAcctRemoveSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
+func checkAdminUserSvcAcctRemoveSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
 		fatalIf(errInvalidArgument().Trace(ctx.Args().Tail()...),
 			"Incorrect number of arguments for user svcacct rm command.")
 	}
 }
 
 // mainAdminUserSvcAcctRemove is the handle for "mc admin user svcacct rm" command.
-func mainAdminUserSvcAcctRemove(ctx *cli.Context) error {
+func mainAdminUserSvcAcctRemove(ctx *cli.Command) error {
 	checkAdminUserSvcAcctRemoveSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
-	svcAccount := args.Get(1)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
+	svcAccount := argumentAt(args, 1)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

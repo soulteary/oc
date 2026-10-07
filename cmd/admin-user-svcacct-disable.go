@@ -17,49 +17,49 @@
 package cmd
 
 import (
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
-var adminUserSvcAcctDisableCmd = cli.Command{
+var adminUserSvcAcctDisableCmd = &cli.Command{
 	Name:         "disable",
 	Usage:        "Disable a services account",
-	Action:       mainAdminUserSvcAcctDisable,
+	Action:       commandAction(mainAdminUserSvcAcctDisable),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} ALIAS SERVICE-ACCOUNT
+  {{.FullName}} ALIAS SERVICE-ACCOUNT
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Disable the service account 'J123C4ZXEQN8RK6ND35I' in OtterIO server.
-     {{.Prompt}} {{.HelpName}} store/ J123C4ZXEQN8RK6ND35I
+     {{Prompt}} {{.FullName}} store/ J123C4ZXEQN8RK6ND35I
 `,
 }
 
 // checkAdminUserSvcAcctDisableSyntax - validate all the passed arguments
-func checkAdminUserSvcAcctDisableSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
+func checkAdminUserSvcAcctDisableSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
 		fatalIf(errInvalidArgument().Trace(ctx.Args().Tail()...),
 			"Incorrect number of arguments for user svcacct disable command.")
 	}
 }
 
 // mainAdminUserSvcAcctDisable is the handle for "mc admin user svcacct disable" command.
-func mainAdminUserSvcAcctDisable(ctx *cli.Context) error {
+func mainAdminUserSvcAcctDisable(ctx *cli.Command) error {
 	checkAdminUserSvcAcctDisableSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
-	svcAccount := args.Get(1)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
+	svcAccount := argumentAt(args, 1)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
