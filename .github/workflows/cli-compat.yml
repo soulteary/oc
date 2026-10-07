@@ -1,0 +1,52 @@
+name: CLI compatibility
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cli-contract:
+    name: CLI contract (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          ref: 446e018888bc17649a5d74b049d7006a471a9dd7
+          path: cli-baseline
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build fixed baseline and candidate on the same platform
+        shell: bash
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: '0'
+        run: |
+          suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
+          baseline="$RUNNER_TEMP/oc-baseline$suffix"
+          candidate="$RUNNER_TEMP/oc-candidate$suffix"
+          (cd cli-baseline && go build -mod=readonly -trimpath -o "$baseline" .)
+          go build -mod=readonly -trimpath -o "$candidate" .
+          python3 buildscripts/cli_contract.py check --binary "$candidate" --baseline-binary "$baseline" --output "$RUNNER_TEMP/cli-contract.json"
+      - name: Test contract runner regressions
+        shell: bash
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p test_cli_contract.py -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oc-cli-contract-${{ matrix.os }}
+          path: ${{ runner.temp }}/cli-contract*.json

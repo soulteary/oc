@@ -18,11 +18,11 @@ package cmd
 
 import (
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var ilmSubcommands = []cli.Command{
+var ilmSubcommands = []*cli.Command{
 	ilmAddCmd,
 	ilmEditCmd,
 	ilmLsCmd,
@@ -31,14 +31,14 @@ var ilmSubcommands = []cli.Command{
 	ilmImportCmd,
 }
 
-var ilmCmd = cli.Command{
+var ilmCmd = &cli.Command{
 	Name:            "ilm",
 	Usage:           "manage bucket lifecycle",
-	Action:          mainILM,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainILM),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
 	HideHelpCommand: true,
-	Subcommands:     ilmSubcommands,
+	Commands:        ilmSubcommands,
 }
 
 const (
@@ -51,7 +51,7 @@ const (
 	ilmThemeResultFailure string = "FailureOp"
 )
 
-func mainILM(ctx *cli.Context) error {
+func mainILM(ctx *cli.Command) error {
 	commandNotFound(ctx, ilmSubcommands)
 	return nil
 }

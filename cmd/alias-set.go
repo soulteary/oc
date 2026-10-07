@@ -27,89 +27,89 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
 
 const cred = "YellowItalics"
 
 var aliasSetFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "path",
 		Value: "auto",
 		Usage: "bucket path lookup supported by the server. Valid options are '[auto, on, off]'",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "api",
 		Usage: "API signature. Valid options are '[S3v4, S3v2]'",
 	},
 }
 
-var aliasSetCmd = cli.Command{
-	Name:      "set",
-	ShortName: "s",
-	Usage:     "set a new alias to configuration file",
-	Action: func(cli *cli.Context) error {
+var aliasSetCmd = &cli.Command{
+	Name:    "set",
+	Aliases: []string{"s"},
+	Usage:   "set a new alias to configuration file",
+	Action: commandAction(func(cli *cli.Command) error {
 		return mainAliasSet(cli, false)
-	},
+	}),
 	OnUsageError:    onUsageError,
-	Before:          setGlobalsFromContext,
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           append(aliasSetFlags, globalFlags...),
 	HideHelpCommand: true,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} ALIAS URL ACCESSKEY SECRETKEY
+  {{.FullName}} ALIAS URL ACCESSKEY SECRETKEY
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Add OtterIO service under "store" alias. For security reasons turn off bash history momentarily.
-     {{.DisableHistory}}
-     {{.Prompt}} {{.HelpName}} store http://localhost:9000 minio minio123
-     {{.EnableHistory}}
+     {{DisableHistory}}
+     {{Prompt}} {{.FullName}} store http://localhost:9000 minio minio123
+     {{EnableHistory}}
 
   2. Add OtterIO service under "store" alias, to use dns style bucket lookup. For security reasons
      turn off bash history momentarily.
-     {{.DisableHistory}}
-     {{.Prompt}} {{.HelpName}} store http://localhost:9000 minio minio123 --api "s3v4" --path "off"
-     {{.EnableHistory}}
+     {{DisableHistory}}
+     {{Prompt}} {{.FullName}} store http://localhost:9000 minio minio123 --api "s3v4" --path "off"
+     {{EnableHistory}}
 
   3. Add Amazon S3 storage service under "mys3" alias. For security reasons turn off bash history momentarily.
-     {{.DisableHistory}}
-     {{.Prompt}} {{.HelpName}} mys3 https://s3.amazonaws.com \
+     {{DisableHistory}}
+     {{Prompt}} {{.FullName}} mys3 https://s3.amazonaws.com \
                  BKIKJAA5BMMU2RHO6IBB V8f1CwQqAcwo80UEIJEjc5gVQUSSx5ohQ9GSrr12
-     {{.EnableHistory}}
+     {{EnableHistory}}
 
   4. Add Amazon S3 storage service under "mys3" alias, prompting for keys.
-     {{.Prompt}} {{.HelpName}} mys3 https://s3.amazonaws.com --api "s3v4" --path "off"
+     {{Prompt}} {{.FullName}} mys3 https://s3.amazonaws.com --api "s3v4" --path "off"
      Enter Access Key: BKIKJAA5BMMU2RHO6IBB
      Enter Secret Key: V8f1CwQqAcwo80UEIJEjc5gVQUSSx5ohQ9GSrr12
 
   5. Add Amazon S3 storage service under "mys3" alias using piped keys.
-     {{.DisableHistory}}
-     {{.Prompt}} echo -e "BKIKJAA5BMMU2RHO6IBB\nV8f1CwQqAcwo80UEIJEjc5gVQUSSx5ohQ9GSrr12" | \
-                 {{.HelpName}} mys3 https://s3.amazonaws.com --api "s3v4" --path "off"
-     {{.EnableHistory}}
+     {{DisableHistory}}
+     {{Prompt}} echo -e "BKIKJAA5BMMU2RHO6IBB\nV8f1CwQqAcwo80UEIJEjc5gVQUSSx5ohQ9GSrr12" | \
+                 {{.FullName}} mys3 https://s3.amazonaws.com --api "s3v4" --path "off"
+     {{EnableHistory}}
 `,
 }
 
 // checkAliasSetSyntax - verifies input arguments to 'alias set'.
-func checkAliasSetSyntax(ctx *cli.Context, accessKey string, secretKey string, deprecated bool) {
-	args := ctx.Args()
+func checkAliasSetSyntax(ctx *cli.Command, accessKey string, secretKey string, deprecated bool) {
+	args := ctx.Args().Slice()
 	argsNr := len(args)
 	if argsNr > 4 || argsNr < 2 {
 		fatalIf(errInvalidArgument().Trace(ctx.Args().Tail()...),
 			"Incorrect number of arguments for alias set command.")
 	}
 
-	alias := cleanAlias(args.Get(0))
-	url := args.Get(1)
+	alias := cleanAlias(argumentAt(args, 0))
+	url := argumentAt(args, 1)
 	api := ctx.String("api")
 	path := ctx.String("path")
 	bucketLookup := ctx.String("lookup")
@@ -251,7 +251,7 @@ func BuildS3Config(ctx context.Context, url, accessKey, secretKey, api, path str
 }
 
 // fetchAliasKeys - returns the user accessKey and secretKey
-func fetchAliasKeys(args cli.Args) (string, string) {
+func fetchAliasKeys(args []string) (string, string) {
 	accessKey := ""
 	secretKey := ""
 	console.SetColor(cred, color.New(color.FgYellow, color.Italic))
@@ -267,7 +267,7 @@ func fetchAliasKeys(args cli.Args) (string, string) {
 		value, _, _ := reader.ReadLine()
 		accessKey = string(value)
 	} else {
-		accessKey = args.Get(2)
+		accessKey = argumentAt(args, 2)
 	}
 
 	if argsNr == 2 || argsNr == 3 {
@@ -281,18 +281,18 @@ func fetchAliasKeys(args cli.Args) (string, string) {
 			secretKey = string(value)
 		}
 	} else {
-		secretKey = args.Get(3)
+		secretKey = argumentAt(args, 3)
 	}
 
 	return accessKey, secretKey
 }
 
-func mainAliasSet(cli *cli.Context, deprecated bool) error {
+func mainAliasSet(cli *cli.Command, deprecated bool) error {
 	console.SetColor("AliasMessage", color.New(color.FgGreen))
 	var (
-		args  = cli.Args()
-		alias = cleanAlias(args.Get(0))
-		url   = trimTrailingSeparator(args.Get(1))
+		args  = cli.Args().Slice()
+		alias = cleanAlias(argumentAt(args, 0))
+		url   = trimTrailingSeparator(argumentAt(args, 1))
 		api   = cli.String("api")
 		path  = cli.String("path")
 	)
@@ -336,7 +336,7 @@ func mainAliasSet(cli *cli.Context, deprecated bool) error {
 	defer cancelAliasAdd()
 
 	s3Config, err := BuildS3Config(ctx, url, accessKey, secretKey, api, path)
-	fatalIf(err.Trace(cli.Args()...), "Unable to initialize new alias from the provided credentials.")
+	fatalIf(err.Trace(cli.Args().Slice()...), "Unable to initialize new alias from the provided credentials.")
 
 	msg := setAlias(alias, aliasConfigV10{
 		AdminURL:    adminURL,

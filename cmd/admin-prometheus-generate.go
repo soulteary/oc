@@ -17,14 +17,15 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 
 	jwtgo "github.com/dgrijalva/jwt-go"
 	json "github.com/soulteary/mc/pkg/colorjson"
@@ -37,30 +38,30 @@ const (
 	defaultMetricsPath = "/otterio/v2/metrics/cluster"
 )
 
-var adminPrometheusGenerateCmd = cli.Command{
+var adminPrometheusGenerateCmd = &cli.Command{
 	Name:         "generate",
 	Usage:        "generates prometheus config",
-	Action:       mainAdminPrometheusGenerate,
+	Action:       commandAction(mainAdminPrometheusGenerate),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags: append([]cli.Flag{
-		cli.StringFlag{Name: "metrics-type", Value: "cluster", Usage: "metrics endpoint: cluster, node or legacy"},
-		cli.BoolFlag{Name: "public", Usage: "omit bearer token for an explicitly public metrics deployment"},
-		cli.StringFlag{Name: "metrics-ca", Usage: "metrics CA file path on the Prometheus host (HTTPS only)"},
+		&cli.StringFlag{Name: "metrics-type", Value: "cluster", Usage: "metrics endpoint: cluster, node or legacy"},
+		&cli.BoolFlag{Name: "public", Usage: "omit bearer token for an explicitly public metrics deployment"},
+		&cli.StringFlag{Name: "metrics-ca", Usage: "metrics CA file path on the Prometheus host (HTTPS only)"},
 	}, globalFlags...),
 	HideHelpCommand: true,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Generate a default prometheus config.
-     {{.Prompt}} {{.HelpName}} store
+     {{Prompt}} {{.FullName}} store
 
 `,
 }
@@ -141,9 +142,9 @@ const (
 )
 
 // checkAdminPrometheusSyntax - validate all the passed arguments
-func checkAdminPrometheusSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "generate", 1) // last argument is exit code
+func checkAdminPrometheusSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "generate", 1) // last argument is exit code
 	}
 }
 
@@ -185,7 +186,7 @@ func buildPrometheusConfig(cfg *aliasConfigV10, info madmin.InfoMessage, metrics
 		MetricsPath: path, Scheme: u.Scheme, StaticConfigs: []StatConfig{{Targets: []string{u.Host}}}}}}, nil
 }
 
-func generatePrometheusConfig(ctx *cli.Context) error {
+func generatePrometheusConfig(ctx *cli.Command) error {
 	alias := cleanAlias(ctx.Args().Get(0))
 	if !isValidAlias(alias) {
 		return fmt.Errorf("invalid alias")
@@ -217,7 +218,7 @@ func generatePrometheusConfig(ctx *cli.Context) error {
 }
 
 // mainAdminPrometheus is the handle for "mc admin prometheus generate" sub-command.
-func mainAdminPrometheusGenerate(ctx *cli.Context) error {
+func mainAdminPrometheusGenerate(ctx *cli.Command) error {
 
 	console.SetColor("yaml", color.New(color.FgGreen))
 

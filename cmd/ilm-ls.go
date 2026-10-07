@@ -23,37 +23,37 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/soulteary/mc/cmd/ilm"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var ilmListFlags = []cli.Flag{
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "expiry",
 		Usage: "display only expiration fields",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "transition",
 		Usage: "display only transition fields",
 	},
 }
 
-var ilmLsCmd = cli.Command{
+var ilmLsCmd = &cli.Command{
 	Name:         "ls",
 	Usage:        "lists lifecycle configuration rules set on a bucket",
-	Action:       mainILMList,
+	Action:       commandAction(mainILMList),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(ilmListFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET
+  {{.FullName}} [FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -63,23 +63,23 @@ DESCRIPTION:
 
 EXAMPLES:
   1. List the lifecycle management rules (all fields) for mybucket on alias 'store'.
-     {{.Prompt}} {{.HelpName}} store/mybucket
+     {{Prompt}} {{.FullName}} store/mybucket
 
   2. List the lifecycle management rules (expration date/days fields) for mybucket on alias 'store'.
-     {{.Prompt}} {{.HelpName}} --expiry store/mybucket
+     {{Prompt}} {{.FullName}} --expiry store/mybucket
 
   3. List the lifecycle management rules (transition date/days, storage class fields) for mybucket on alias 'store'.
-     {{.Prompt}} {{.HelpName}} --transition store/mybucket
+     {{Prompt}} {{.FullName}} --transition store/mybucket
 
   4. List the lifecycle management rules in JSON format for mybucket on alias 'store'.
-     {{.Prompt}} {{.HelpName}} --json store/mybucket
+     {{Prompt}} {{.FullName}} --json store/mybucket
 `,
 }
 
 type ilmListMessage struct {
 	Status  string                   `json:"status"`
 	Target  string                   `json:"target"`
-	Context *cli.Context             `json:"-"`
+	Context *cli.Command             `json:"-"`
 	Config  *lifecycle.Configuration `json:"config"`
 }
 
@@ -144,7 +144,7 @@ func (i ilmListMessage) JSON() string {
 }
 
 // validateILMListFlagSet - Only one of these flags needs to be set for display: --json, --expiry, --transition
-func validateILMListFlagSet(ctx *cli.Context) bool {
+func validateILMListFlagSet(ctx *cli.Command) bool {
 	var flags = [...]bool{ctx.Bool("expiry"), ctx.Bool("transition"), ctx.Bool("json")}
 	found := false
 	for _, flag := range flags {
@@ -158,13 +158,13 @@ func validateILMListFlagSet(ctx *cli.Context) bool {
 }
 
 // checkILMListSyntax - validate arguments passed by a user
-func checkILMListSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "ls", globalErrorExitStatus)
+func checkILMListSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "ls", globalErrorExitStatus)
 	}
 
 	if !validateILMListFlagSet(ctx) {
-		fatalIf(errInvalidArgument(), "only one display field flag is allowed per ls command. Refer mc "+ctx.Command.FullName()+" --help.")
+		fatalIf(errInvalidArgument(), "only one display field flag is allowed per ls command. Refer mc "+ctx.FullName()+" --help.")
 	}
 }
 
@@ -248,15 +248,15 @@ func getILMRowsWithTags(tbl *PrettyTable, cellDataWithTags *[][]string, newRows 
 	return rows
 }
 
-func mainILMList(cliCtx *cli.Context) error {
+func mainILMList(cliCtx *cli.Command) error {
 	ctx, cancelILMList := context.WithCancel(globalContext)
 	defer cancelILMList()
 
 	checkILMListSyntax(cliCtx)
 	setILMDisplayColorScheme()
 
-	args := cliCtx.Args()
-	urlStr := args.Get(0)
+	args := cliCtx.Args().Slice()
+	urlStr := argumentAt(args, 0)
 
 	client, err := newClient(urlStr)
 	fatalIf(err.Trace(urlStr), "Unable to initialize client for "+urlStr)

@@ -20,30 +20,30 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	shareFlags = []cli.Flag{}
 )
 
-var shareSubcommands = []cli.Command{
+var shareSubcommands = []*cli.Command{
 	shareDownload,
 	shareUpload,
 	shareList,
 }
 
 // Share documents via URL.
-var shareCmd = cli.Command{
+var shareCmd = &cli.Command{
 	Name:            "share",
 	Usage:           "generate URL for temporary access to an object",
-	Action:          mainShare,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainShare),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           append(shareFlags, globalFlags...),
 	HideHelpCommand: true,
-	Subcommands:     shareSubcommands,
+	Commands:        shareSubcommands,
 }
 
 // migrateShare migrate to newest version sequentially.
@@ -63,7 +63,7 @@ func migrateShare() {
 }
 
 // mainShare - main handler for mc share command.
-func mainShare(ctx *cli.Context) error {
+func mainShare(ctx *cli.Command) error {
 	commandNotFound(ctx, shareSubcommands)
 	return nil
 	// Sub-commands like "upload" and "download" have their own main.

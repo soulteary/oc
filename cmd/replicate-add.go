@@ -23,60 +23,60 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/replication"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var replicateAddFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "arn",
 		Usage: "unique role ARN",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "id",
 		Usage: "id for the rule, should be a unique value",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "tags",
 		Usage: "format '<key1>=<value1>&<key2>=<value2>&<key3>=<value3>', multiple values allowed for multiple key/value pairs",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "storage-class",
 		Usage: "storage class for destination (STANDARD_IA,REDUCED_REDUNDANCY etc)",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "disable",
 		Usage: "disable the rule",
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "priority",
 		Usage: "priority of the rule, should be unique and is a required field",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "remote-bucket",
 		Usage: "remote bucket, should be a unique value for the configuration",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "replicate",
 		Usage: "comma separated list to enable replication of delete markers, and/or deletion of versioned objects.Valid options are \"delete-marker\", \"delete\" and \"\"",
 	},
 }
 
-var replicateAddCmd = cli.Command{
+var replicateAddCmd = &cli.Command{
 	Name:         "add",
 	Usage:        "add a server side replication configuration rule",
-	Action:       mainReplicateAdd,
+	Action:       commandAction(mainReplicateAdd),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(globalFlags, replicateAddFlags...),
 	CustomHelpTemplate: `NAME:
- {{.HelpName}} - {{.Usage}}
+ {{.FullName}} - {{.Usage}}
 
 USAGE:
- {{.HelpName}} TARGET
+ {{.FullName}} TARGET
 
 FLAGS:
  {{range .VisibleFlags}}{{.}}
@@ -84,7 +84,7 @@ FLAGS:
 EXAMPLES:
  1. Add replication configuration rule on bucket "mybucket" for alias "store" to replicate all objects with tags
     "key1=value1, key2=value2" to destbucket, including delete markers and versioned deletes.
-    {{.Prompt}} {{.HelpName}} store/mybucket/prefix --tags "key1=value1&key2=value2" \
+    {{Prompt}} {{.FullName}} store/mybucket/prefix --tags "key1=value1&key2=value2" \
          --storage-class "STANDARD" \
          --arn 'arn:minio:replication::c5be6b16-769d-432a-9ef1-4567081f3566:destbucket' \
          --priority 1 \
@@ -92,7 +92,7 @@ EXAMPLES:
          --replicate "delete,delete-marker"
 
  2. Add replication configuration rule with Disabled status on bucket "mybucket" for alias "store".
-    {{.Prompt}} {{.HelpName}} store/mybucket/prefix --tags "key1=value1&key2=value2" \
+    {{Prompt}} {{.FullName}} store/mybucket/prefix --tags "key1=value1&key2=value2" \
         --storage-class "STANDARD" --disable \
         --arn 'arn:minio:replica::c5be6b16-769d-432a-9ef1-4567081f3566:destbucket' \
         --priority 1 \
@@ -101,9 +101,9 @@ EXAMPLES:
 }
 
 // checkReplicateAddSyntax - validate all the passed arguments
-func checkReplicateAddSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "add", 1) // last argument is exit code
+func checkReplicateAddSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "add", 1) // last argument is exit code
 	}
 	if ctx.String("arn") == "" {
 		fatal(errDummy().Trace(), "--arn flag needs to be specified.")
@@ -139,7 +139,7 @@ func (l replicateAddMessage) String() string {
 	return console.Colorize("replicateAddMessage", "Replication configuration rule applied to "+l.URL+" successfully.")
 }
 
-func mainReplicateAdd(cliCtx *cli.Context) error {
+func mainReplicateAdd(cliCtx *cli.Command) error {
 	ctx, cancelReplicateAdd := context.WithCancel(globalContext)
 	defer cancelReplicateAdd()
 
@@ -148,8 +148,8 @@ func mainReplicateAdd(cliCtx *cli.Context) error {
 	checkReplicateAddSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(0)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")

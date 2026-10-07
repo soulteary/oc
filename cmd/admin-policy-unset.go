@@ -17,28 +17,29 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminPolicyUnsetCmd = cli.Command{
+var adminPolicyUnsetCmd = &cli.Command{
 	Name:         "unset",
 	Usage:        "unset an IAM policy for a user or group",
-	Action:       mainAdminPolicyUnset,
+	Action:       commandAction(mainAdminPolicyUnset),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET POLICYNAME [ user=username1 | group=groupname1 ]
+  {{.FullName}} TARGET POLICYNAME [ user=username1 | group=groupname1 ]
 
 POLICYNAME:
   Name of the policy on the OtterIO server.
@@ -48,16 +49,16 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Unset the "diagnostics" policy for user "james".
-     {{.Prompt}} {{.HelpName}} store diagnostics user=james
+     {{Prompt}} {{.FullName}} store diagnostics user=james
 
   2. Set the "diagnostics" policy for group "auditors".
-     {{.Prompt}} {{.HelpName}} store diagnostics group=auditors
+     {{Prompt}} {{.FullName}} store diagnostics group=auditors
 `,
 }
 
-func checkAdminPolicyUnsetSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 3 {
-		cli.ShowCommandHelpAndExit(ctx, "unset", 1) // last argument is exit code
+func checkAdminPolicyUnsetSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 3 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "unset", 1) // last argument is exit code
 	}
 }
 
@@ -85,17 +86,17 @@ func removeCannedPolicies(existingPolicies, policiesToRemove string) (string, er
 }
 
 // mainAdminPolicyUnset is the handler for "mc admin policy unset" command.
-func mainAdminPolicyUnset(ctx *cli.Context) error {
+func mainAdminPolicyUnset(ctx *cli.Command) error {
 	checkAdminPolicyUnsetSyntax(ctx)
 
 	console.SetColor("PolicyMessage", color.New(color.FgGreen))
 	console.SetColor("Policy", color.New(color.FgBlue))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
-	policiesToUnset := args.Get(1)
-	entityArg := args.Get(2)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
+	policiesToUnset := argumentAt(args, 1)
+	entityArg := argumentAt(args, 2)
 
 	userOrGroup, isGroup, e1 := parseEntityArg(entityArg)
 	fatalIf(probe.NewError(e1).Trace(args...), "Bad last argument")

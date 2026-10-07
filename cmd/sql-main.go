@@ -30,44 +30,44 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/mimedb"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	sqlFlags = []cli.Flag{
-		cli.StringFlag{
-			Name:  "query, e",
+		&cli.StringFlag{
+			Name: "query", Aliases: []string{"e"},
 			Usage: "sql query expression",
 			Value: "select * from s3object",
 		},
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "sql query recursively",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "csv-input",
 			Usage: "csv input serialization option",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "json-input",
 			Usage: "json input serialization option",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "compression",
 			Usage: "input compression type",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "csv-output",
 			Usage: "csv output serialization option",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "csv-output-header",
 			Usage: "optional csv output header ",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "json-output",
 			Usage: "json output serialization option",
 		},
@@ -75,18 +75,18 @@ var (
 )
 
 // Display contents of a file.
-var sqlCmd = cli.Command{
+var sqlCmd = &cli.Command{
 	Name:         "sql",
 	Usage:        "run sql queries on objects",
-	Action:       mainSQL,
+	Action:       commandAction(mainSQL),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(append(sqlFlags, ioFlags...), globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET [TARGET...]
+  {{.FullName}} [FLAGS] TARGET [TARGET...]
 {{if .VisibleFlags}}	       
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -99,28 +99,28 @@ SERIALIZATION OPTIONS:
 
 EXAMPLES:
   1. Run a query on a set of objects recursively on AWS S3.
-     {{.Prompt}} {{.HelpName}} --recursive --query "select * from S3Object" s3/personalbucket/my-large-csvs/
+     {{Prompt}} {{.FullName}} --recursive --query "select * from S3Object" s3/personalbucket/my-large-csvs/
 
   2. Run a query on an object on OtterIO.
-     {{.Prompt}} {{.HelpName}} --query "select count(s.power) from S3Object" store/iot-devices/power-ratio.csv
+     {{Prompt}} {{.FullName}} --query "select count(s.power) from S3Object" store/iot-devices/power-ratio.csv
 
   3. Run a query on an encrypted object with customer provided keys.
-     {{.Prompt}} {{.HelpName}} --encrypt-key "store/iot-devices=32byteslongsecretkeymustbegiven1" \
+     {{Prompt}} {{.FullName}} --encrypt-key "store/iot-devices=32byteslongsecretkeymustbegiven1" \
            --query "select count(s.power) from S3Object s" store/iot-devices/power-ratio-encrypted.csv
 
   4. Run a query on an object on OtterIO in gzip format using ; as field delimiter,
      newline as record delimiter and file header to be used
-     {{.Prompt}} {{.HelpName}} --compression GZIP --csv-input "rd=\n,fh=USE,fd=;" \
+     {{Prompt}} {{.FullName}} --compression GZIP --csv-input "rd=\n,fh=USE,fd=;" \
            --query "select count(s.power) from S3Object" store/iot-devices/power-ratio.csv.gz
 
   5. Run a query on an object on OtterIO in gzip format using ; as field delimiter,
      newline as record delimiter and file header to be used
-     {{.Prompt}} {{.HelpName}} --compression GZIP --csv-input "rd=\n,fh=USE,fd=;" \
+     {{Prompt}} {{.FullName}} --compression GZIP --csv-input "rd=\n,fh=USE,fd=;" \
            --json-output "rd=\n\n" --query "select * from S3Object" store/iot-devices/data.csv
 
   6. Run same query as in 5., but specify csv output headers. If --csv-output-headers is
      specified as "", first row of csv is interpreted as header
-     {{.Prompt}} {{.HelpName}} --compression GZIP --csv-input "rd=\n,fh=USE,fd=;" \
+     {{Prompt}} {{.FullName}} --compression GZIP --csv-input "rd=\n,fh=USE,fd=;" \
            --csv-output "rd=\n" --csv-output-header "device_id,uptime,lat,lon" \
            --query "select * from S3Object" store/iot-devices/data.csv
 `,
@@ -242,7 +242,7 @@ func parseSerializationOpts(inp string, validKeys []string, validAbbrKeys map[st
 }
 
 // gets the input serialization opts from cli context and constructs a map of csv, json or parquet options
-func getInputSerializationOpts(ctx *cli.Context) map[string]map[string]string {
+func getInputSerializationOpts(ctx *cli.Command) map[string]map[string]string {
 	icsv := ctx.String("csv-input")
 	ijson := ctx.String("json-input")
 	m := make(map[string]map[string]string)
@@ -270,7 +270,7 @@ func getInputSerializationOpts(ctx *cli.Context) map[string]map[string]string {
 }
 
 // gets the output serialization opts from cli context and constructs a map of csv or json options
-func getOutputSerializationOpts(ctx *cli.Context, csvHdrs []string) (opts map[string]map[string]string) {
+func getOutputSerializationOpts(ctx *cli.Command, csvHdrs []string) (opts map[string]map[string]string) {
 	m := make(map[string]map[string]string)
 
 	ocsv := ctx.String("csv-output")
@@ -344,7 +344,7 @@ func isSelectAll(query string) bool {
 
 // if csv-output-header is set to a comma delimited string use it, othjerwise attempt to get the header from
 // query object
-func getCSVOutputHeaders(ctx *cli.Context, url string, encKeyDB map[string][]prefixSSEPair, query string) (hdrs []string) {
+func getCSVOutputHeaders(ctx *cli.Command, url string, encKeyDB map[string][]prefixSSEPair, query string) (hdrs []string) {
 	if !ctx.IsSet("csv-output-header") {
 		return
 	}
@@ -361,7 +361,7 @@ func getCSVOutputHeaders(ctx *cli.Context, url string, encKeyDB map[string][]pre
 }
 
 // get the Select options for sql select API
-func getSQLOpts(ctx *cli.Context, csvHdrs []string) (s SelectObjectOpts) {
+func getSQLOpts(ctx *cli.Command, csvHdrs []string) (s SelectObjectOpts) {
 	is := getInputSerializationOpts(ctx)
 	os := getOutputSerializationOpts(ctx, csvHdrs)
 
@@ -419,7 +419,7 @@ func validateOpts(selOpts SelectObjectOpts, url string) {
 }
 
 // validate args and optionally fetch the csv header of query object
-func getAndValidateArgs(ctx *cli.Context, encKeyDB map[string][]prefixSSEPair, url string) (query string, csvHdrs []string, selOpts SelectObjectOpts) {
+func getAndValidateArgs(ctx *cli.Command, encKeyDB map[string][]prefixSSEPair, url string) (query string, csvHdrs []string, selOpts SelectObjectOpts) {
 	query = ctx.String("query")
 	csvHdrs = getCSVOutputHeaders(ctx, url, encKeyDB, query)
 	selOpts = getSQLOpts(ctx, csvHdrs)
@@ -428,14 +428,14 @@ func getAndValidateArgs(ctx *cli.Context, encKeyDB map[string][]prefixSSEPair, u
 }
 
 // check sql input arguments.
-func checkSQLSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) == 0 {
-		cli.ShowCommandHelpAndExit(ctx, "sql", 1) // last argument is exit code.
+func checkSQLSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() == 0 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "sql", 1) // last argument is exit code.
 	}
 }
 
 // mainSQL is the main entry point for sql command.
-func mainSQL(cliCtx *cli.Context) error {
+func mainSQL(cliCtx *cli.Command) error {
 	ctx, cancelSQL := context.WithCancel(globalContext)
 	defer cancelSQL()
 
@@ -451,7 +451,7 @@ func mainSQL(cliCtx *cli.Context) error {
 	// validate sql input arguments.
 	checkSQLSyntax(cliCtx)
 	// extract URLs.
-	URLs := cliCtx.Args()
+	URLs := cliCtx.Args().Slice()
 	writeHdr := true
 	for _, url := range URLs {
 		if _, targetContent, err := url2Stat(ctx, url, "", false, encKeyDB, time.Time{}); err != nil {

@@ -17,48 +17,49 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 	"text/tabwriter"
 	"text/template"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var historyListFlags = []cli.Flag{
-	cli.IntFlag{
-		Name:  "count, n",
+	&cli.IntFlag{
+		Name: "count", Aliases: []string{"n"},
 		Usage: "list only last 'n' entries",
 		Value: 10,
 	},
-	cli.BoolFlag{
-		Name:  "clear, c",
+	&cli.BoolFlag{
+		Name: "clear", Aliases: []string{"c"},
 		Usage: "clear all history",
 	},
 }
 
-var adminConfigHistoryCmd = cli.Command{
+var adminConfigHistoryCmd = &cli.Command{
 	Name:         "history",
 	Usage:        "show all historic configuration changes",
-	Before:       setGlobalsFromContext,
-	Action:       mainAdminConfigHistory,
+	Before:       commandBefore(setGlobalsFromContext),
+	Action:       commandAction(mainAdminConfigHistory),
 	OnUsageError: onUsageError,
 	Flags:        append(append([]cli.Flag{}, globalFlags...), historyListFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. List all history entries sorted by time.
-     {{.Prompt}} {{.HelpName}} store/
+     {{Prompt}} {{.FullName}} store/
 `,
 }
 
@@ -106,13 +107,13 @@ func (u configHistoryMessage) JSON() string {
 }
 
 // checkAdminConfigHistorySyntax - validate all the passed arguments
-func checkAdminConfigHistorySyntax(ctx *cli.Context) {
-	if !ctx.Args().Present() || len(ctx.Args()) > 1 {
-		cli.ShowCommandHelpAndExit(ctx, "history", 1) // last argument is exit code
+func checkAdminConfigHistorySyntax(ctx *cli.Command) {
+	if !ctx.Args().Present() || ctx.Args().Len() > 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "history", 1) // last argument is exit code
 	}
 }
 
-func mainAdminConfigHistory(ctx *cli.Context) error {
+func mainAdminConfigHistory(ctx *cli.Command) error {
 
 	checkAdminConfigHistorySyntax(ctx)
 
@@ -120,8 +121,8 @@ func mainAdminConfigHistory(ctx *cli.Context) error {
 	console.SetColor("ConfigHistoryMessageTime", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

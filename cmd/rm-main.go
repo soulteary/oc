@@ -27,61 +27,61 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 // rm specific flags.
 var (
 	rmFlags = []cli.Flag{
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "versions",
 			Usage: "remove object(s) and all its versions",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "roll back object(s) to current version at specified time",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "delete a specific version of an object",
 		},
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "remove recursively",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "force",
 			Usage: "allow a recursive remove operation",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "dangerous",
 			Usage: "allow site-wide removal of objects",
 		},
-		cli.BoolFlag{
-			Name:  "incomplete, I",
+		&cli.BoolFlag{
+			Name: "incomplete", Aliases: []string{"I"},
 			Usage: "remove incomplete uploads",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "fake",
 			Usage: "perform a fake remove operation",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "stdin",
 			Usage: "read object names from STDIN",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "older-than",
 			Usage: "remove objects older than L days, M hours and N minutes",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "newer-than",
 			Usage: "remove objects newer than L days, M hours and N minutes",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "bypass",
 			Usage: "bypass governance",
 		},
@@ -89,18 +89,18 @@ var (
 )
 
 // remove a file or folder.
-var rmCmd = cli.Command{
+var rmCmd = &cli.Command{
 	Name:         "rm",
 	Usage:        "remove objects",
-	Action:       mainRm,
+	Action:       commandAction(mainRm),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(append(rmFlags, ioFlags...), globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET [TARGET ...]
+  {{.FullName}} [FLAGS] TARGET [TARGET ...]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -110,43 +110,43 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
   01. Remove a file.
-      {{.Prompt}} {{.HelpName}} 1999/old-backup.tgz
+      {{Prompt}} {{.FullName}} 1999/old-backup.tgz
 
   02. Perform a fake remove operation.
-      {{.Prompt}} {{.HelpName}} --fake 1999/old-backup.tgz
+      {{Prompt}} {{.FullName}} --fake 1999/old-backup.tgz
 
   03. Remove all objects recursively from bucket 'jazz-songs' matching the prefix 'louis'.
-      {{.Prompt}} {{.HelpName}} --recursive --force s3/jazz-songs/louis/
+      {{Prompt}} {{.FullName}} --recursive --force s3/jazz-songs/louis/
 
   04. Remove all objects older than '90' days recursively from bucket 'jazz-songs' matching the prefix 'louis'.
-      {{.Prompt}} {{.HelpName}} --recursive --force --older-than 90d s3/jazz-songs/louis/
+      {{Prompt}} {{.FullName}} --recursive --force --older-than 90d s3/jazz-songs/louis/
 
   05. Remove all objects newer than 7 days and 10 hours recursively from bucket 'pop-songs'
-      {{.Prompt}} {{.HelpName}} --recursive --force --newer-than 7d10h s3/pop-songs/
+      {{Prompt}} {{.FullName}} --recursive --force --newer-than 7d10h s3/pop-songs/
 
   06. Remove all objects read from STDIN.
-      {{.Prompt}} {{.HelpName}} --force --stdin
+      {{Prompt}} {{.FullName}} --force --stdin
 
   07. Remove all objects recursively from Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive --force --dangerous s3
+      {{Prompt}} {{.FullName}} --recursive --force --dangerous s3
 
   08. Remove all objects older than '90' days recursively under all buckets.
-      {{.Prompt}} {{.HelpName}} --recursive --dangerous --force --older-than 90d s3
+      {{Prompt}} {{.FullName}} --recursive --dangerous --force --older-than 90d s3
 
   09. Drop all incomplete uploads on the bucket 'jazz-songs'.
-      {{.Prompt}} {{.HelpName}} --incomplete --recursive --force s3/jazz-songs/
+      {{Prompt}} {{.FullName}} --incomplete --recursive --force s3/jazz-songs/
 
   10. Remove an encrypted object from Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --encrypt-key "s3/sql-backups/=32byteslongsecretkeymustbegiven1" s3/sql-backups/1999/old-backup.tgz
+      {{Prompt}} {{.FullName}} --encrypt-key "s3/sql-backups/=32byteslongsecretkeymustbegiven1" s3/sql-backups/1999/old-backup.tgz
 
   11. Bypass object retention in governance mode and delete the object.
-      {{.Prompt}} {{.HelpName}} --bypass s3/pop-songs/
+      {{Prompt}} {{.FullName}} --bypass s3/pop-songs/
 
   12. Remove a particular version ID.
-      {{.Prompt}} {{.HelpName}} s3/docs/money.xls --version-id "f20f3792-4bd4-4288-8d3c-b9d05b3b62f6"
+      {{Prompt}} {{.FullName}} s3/docs/money.xls --version-id "f20f3792-4bd4-4288-8d3c-b9d05b3b62f6"
 
   13. Remove all object versions older than one year.
-      {{.Prompt}} {{.HelpName}} s3/docs/ --recursive --versions --rewind 365d
+      {{Prompt}} {{.FullName}} s3/docs/ --recursive --versions --rewind 365d
 
 `,
 }
@@ -183,7 +183,7 @@ func (r rmMessage) JSON() string {
 }
 
 // Validate command line arguments.
-func checkRmSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[string][]prefixSSEPair) {
+func checkRmSyntax(ctx context.Context, cliCtx *cli.Command, encKeyDB map[string][]prefixSSEPair) {
 	// Set command flags from context.
 	isForce := cliCtx.Bool("force")
 	isRecursive := cliCtx.Bool("recursive")
@@ -199,7 +199,7 @@ func checkRmSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[string
 			"You cannot specify --version-id with any of --versions, --rewind and --recursive flags.")
 	}
 
-	for _, url := range cliCtx.Args() {
+	for _, url := range cliCtx.Args().Slice() {
 		// clean path for aliases like s3/.
 		// Note: UNC path using / works properly in go 1.9.2 even though it breaks the UNC specification.
 		url = filepath.ToSlash(filepath.Clean(url))
@@ -221,7 +221,7 @@ func checkRmSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[string
 	}
 	if !cliCtx.Args().Present() && !isStdin {
 		exitCode := 1
-		cli.ShowCommandHelpAndExit(cliCtx, "rm", exitCode)
+		cli.ShowCommandHelpAndExit(context.Background(), cliCtx, "rm", exitCode)
 	}
 
 	// For all recursive or versions bulk deletion operations make sure to check for 'force' flag.
@@ -464,7 +464,7 @@ func listAndRemove(url string, timeRef time.Time, withVersions, isRecursive, isI
 }
 
 // main for rm command.
-func mainRm(cliCtx *cli.Context) error {
+func mainRm(cliCtx *cli.Command) error {
 	ctx, cancelRm := context.WithCancel(globalContext)
 	defer cancelRm()
 
@@ -498,7 +498,7 @@ func mainRm(cliCtx *cli.Context) error {
 	var rerr error
 	var e error
 	// Support multiple targets.
-	for _, url := range cliCtx.Args() {
+	for _, url := range cliCtx.Args().Slice() {
 		if isRecursive || withVersions {
 			e = listAndRemove(url, rewind, withVersions, isRecursive, isIncomplete, isFake, isBypass, olderThan, newerThan, encKeyDB)
 		} else {

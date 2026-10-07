@@ -66,7 +66,7 @@ def build(root, destination, tag):
             subprocess.run(['go', 'build', '-tags', 'kqueue', '-trimpath', '-ldflags', flags, '-o', str(binary), '.'], cwd=root, env=env, check=True)
             archive = package(root, destination, tag, target, binary)
             assets.append({'name': archive.name, 'target': target, 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest()})
-    manifest = {'schema_version': 1, 'release_tag': tag, 'source_commit': sha, 'go_toolchain': support['goToolchain'], 'otterio_sdk': support['otterioSDK'], 'assets': assets}
+    manifest = {'schema_version': 1, 'release_tag': tag, 'source_commit': sha, 'go_toolchain': support['goToolchain'], 'otterio_sdk': support['otterioSDK'], 'otterio_source': support['otterioSource'], 'cli_framework': support['cliFramework'], 'assets': assets}
     (destination / 'release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     files = sorted(destination.iterdir())
     (destination / 'checksums.txt').write_text(''.join(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n' for path in files))

@@ -17,64 +17,65 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
-var adminGroupEnableCmd = cli.Command{
+var adminGroupEnableCmd = &cli.Command{
 	Name:         "enable",
 	Usage:        "enable a group",
-	Action:       mainAdminGroupEnableDisable,
+	Action:       commandAction(mainAdminGroupEnableDisable),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET GROUPNAME
+  {{.FullName}} TARGET GROUPNAME
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Enable group 'allcents'.
-     {{.Prompt}} {{.HelpName}} store allcents
+     {{Prompt}} {{.FullName}} store allcents
 `,
 }
 
 // checkAdminGroupEnableSyntax - validate all the passed arguments
-func checkAdminGroupEnableSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
-		cli.ShowCommandHelpAndExit(ctx, ctx.Command.Name, 1) // last argument is exit code
+func checkAdminGroupEnableSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, ctx.Name, 1) // last argument is exit code
 	}
 }
 
 // mainAdminGroupEnableDisable is the handle for "mc admin group enable|disable" command.
-func mainAdminGroupEnableDisable(ctx *cli.Context) error {
+func mainAdminGroupEnableDisable(ctx *cli.Command) error {
 	checkAdminGroupEnableSyntax(ctx)
 
 	console.SetColor("GroupMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
-	group := args.Get(1)
+	group := argumentAt(args, 1)
 	var err1 error
 	var status madmin.GroupStatus
-	if ctx.Command.Name == "enable" {
+	if ctx.Name == "enable" {
 		status = madmin.GroupEnabled
-	} else if ctx.Command.Name == "disable" {
+	} else if ctx.Name == "disable" {
 		status = madmin.GroupDisabled
 	} else {
 		err1 = errors.New("cannot happen")
@@ -84,7 +85,7 @@ func mainAdminGroupEnableDisable(ctx *cli.Context) error {
 	fatalIf(probe.NewError(err1).Trace(args...), "Could not get group enable")
 
 	printMsg(groupMessage{
-		op:          ctx.Command.Name,
+		op:          ctx.Name,
 		GroupName:   group,
 		GroupStatus: string(status),
 	})

@@ -17,26 +17,26 @@
 package cmd
 
 import (
-	"github.com/minio/cli"
+	"github.com/urfave/cli/v3"
 )
 
-var tagSubcommands = []cli.Command{
+var tagSubcommands = []*cli.Command{
 	tagListCmd,
 	tagRemoveCmd,
 	tagSetCmd,
 }
 
-var tagCmd = cli.Command{
+var tagCmd = &cli.Command{
 	Name:            "tag",
 	Usage:           "manage tags for bucket and object(s)",
-	Action:          mainTag,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainTag),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
 	HideHelpCommand: true,
-	Subcommands:     tagSubcommands,
+	Commands:        tagSubcommands,
 }
 
-func mainTag(ctx *cli.Context) error {
+func mainTag(ctx *cli.Command) error {
 	commandNotFound(ctx, tagSubcommands)
 	return nil
 }

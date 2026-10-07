@@ -17,36 +17,36 @@
 package cmd
 
 import (
-	"github.com/minio/cli"
+	"github.com/urfave/cli/v3"
 )
 
 // Collection of mc flags currently supported
 var globalFlags = []cli.Flag{
-	cli.StringFlag{Name: "admin-url", Usage: "explicit OtterIO management endpoint (OC_ADMIN_URL or OC_ADMIN_URL_<alias>)"},
-	cli.StringFlag{Name: "admin-ca", Usage: "PEM CA file for the management endpoint (OC_ADMIN_CA or OC_ADMIN_CA_<alias>)"},
-	cli.StringFlag{
-		Name:   "config-dir, C",
-		EnvVar: "OC_CONFIG_DIR,MC_CONFIG_DIR",
-		Value:  mustGetMcConfigDir(),
-		Usage:  "path to configuration folder",
+	&cli.StringFlag{Name: "admin-url", Usage: "explicit OtterIO management endpoint (OC_ADMIN_URL or OC_ADMIN_URL_<alias>)"},
+	&cli.StringFlag{Name: "admin-ca", Usage: "PEM CA file for the management endpoint (OC_ADMIN_CA or OC_ADMIN_CA_<alias>)"},
+	&cli.StringFlag{
+		Name: "config-dir", Aliases: []string{"C"},
+		Sources: cli.EnvVars("OC_CONFIG_DIR", "MC_CONFIG_DIR"),
+		Value:   mustGetMcConfigDir(),
+		Usage:   "path to configuration folder",
 	},
-	cli.BoolFlag{
-		Name:  "quiet, q",
+	&cli.BoolFlag{
+		Name: "quiet", Aliases: []string{"q"},
 		Usage: "disable progress bar display",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "no-color",
 		Usage: "disable color theme",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "json",
 		Usage: "enable JSON lines formatted output",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "debug",
 		Usage: "enable debug output",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "insecure",
 		Usage: "disable SSL certificate verification",
 	},
@@ -54,7 +54,7 @@ var globalFlags = []cli.Flag{
 
 // Flags common across all I/O commands such as cp, mirror, stat, pipe etc.
 var ioFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "encrypt-key",
 		Usage: "encrypt/decrypt objects (using server-side encryption with customer provided keys)",
 	},

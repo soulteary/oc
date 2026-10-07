@@ -20,7 +20,7 @@ Keep PR descriptions and release notes about the final change: its trigger, resu
 
 Dependencies are managed by Go modules. Review intentional `go.mod`/`go.sum` changes together, including why a new package or upgrade is needed. Do not commit local `replace` directives or use broad dependency upgrades to bypass a failing fixture.
 
-The OtterIO SDK/toolchain baseline and server patches are recorded in [compatibility.json](compatibility.json) and checked by `buildscripts/verify-release-boundaries.py`. A baseline change needs its related tests, documentation and boundary checks updated in the same reviewed work. Server fixture patches belong on a temporary copy of the pinned source, not the shared module cache. The [development guide](development.md#reproduce-the-server-integration-fixture) documents the setup.
+The OtterIO SDK/toolchain baseline and server patches are recorded in [compatibility.json](compatibility.json) and checked by `buildscripts/verify-release-boundaries.py`. A baseline change needs its related tests, documentation and boundary checks updated in the same reviewed work. The current pin includes the former server fixes; build the exact module source without applying historical compatibility patches. The [development guide](development.md#reproduce-the-server-integration-fixture) documents the setup.
 
 Preserve [LICENSE](../LICENSE), [NOTICE](../NOTICE), [CREDITS](../CREDITS), source copyright notices and the notification package's MIT license. Archive and image packaging must retain the applicable license files. Retained upstream names identify origin and compatibility; they do not imply affiliation with or endorsement by MinIO, Inc. The Go module path remains `github.com/soulteary/mc`, while the executable is `oc`.
 

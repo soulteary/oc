@@ -23,10 +23,10 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 // diff specific flags.
@@ -35,18 +35,18 @@ var (
 )
 
 // Compute differences in object name, size, and date between two buckets.
-var diffCmd = cli.Command{
+var diffCmd = &cli.Command{
 	Name:         "diff",
 	Usage:        "list differences in object name, size, and date between two buckets",
-	Action:       mainDiff,
+	Action:       commandAction(mainDiff),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(diffFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] FIRST SECOND
+  {{.FullName}} [FLAGS] FIRST SECOND
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -61,10 +61,10 @@ LEGEND:
 
 EXAMPLES:
   1. Compare a local folder with a folder on Amazon S3 cloud storage.
-     {{.Prompt}} {{.HelpName}} ~/Photos s3/mybucket/Photos
+     {{Prompt}} {{.FullName}} ~/Photos s3/mybucket/Photos
 
   2. Compare two folders on a local filesystem.
-     {{.Prompt}} {{.HelpName}} ~/Photos /Media/Backup/Photos
+     {{Prompt}} {{.FullName}} ~/Photos /Media/Backup/Photos
 `,
 }
 
@@ -114,16 +114,16 @@ func (d diffMessage) JSON() string {
 	return string(diffJSONBytes)
 }
 
-func checkDiffSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[string][]prefixSSEPair) {
-	if len(cliCtx.Args()) != 2 {
-		cli.ShowCommandHelpAndExit(cliCtx, "diff", 1) // last argument is exit code
+func checkDiffSyntax(ctx context.Context, cliCtx *cli.Command, encKeyDB map[string][]prefixSSEPair) {
+	if cliCtx.Args().Len() != 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), cliCtx, "diff", 1) // last argument is exit code
 	}
-	for _, arg := range cliCtx.Args() {
+	for _, arg := range cliCtx.Args().Slice() {
 		if strings.TrimSpace(arg) == "" {
-			fatalIf(errInvalidArgument().Trace(cliCtx.Args()...), "Unable to validate empty argument.")
+			fatalIf(errInvalidArgument().Trace(cliCtx.Args().Slice()...), "Unable to validate empty argument.")
 		}
 	}
-	URLs := cliCtx.Args()
+	URLs := cliCtx.Args().Slice()
 	firstURL := URLs[0]
 	secondURL := URLs[1]
 
@@ -197,7 +197,7 @@ func doDiffMain(ctx context.Context, firstURL, secondURL string) error {
 }
 
 // mainDiff main for 'diff'.
-func mainDiff(cliCtx *cli.Context) error {
+func mainDiff(cliCtx *cli.Command) error {
 	ctx, cancelDiff := context.WithCancel(globalContext)
 	defer cancelDiff()
 
@@ -217,9 +217,9 @@ func mainDiff(cliCtx *cli.Context) error {
 	console.SetColor("DiffMetadata", color.New(color.FgYellow, color.Bold))
 	console.SetColor("DiffMMSourceMTime", color.New(color.FgYellow, color.Bold))
 
-	URLs := cliCtx.Args()
-	firstURL := URLs.Get(0)
-	secondURL := URLs.Get(1)
+	URLs := cliCtx.Args().Slice()
+	firstURL := argumentAt(URLs, 0)
+	secondURL := argumentAt(URLs, 1)
 
 	return doDiffMain(ctx, firstURL, secondURL)
 }

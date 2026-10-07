@@ -49,6 +49,26 @@ def digest(path):
         return hashlib.file_digest(source, 'sha256').hexdigest()
 
 
+def verify_binary_identity(build_info, sdk_pin, server_source):
+    dependencies = build_info['oc'].get('Deps', [])
+    if any('Replace' in item for item in dependencies):
+        raise ValueError('client binary uses a dependency replacement')
+    sdk = next((item for item in dependencies if item['Path'] == 'github.com/soulteary/otterio'), None)
+    if sdk is None or sdk.get('Version') != sdk_pin:
+        raise ValueError('client binary SDK differs from the requested module pin')
+    settings = {item['Key']: item.get('Value', '') for item in build_info['otterio'].get('Settings', [])}
+    revision = settings.get('vcs.revision')
+    if revision and revision != server_source:
+        raise ValueError('server binary VCS revision differs from the supplied source')
+    if revision:
+        source_kind = 'verified-base-vcs-revision' if settings.get('vcs.modified') == 'true' else 'verified-vcs-revision'
+    else:
+        # Module archives have no .git directory. Keep the declared source and
+        # binary hash separate rather than asserting a binary-derived revision.
+        source_kind = 'declared-module-source-without-binary-vcs'
+    return {'sdkPin': 'verified-client-build-info', 'serverSource': source_kind}
+
+
 def run_fixture_cli(command, env, credentials):
     # TimeoutExpired includes the entire argv (including user-add secrets).
     # Suppress its exception chain as well as the report's error text.
@@ -370,7 +390,8 @@ def main():
     parser.add_argument('--cli', required=True)
     parser.add_argument('--console', required=True)
     parser.add_argument('--server', required=True)
-    parser.add_argument('--server-source', required=True, help='verified source revision for the supplied server binary')
+    parser.add_argument('--server-source', required=True, help='source revision, checked against binary VCS when present')
+    parser.add_argument('--sdk-pin', help='module version used to build the client; defaults to the compatibility manifest')
     parser.add_argument('--server-patch', action='append', default=[], help='patch applied on top of the recorded server source (repeatable)')
     parser.add_argument('--output', required=True)
     parser.add_argument('--scenarios', default='single-http,dual-http,dual-tls')
@@ -381,7 +402,7 @@ def main():
     if any(name not in ('single-http', 'dual-http', 'single-tls', 'dual-tls') for name in names):
         parser.error('unknown scenario')
     report = {'dateUTC': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'platform': platform.platform(),
-              'serverSource': args.server_source, 'sdkPin': 'v0.0.0-20261004215341-be8596f0d69d',
+              'serverSource': args.server_source, 'sdkPin': args.sdk_pin or json.loads((Path(__file__).resolve().parents[1] / 'docs' / 'compatibility.json').read_text())['otterioSDK'],
               'binaries': {name: {'sha256': digest(path)} for name, path in [('oc', args.cli), ('oc-console', args.console), ('otterio', args.server)]},
               'scenarios': [], 'status': 'running'}
     report['scope'] = 'read-only-and-writes' if args.writes else 'read-only'
@@ -392,7 +413,13 @@ def main():
         report['serverPatches'] = [{'name': Path(patch).name, 'sha256': digest(patch)} for patch in args.server_patch]
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
+    result = {}
     try:
+        build_info = {name: json.loads(subprocess.check_output(['go', 'version', '-m', '-json', path], text=True))
+                      for name, path in [('oc', args.cli), ('oc-console', args.console), ('otterio', args.server)]}
+        for name, info in build_info.items():
+            report['binaries'][name]['buildInfo'] = info
+        report['identityEvidence'] = verify_binary_identity(build_info, report['sdkPin'], args.server_source)
         for index, name in enumerate(names):
             result = {'scenario': name, 'status': 'running'}
             report['scenarios'].append(result)

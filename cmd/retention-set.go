@@ -22,53 +22,53 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	minio "github.com/minio/minio-go/v7"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	retentionSetFlags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "apply retention recursively",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "bypass",
 			Usage: "bypass governance",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "apply retention to a specific object version",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "roll back object(s) to current version at specified time",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "versions",
 			Usage: "apply retention object(s) and all its versions",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "default",
 			Usage: "set bucket default retention mode",
 		},
 	}
 )
 
-var retentionSetCmd = cli.Command{
+var retentionSetCmd = &cli.Command{
 	Name:         "set",
 	Usage:        "set retention for object(s)",
-	Action:       mainRetentionSet,
+	Action:       commandAction(mainRetentionSet),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(retentionSetFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] [governance | compliance] VALIDITY TARGET
+  {{.FullName}} [FLAGS] [governance | compliance] VALIDITY TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -78,23 +78,23 @@ VALIDITY:
 
 EXAMPLES:
   1. Set object retention for a specific object
-     $ {{.HelpName}} compliance 30d store/mybucket/prefix/obj.csv
+     $ {{.FullName}} compliance 30d store/mybucket/prefix/obj.csv
 
   2. Set object retention for recursively for all objects at a given prefix
-     $ {{.HelpName}} governance 30d store/mybucket/prefix --recursive
+     $ {{.FullName}} governance 30d store/mybucket/prefix --recursive
 
   3. Set object retention to a specific version of a specific object
-     $ {{.HelpName}} governance 30d store/mybucket/prefix/obj.csv --version-id "3Jr2x6fqlBUsVzbvPihBO3HgNpgZgAnp"
+     $ {{.FullName}} governance 30d store/mybucket/prefix/obj.csv --version-id "3Jr2x6fqlBUsVzbvPihBO3HgNpgZgAnp"
 
   4. Set object retention for recursively for all versions of all objects
-     $ {{.HelpName}} governance 30d store/mybucket/prefix --recursive --versions
+     $ {{.FullName}} governance 30d store/mybucket/prefix --recursive --versions
 
   5. Set default lock retention configuration for a bucket
-     $ {{.HelpName}} --default governance 30d store/mybucket/
+     $ {{.FullName}} --default governance 30d store/mybucket/
 `}
 
-func parseSetRetentionArgs(cliCtx *cli.Context) (target, versionID string, recursive bool, timeRef time.Time, withVersions bool, mode minio.RetentionMode, validity uint64, unit minio.ValidityUnit, bypass, bucketMode bool) {
-	args := cliCtx.Args()
+func parseSetRetentionArgs(cliCtx *cli.Command) (target, versionID string, recursive bool, timeRef time.Time, withVersions bool, mode minio.RetentionMode, validity uint64, unit minio.ValidityUnit, bypass, bucketMode bool) {
+	args := cliCtx.Args().Slice()
 	mode = minio.RetentionMode(strings.ToUpper(args[0]))
 	if !mode.IsValid() {
 		fatalIf(errInvalidArgument().Trace(args...), "invalid retention mode '%v'", mode)
@@ -128,15 +128,15 @@ func setBucketLock(urlStr string, mode minio.RetentionMode, validity uint64, uni
 }
 
 // main for retention set command.
-func mainRetentionSet(cliCtx *cli.Context) error {
+func mainRetentionSet(cliCtx *cli.Command) error {
 	ctx, cancelSetRetention := context.WithCancel(globalContext)
 	defer cancelSetRetention()
 
 	console.SetColor("RetentionSuccess", color.New(color.FgGreen, color.Bold))
 	console.SetColor("RetentionFailure", color.New(color.FgYellow))
 
-	if len(cliCtx.Args()) != 3 {
-		cli.ShowCommandHelpAndExit(cliCtx, "set", 1)
+	if cliCtx.Args().Len() != 3 {
+		cli.ShowCommandHelpAndExit(context.Background(), cliCtx, "set", 1)
 	}
 
 	target, versionID, recursive, rewind, withVersions, mode, validity, unit, bypass, bucketMode := parseSetRetentionArgs(cliCtx)

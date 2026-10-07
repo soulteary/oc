@@ -22,26 +22,26 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/minio/cli"
 	minio "github.com/minio/minio-go/v7"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var legalHoldSubcommands = []cli.Command{
+var legalHoldSubcommands = []*cli.Command{
 	legalHoldSetCmd,
 	legalHoldClearCmd,
 	legalHoldInfoCmd,
 }
 
-var legalHoldCmd = cli.Command{
-	Name:        "legalhold",
-	Usage:       "manage legal hold for object(s)",
-	Action:      mainLegalHold,
-	Before:      setGlobalsFromContext,
-	Flags:       globalFlags,
-	Subcommands: legalHoldSubcommands,
+var legalHoldCmd = &cli.Command{
+	Name:     "legalhold",
+	Usage:    "manage legal hold for object(s)",
+	Action:   commandAction(mainLegalHold),
+	Before:   commandBefore(setGlobalsFromContext),
+	Flags:    globalFlags,
+	Commands: legalHoldSubcommands,
 }
 
 // Structured message depending on the type of console.
@@ -112,7 +112,7 @@ func getBucketLockStatus(ctx context.Context, aliasedURL string) (status string,
 }
 
 // main for retention command.
-func mainLegalHold(ctx *cli.Context) error {
+func mainLegalHold(ctx *cli.Command) error {
 	commandNotFound(ctx, legalHoldSubcommands)
 	return nil
 }

@@ -19,40 +19,40 @@ package cmd
 import (
 	"context"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/cmd/ilm"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var ilmRemoveFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "id",
 		Usage: "id of the lifecycle rule",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "force",
 		Usage: "force flag is to be used when deleting all lifecycle configuration rules for the bucket",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "all",
 		Usage: "delete all lifecycle configuration rules of the bucket, force flag enforced",
 	},
 }
 
-var ilmRmCmd = cli.Command{
+var ilmRmCmd = &cli.Command{
 	Name:         "rm",
 	Usage:        "remove (if any) existing lifecycle configuration rule",
-	Action:       mainILMRemove,
+	Action:       commandAction(mainILMRemove),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(ilmRemoveFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET
+  {{.FullName}} [FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -63,11 +63,11 @@ DESCRIPTION:
 
 EXAMPLES:
   1. Remove the lifecycle management configuration rule given by ID "bgrt1ghju" for mybucket on alias 'store'. ID is case sensitive.
-     {{.Prompt}} {{.HelpName}} --id "bgrt1ghju" store/mybucket
+     {{Prompt}} {{.FullName}} --id "bgrt1ghju" store/mybucket
 
   2. Remove ALL the lifecycle management configuration rules for mybucket on alias 'store'.
      Because the result is complete removal, the use of --force flag is enforced.
-     {{.Prompt}} {{.HelpName}} --all --force store/mybucket
+     {{Prompt}} {{.FullName}} --all --force store/mybucket
 `,
 }
 
@@ -92,9 +92,9 @@ func (i ilmRmMessage) JSON() string {
 	return string(msgBytes)
 }
 
-func checkILMRemoveSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "rm", globalErrorExitStatus)
+func checkILMRemoveSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "rm", globalErrorExitStatus)
 	}
 
 	ilmAll := ctx.Bool("all")
@@ -102,7 +102,7 @@ func checkILMRemoveSyntax(ctx *cli.Context) {
 	forceChk := (ilmAll && ilmForce) || (!ilmAll && !ilmForce)
 	if !forceChk {
 		fatalIf(errInvalidArgument(),
-			"It is mandatory to specify --all and --force flag together for mc "+ctx.Command.FullName()+".")
+			"It is mandatory to specify --all and --force flag together for mc "+ctx.FullName()+".")
 	}
 	if ilmAll && ilmForce {
 		return
@@ -114,14 +114,14 @@ func checkILMRemoveSyntax(ctx *cli.Context) {
 	}
 }
 
-func mainILMRemove(cliCtx *cli.Context) error {
+func mainILMRemove(cliCtx *cli.Command) error {
 	ctx, cancelILMImport := context.WithCancel(globalContext)
 	defer cancelILMImport()
 
 	checkILMRemoveSyntax(cliCtx)
 	setILMDisplayColorScheme()
-	args := cliCtx.Args()
-	urlStr := args.Get(0)
+	args := cliCtx.Args().Slice()
+	urlStr := argumentAt(args, 0)
 
 	client, err := newClient(urlStr)
 	fatalIf(err.Trace(args...), "Unable to initialize client for "+urlStr+".")

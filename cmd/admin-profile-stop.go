@@ -17,41 +17,42 @@
 package cmd
 
 import (
+	"context"
 	"io"
 	"os"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminProfileStopCmd = cli.Command{
+var adminProfileStopCmd = &cli.Command{
 	Name:            "stop",
 	Usage:           "stop and download profile data",
-	Action:          mainAdminProfileStop,
+	Action:          commandAction(mainAdminProfileStop),
 	OnUsageError:    onUsageError,
-	Before:          setGlobalsFromContext,
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
 	HideHelpCommand: true,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET
+  {{.FullName}} [FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
     2. Download latest profile data in the current directory
-       {{.Prompt}} {{.HelpName}} store/
+       {{Prompt}} {{.FullName}} store/
 `,
 }
 
-func checkAdminProfileStopSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "stop", 1) // last argument is exit code
+func checkAdminProfileStopSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "stop", 1) // last argument is exit code
 	}
 }
 
@@ -83,13 +84,13 @@ func moveFile(sourcePath, destPath string) error {
 }
 
 // mainAdminProfileStop - the entry function of profile stop command
-func mainAdminProfileStop(ctx *cli.Context) error {
+func mainAdminProfileStop(ctx *cli.Command) error {
 	// Check for command syntax
 	checkAdminProfileStopSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

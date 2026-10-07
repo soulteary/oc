@@ -16,26 +16,26 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var versionSubcommands = []cli.Command{
+var versionSubcommands = []*cli.Command{
 	versionEnableCmd,
 	versionSuspendCmd,
 	versionInfoCmd,
 }
 
-var versionCmd = cli.Command{
+var versionCmd = &cli.Command{
 	Name:            "version",
 	Usage:           "manage bucket versioning",
 	HideHelpCommand: true,
-	Action:          mainVersion,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainVersion),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     versionSubcommands,
+	Commands:        versionSubcommands,
 }
 
 // mainVersion is the handle for "mc version" command.
-func mainVersion(ctx *cli.Context) error {
+func mainVersion(ctx *cli.Command) error {
 	commandNotFound(ctx, versionSubcommands)
 	return nil
 	// Sub-commands like "info", "enable", "suspend" have their own main.

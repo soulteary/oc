@@ -9,15 +9,15 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
-var doctorCmd = cli.Command{
+var doctorCmd = &cli.Command{
 	Name: "doctor", Usage: "show credential-free compatibility diagnostics",
-	Action: mainDoctor, Before: setGlobalsFromContext,
+	Action: commandAction(mainDoctor), Before: commandBefore(setGlobalsFromContext),
 	OnUsageError: onUsageError,
-	Flags:        append([]cli.Flag{cli.BoolFlag{Name: "online", Usage: "also query server information (read-only, requires an alias)"}}, globalFlags...),
+	Flags:        append([]cli.Flag{&cli.BoolFlag{Name: "online", Usage: "also query server information (read-only, requires an alias)"}}, globalFlags...),
 }
 
 // Use an allowlist instead of serializing Config: even malformed or environment
@@ -51,7 +51,7 @@ func diagnosticScheme(endpoint string) string {
 	return "invalid"
 }
 
-func mainDoctor(ctx *cli.Context) error {
+func mainDoctor(ctx *cli.Command) error {
 	if ctx.NArg() > 1 || ctx.Bool("online") && ctx.NArg() != 1 {
 		return doctorError("doctor accepts one optional alias; --online requires an alias")
 	}

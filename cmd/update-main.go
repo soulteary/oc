@@ -16,20 +16,20 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
 const selfUpdateDisabledMessage = "OC self-update is disabled until an independent release channel is available; install a reviewed OC release manually."
 
 // Keep the command so existing scripts receive an explicit failure, without
 // checking a remote release or replacing this executable with MinIO mc.
-var updateCmd = cli.Command{
+var updateCmd = &cli.Command{
 	Name:         "update",
 	Usage:        "self-update is disabled; install an OC release manually",
-	Action:       mainUpdate,
+	Action:       commandAction(mainUpdate),
 	OnUsageError: onUsageError,
-	Flags:        []cli.Flag{cli.BoolFlag{Name: "json", Usage: "enable JSON lines formatted output"}},
+	Flags:        []cli.Flag{&cli.BoolFlag{Name: "json", Usage: "enable JSON lines formatted output"}},
 }
 
-func mainUpdate(ctx *cli.Context) error {
-	return cli.NewExitError(selfUpdateDisabledMessage, 1)
+func mainUpdate(ctx *cli.Command) error {
+	return cli.Exit(selfUpdateDisabledMessage, 1)
 }

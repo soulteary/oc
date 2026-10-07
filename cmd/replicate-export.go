@@ -20,42 +20,42 @@ import (
 	"context"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/replication"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var replicateExportCmd = cli.Command{
+var replicateExportCmd = &cli.Command{
 	Name:         "export",
 	Usage:        "export server side replication configuration",
-	Action:       mainReplicateExport,
+	Action:       commandAction(mainReplicateExport),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 	 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 	 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Print replication configuration on bucket "mybucket" for alias "store" to STDOUT.
-     {{.Prompt}} {{.HelpName}} store/mybucket
+     {{Prompt}} {{.FullName}} store/mybucket
 
   2. Export replication configuration on bucket "mybucket" for alias "store" to '/data/replicate/config'.
-     {{.Prompt}} {{.HelpName}} store/mybucket > /data/replicate/config
+     {{Prompt}} {{.FullName}} store/mybucket > /data/replicate/config
 `,
 }
 
 // checkReplicateExportSyntax - validate all the passed arguments
-func checkReplicateExportSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "export", 1) // last argument is exit code
+func checkReplicateExportSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "export", 1) // last argument is exit code
 	}
 }
 
@@ -82,7 +82,7 @@ func (r replicateExportMessage) String() string {
 	return string(msgBytes)
 }
 
-func mainReplicateExport(cliCtx *cli.Context) error {
+func mainReplicateExport(cliCtx *cli.Command) error {
 	ctx, cancelReplicateExport := context.WithCancel(globalContext)
 	defer cancelReplicateExport()
 
@@ -92,8 +92,8 @@ func mainReplicateExport(cliCtx *cli.Context) error {
 	checkReplicateExportSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(0)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")

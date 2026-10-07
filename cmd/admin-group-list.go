@@ -17,50 +17,52 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminGroupListCmd = cli.Command{
+var adminGroupListCmd = &cli.Command{
 	Name:         "list",
 	Usage:        "display list of groups",
-	Action:       mainAdminGroupList,
+	Action:       commandAction(mainAdminGroupList),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. List all groups.
-     {{.Prompt}} {{.HelpName}} store
+     {{Prompt}} {{.FullName}} store
 `,
 }
 
 // checkAdminGroupListSyntax - validate all the passed arguments
-func checkAdminGroupListSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "list", 1) // last argument is exit code
+func checkAdminGroupListSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "list", 1) // last argument is exit code
 	}
 }
 
 // mainAdminGroupList is the handle for "mc admin group list" command.
-func mainAdminGroupList(ctx *cli.Context) error {
+func mainAdminGroupList(ctx *cli.Command) error {
 	checkAdminGroupListSyntax(ctx)
 
 	console.SetColor("GroupMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

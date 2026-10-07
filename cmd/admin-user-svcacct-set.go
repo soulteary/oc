@@ -20,61 +20,61 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	iampolicy "github.com/soulteary/otterio/pkg/iam/policy"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 var adminUserSvcAcctSetFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "secret-key",
 		Usage: "set a secret key for the service account",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "policy",
 		Usage: "path to a JSON policy file",
 	},
 }
 
-var adminUserSvcAcctSetCmd = cli.Command{
+var adminUserSvcAcctSetCmd = &cli.Command{
 	Name:         "set",
 	Usage:        "edit an existing service account",
-	Action:       mainAdminUserSvcAcctSet,
+	Action:       commandAction(mainAdminUserSvcAcctSet),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(adminUserSvcAcctSetFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} ALIAS SERVICE-ACCOUNT
+  {{.FullName}} ALIAS SERVICE-ACCOUNT
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Change the secret key of the service account 'J123C4ZXEQN8RK6ND35I' in OtterIO server.
-     {{.Prompt}} {{.HelpName}} store/ 'J123C4ZXEQN8RK6ND35I' --secret-key 'xxxxxxxx'
+     {{Prompt}} {{.FullName}} store/ 'J123C4ZXEQN8RK6ND35I' --secret-key 'xxxxxxxx'
 `,
 }
 
 // checkAdminUserSvcAcctSetSyntax - validate all the passed arguments
-func checkAdminUserSvcAcctSetSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
+func checkAdminUserSvcAcctSetSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
 		fatalIf(errInvalidArgument().Trace(ctx.Args().Tail()...),
 			"Incorrect number of arguments for user svcacct set command.")
 	}
 }
 
 // mainAdminUserSvcAcctSet is the handle for "mc admin user svcacct set" command.
-func mainAdminUserSvcAcctSet(ctx *cli.Context) error {
+func mainAdminUserSvcAcctSet(ctx *cli.Command) error {
 	checkAdminUserSvcAcctSetSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
-	svcAccount := args.Get(1)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
+	svcAccount := argumentAt(args, 1)
 
 	secretKey := ctx.String("secret-key")
 	if secretKey != "" && len(secretKey) < 8 {

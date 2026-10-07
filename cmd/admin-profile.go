@@ -17,27 +17,27 @@
 package cmd
 
 import (
-	"github.com/minio/cli"
+	"github.com/urfave/cli/v3"
 )
 
-var adminProfileSubcommands = []cli.Command{
+var adminProfileSubcommands = []*cli.Command{
 	adminProfileStartCmd,
 	adminProfileStopCmd,
 }
 
-var adminProfileCmd = cli.Command{
+var adminProfileCmd = &cli.Command{
 	Name:            "profile",
 	Usage:           "generate profile data for debugging purposes",
-	Action:          mainAdminProfile,
+	Action:          commandAction(mainAdminProfile),
 	OnUsageError:    onUsageError,
-	Before:          setGlobalsFromContext,
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     adminProfileSubcommands,
+	Commands:        adminProfileSubcommands,
 	HideHelpCommand: true,
 }
 
 // mainAdminProfile is the handle for "mc admin profile" command.
-func mainAdminProfile(ctx *cli.Context) error {
+func mainAdminProfile(ctx *cli.Command) error {
 	commandNotFound(ctx, adminProfileSubcommands)
 	return nil
 }

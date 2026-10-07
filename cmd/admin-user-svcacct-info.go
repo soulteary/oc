@@ -19,55 +19,55 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
 var adminUserSvcAcctInfoFlags = []cli.Flag{
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "policy",
 		Usage: "print policy is JSON format",
 	},
 }
 
-var adminUserSvcAcctInfoCmd = cli.Command{
+var adminUserSvcAcctInfoCmd = &cli.Command{
 	Name:         "info",
 	Usage:        "Get a service account info",
-	Action:       mainAdminUserSvcAcctInfo,
+	Action:       commandAction(mainAdminUserSvcAcctInfo),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(adminUserSvcAcctInfoFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} ALIAS SERVICE-ACCOUNT
+  {{.FullName}} ALIAS SERVICE-ACCOUNT
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Get information of service account 'J123C4ZXEQN8RK6ND35I'
-     {{.Prompt}} {{.HelpName}} store/ J123C4ZXEQN8RK6ND35I
+     {{Prompt}} {{.FullName}} store/ J123C4ZXEQN8RK6ND35I
 `,
 }
 
 // checkAdminUserSvcAcctInfoSyntax - validate all the passed arguments
-func checkAdminUserSvcAcctInfoSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
+func checkAdminUserSvcAcctInfoSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
 		fatalIf(errInvalidArgument().Trace(ctx.Args().Tail()...),
 			"Incorrect number of arguments for user svcacct info command.")
 	}
 }
 
 // mainAdminUserSvcAcctInfo is the handle for "mc admin user svcacct info" command.
-func mainAdminUserSvcAcctInfo(ctx *cli.Context) error {
+func mainAdminUserSvcAcctInfo(ctx *cli.Command) error {
 	checkAdminUserSvcAcctInfoSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
-	svcAccount := args.Get(1)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
+	svcAccount := argumentAt(args, 1)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

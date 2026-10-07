@@ -21,42 +21,42 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/replication"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var replicateImportCmd = cli.Command{
+var replicateImportCmd = &cli.Command{
 	Name:         "import",
 	Usage:        "import server side replication configuration in JSON format",
-	Action:       mainReplicateImport,
+	Action:       commandAction(mainReplicateImport),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 	  
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 	  
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Set replication configuration from '/data/replication/config' on bucket "mybucket" for alias "store".
-     {{.Prompt}} {{.HelpName}} store/mybucket < '/data/replication/config'
+     {{Prompt}} {{.FullName}} store/mybucket < '/data/replication/config'
 
   2. Import replication configuration for bucket "mybucket" on alias "store" from STDIN.
-     {{.Prompt}} {{.HelpName}} store/mybucket
+     {{Prompt}} {{.FullName}} store/mybucket
 `,
 }
 
 // checkReplicateImportSyntax - validate all the passed arguments
-func checkReplicateImportSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "import", 1) // last argument is exit code
+func checkReplicateImportSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "import", 1) // last argument is exit code
 	}
 }
 
@@ -92,7 +92,7 @@ func readReplicationConfig() (*replication.Config, *probe.Error) {
 	return &cfg, nil
 }
 
-func mainReplicateImport(cliCtx *cli.Context) error {
+func mainReplicateImport(cliCtx *cli.Command) error {
 	ctx, cancelReplicateImport := context.WithCancel(globalContext)
 	defer cancelReplicateImport()
 
@@ -100,8 +100,8 @@ func mainReplicateImport(cliCtx *cli.Context) error {
 	checkReplicateImportSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(0)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")

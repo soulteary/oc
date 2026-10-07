@@ -19,6 +19,7 @@ NEWER = "RELEASE.2026-10-08T07-00-00Z"
 SHA = "a" * 40
 DIGEST = "sha256:" + "b" * 64
 REPOSITORY = "soulteary/oc"
+SDK_PIN = json.loads((Path(__file__).resolve().parents[1] / 'docs' / 'compatibility.json').read_text())['otterioSDK']
 
 
 def archive_manifest():
@@ -27,7 +28,7 @@ def archive_manifest():
         "release_tag": TAG,
         "source_commit": SHA,
         "go_toolchain": "1.27.1",
-        "otterio_sdk": "v0.0.0-20261004215341-be8596f0d69d",
+        "otterio_sdk": SDK_PIN,
         "assets": [
             {"name": "oc-" + TAG + "-linux-amd64.tar.gz", "target": "linux/amd64", "sha256": "c" * 64},
             {"name": "oc-" + TAG + "-windows-arm64.zip", "target": "windows/arm64", "sha256": "d" * 64},

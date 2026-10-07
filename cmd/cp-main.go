@@ -29,76 +29,76 @@ import (
 
 	"github.com/fatih/color"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 // cp command flags.
 var (
 	cpFlags = []cli.Flag{
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "roll back object(s) to current version at specified time",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "select an object version to copy",
 		},
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "copy recursively",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "older-than",
 			Usage: "copy objects older than L days, M hours and N minutes",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "newer-than",
 			Usage: "copy objects newer than L days, M hours and N minutes",
 		},
-		cli.StringFlag{
-			Name:  "storage-class, sc",
+		&cli.StringFlag{
+			Name: "storage-class", Aliases: []string{"sc"},
 			Usage: "set storage class for new object(s) on target",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "encrypt",
 			Usage: "encrypt/decrypt objects (using server-side encryption with server managed keys)",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "attr",
 			Usage: "add custom metadata for the object",
 		},
-		cli.BoolFlag{
-			Name:  "continue, c",
+		&cli.BoolFlag{
+			Name: "continue", Aliases: []string{"c"},
 			Usage: "create or resume copy session",
 		},
-		cli.BoolFlag{
-			Name:  "preserve, a",
+		&cli.BoolFlag{
+			Name: "preserve", Aliases: []string{"a"},
 			Usage: "preserve filesystem attributes (mode, ownership, timestamps)",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "disable-multipart",
 			Usage: "disable multipart upload feature",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "md5",
 			Usage: "force all upload(s) to calculate md5sum checksum",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "tags",
 			Usage: "apply tags to the uploaded objects",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  rmFlag,
 			Usage: "retention mode to be applied on the object (governance, compliance)",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  rdFlag,
 			Usage: "retention duration for the object in d days or y years",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  lhFlag,
 			Usage: "apply legal hold to the copied object (on, off)",
 		},
@@ -113,18 +113,18 @@ var lhFlag = "legal-hold"
 var ErrInvalidMetadata = errors.New("specified metadata should be of form key1=value1;key2=value2;... and so on")
 
 // Copy command.
-var cpCmd = cli.Command{
+var cpCmd = &cli.Command{
 	Name:         "cp",
 	Usage:        "copy objects",
-	Action:       mainCopy,
+	Action:       commandAction(mainCopy),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(append(cpFlags, ioFlags...), globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] SOURCE [SOURCE...] TARGET
+  {{.FullName}} [FLAGS] SOURCE [SOURCE...] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -135,65 +135,65 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
   01. Copy a list of objects from local file system to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} Music/*.ogg s3/jukebox/
+      {{Prompt}} {{.FullName}} Music/*.ogg s3/jukebox/
 
   02. Copy a folder recursively from OtterIO cloud storage to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive store/mybucket/burningman2011/ s3/mybucket/
+      {{Prompt}} {{.FullName}} --recursive store/mybucket/burningman2011/ s3/mybucket/
 
   03. Copy multiple local folders recursively to OtterIO cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive backup/2014/ backup/2015/ store/archive/
+      {{Prompt}} {{.FullName}} --recursive backup/2014/ backup/2015/ store/archive/
 
   04. Copy a bucket recursively from aliased Amazon S3 cloud storage to local filesystem on Windows.
-      {{.Prompt}} {{.HelpName}} --recursive s3\documents\2014\ C:\Backups\2014
+      {{Prompt}} {{.FullName}} --recursive s3\documents\2014\ C:\Backups\2014
 
   05. Copy files older than 7 days and 10 hours from OtterIO cloud storage to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --older-than 7d10h store/mybucket/burningman2011/ s3/mybucket/
+      {{Prompt}} {{.FullName}} --older-than 7d10h store/mybucket/burningman2011/ s3/mybucket/
 
   06. Copy files newer than 7 days and 10 hours from OtterIO cloud storage to a local path.
-      {{.Prompt}} {{.HelpName}} --newer-than 7d10h store/mybucket/burningman2011/ ~/latest/
+      {{Prompt}} {{.FullName}} --newer-than 7d10h store/mybucket/burningman2011/ ~/latest/
 
   07. Copy an object with name containing unicode characters to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} 本語 s3/andoria/
+      {{Prompt}} {{.FullName}} 本語 s3/andoria/
 
   08. Copy a local folder with space separated characters to Amazon S3 cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive 'workdir/documents/May 2014/' s3/miniocloud
+      {{Prompt}} {{.FullName}} --recursive 'workdir/documents/May 2014/' s3/miniocloud
 
   09. Copy a folder with encrypted objects recursively from Amazon S3 to OtterIO cloud storage.
-      {{.Prompt}} {{.HelpName}} --recursive --encrypt-key "s3/documents/=32byteslongsecretkeymustbegiven1,store/documents/=32byteslongsecretkeymustbegiven2" s3/documents/ store/documents/
+      {{Prompt}} {{.FullName}} --recursive --encrypt-key "s3/documents/=32byteslongsecretkeymustbegiven1,store/documents/=32byteslongsecretkeymustbegiven2" s3/documents/ store/documents/
 
   10. Copy a folder with encrypted objects recursively from Amazon S3 to OtterIO cloud storage. In case the encryption key contains non-printable character like tab, pass the
       base64 encoded string as key.
-      {{.Prompt}} {{.HelpName}} --recursive --encrypt-key "s3/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=,store/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=" s3/documents/ store/documents/
+      {{Prompt}} {{.FullName}} --recursive --encrypt-key "s3/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=,store/documents/=MzJieXRlc2xvbmdzZWNyZWFiY2RlZmcJZ2l2ZW5uMjE=" s3/documents/ store/documents/
 
   11. Copy a list of objects from local file system to OtterIO cloud storage with specified metadata, separated by ";"
-      {{.Prompt}} {{.HelpName}} --attr "key1=value1;key2=value2" Music/*.mp4 store/mybucket/
+      {{Prompt}} {{.FullName}} --attr "key1=value1;key2=value2" Music/*.mp4 store/mybucket/
 
   12. Copy a folder recursively from OtterIO cloud storage to Amazon S3 cloud storage with Cache-Control and custom metadata, separated by ";".
-      {{.Prompt}} {{.HelpName}} --attr "Cache-Control=max-age=90000,min-fresh=9000;key1=value1;key2=value2" --recursive store/mybucket/burningman2011/ s3/mybucket/
+      {{Prompt}} {{.FullName}} --attr "Cache-Control=max-age=90000,min-fresh=9000;key1=value1;key2=value2" --recursive store/mybucket/burningman2011/ s3/mybucket/
 
   13. Copy a text file to an object storage and assign REDUCED_REDUNDANCY storage-class to the uploaded object.
-      {{.Prompt}} {{.HelpName}} --storage-class REDUCED_REDUNDANCY myobject.txt store/mybucket
+      {{Prompt}} {{.FullName}} --storage-class REDUCED_REDUNDANCY myobject.txt store/mybucket
 
   14. Copy a text file to an object storage and create or resume copy session.
-      {{.Prompt}} {{.HelpName}} --recursive --continue dir/ store/mybucket
+      {{Prompt}} {{.FullName}} --recursive --continue dir/ store/mybucket
 
   15. Copy a text file to an object storage and preserve the file system attribute as metadata.
-      {{.Prompt}} {{.HelpName}} -a myobject.txt store/mybucket
+      {{Prompt}} {{.FullName}} -a myobject.txt store/mybucket
 
   16. Copy a text file to an object storage with object lock mode set to 'GOVERNANCE' with retention duration 1 day.
-      {{.Prompt}} {{.HelpName}} --retention-mode governance --retention-duration 1d locked.txt store/locked-bucket/
+      {{Prompt}} {{.FullName}} --retention-mode governance --retention-duration 1d locked.txt store/locked-bucket/
 
   17. Copy a text file to an object storage with legal-hold enabled.
-      {{.Prompt}} {{.HelpName}} --legal-hold on locked.txt store/locked-bucket/
+      {{Prompt}} {{.FullName}} --legal-hold on locked.txt store/locked-bucket/
 
   18. Copy a text file to an object storage and disable multipart upload feature.
-      {{.Prompt}} {{.HelpName}} --disable-multipart myobject.txt store/mybucket
+      {{Prompt}} {{.FullName}} --disable-multipart myobject.txt store/mybucket
 
   19. Roll back 10 days in the past to copy the content of 'mybucket'
-      {{.Prompt}} {{.HelpName}} --rewind 10d -r store/mybucket/ /tmp/dest/
+      {{Prompt}} {{.FullName}} --rewind 10d -r store/mybucket/ /tmp/dest/
 
   20. Set tags to the uploaded objects
-      {{.Prompt}} {{.HelpName}} -r --tags "category=prod" ./data/ store/another-bucket/
+      {{Prompt}} {{.FullName}} -r --tags "category=prod" ./data/ store/another-bucket/
 
 `,
 }
@@ -359,7 +359,7 @@ func doPrepareCopyURLs(ctx context.Context, session *sessionV8, cancelCopy conte
 	return
 }
 
-func doCopySession(ctx context.Context, cancelCopy context.CancelFunc, cli *cli.Context, session *sessionV8, encKeyDB map[string][]prefixSSEPair, isMvCmd bool) error {
+func doCopySession(ctx context.Context, cancelCopy context.CancelFunc, cli *cli.Command, session *sessionV8, encKeyDB map[string][]prefixSSEPair, isMvCmd bool) error {
 	var isCopied func(string) bool
 	var totalObjects, totalBytes int64
 
@@ -375,8 +375,8 @@ func doCopySession(ctx context.Context, cancelCopy context.CancelFunc, cli *cli.
 		pg = newAccounter(totalBytes)
 	}
 
-	sourceURLs := cli.Args()[:len(cli.Args())-1]
-	targetURL := cli.Args()[len(cli.Args())-1] // Last one is target
+	sourceURLs := cli.Args().Slice()[:cli.Args().Len()-1]
+	targetURL := cli.Args().Slice()[cli.Args().Len()-1] // Last one is target
 
 	tgtClnt, err := newClient(targetURL)
 	fatalIf(err, "Unable to initialize `"+targetURL+"`.")
@@ -742,7 +742,7 @@ func getMetaDataEntry(metadataString string) (map[string]string, *probe.Error) {
 }
 
 // mainCopy is the entry point for cp command.
-func mainCopy(cliCtx *cli.Context) error {
+func mainCopy(cliCtx *cli.Command) error {
 	ctx, cancelCopy := context.WithCancel(globalContext)
 	defer cancelCopy()
 
@@ -822,7 +822,7 @@ func mainCopy(cliCtx *cli.Context) error {
 			}
 
 			// extract URLs.
-			session.Header.CommandArgs = cliCtx.Args()
+			session.Header.CommandArgs = cliCtx.Args().Slice()
 		}
 	}
 

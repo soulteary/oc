@@ -16,9 +16,9 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var adminUserSvcAcctSubcommands = []cli.Command{
+var adminUserSvcAcctSubcommands = []*cli.Command{
 	adminUserSvcAcctAddCmd,
 	adminUserSvcAcctListCmd,
 	adminUserSvcAcctRemoveCmd,
@@ -28,18 +28,18 @@ var adminUserSvcAcctSubcommands = []cli.Command{
 	adminUserSvcAcctDisableCmd,
 }
 
-var adminUserSvcAcctCmd = cli.Command{
+var adminUserSvcAcctCmd = &cli.Command{
 	Name:            "svcacct",
 	Usage:           "manage service accounts",
-	Action:          mainAdminUserSvcAcct,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainAdminUserSvcAcct),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     adminUserSvcAcctSubcommands,
+	Commands:        adminUserSvcAcctSubcommands,
 	HideHelpCommand: true,
 }
 
 // mainAdminUserSvcAcct is the handle for "mc admin user svcacct" command.
-func mainAdminUserSvcAcct(ctx *cli.Context) error {
+func mainAdminUserSvcAcct(ctx *cli.Command) error {
 	commandNotFound(ctx, adminUserSvcAcctSubcommands)
 	return nil
 }

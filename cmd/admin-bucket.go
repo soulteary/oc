@@ -16,25 +16,25 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var adminBucketSubcommands = []cli.Command{
+var adminBucketSubcommands = []*cli.Command{
 	adminBucketRemoteCmd,
 	adminBucketQuotaCmd,
 }
 
-var adminBucketCmd = cli.Command{
+var adminBucketCmd = &cli.Command{
 	Name:            "bucket",
 	Usage:           "manage buckets defined in the OtterIO server",
-	Action:          mainAdminBucket,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainAdminBucket),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     adminBucketSubcommands,
+	Commands:        adminBucketSubcommands,
 	HideHelpCommand: true,
 }
 
 // mainAdminBucket is the handle for "mc admin bucket" command.
-func mainAdminBucket(ctx *cli.Context) error {
+func mainAdminBucket(ctx *cli.Command) error {
 	commandNotFound(ctx, adminBucketSubcommands)
 	return nil
 	// Sub-commands like "quota", "remote" have their own main.

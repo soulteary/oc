@@ -21,44 +21,44 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	lhClearFlags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "clear legal hold recursively",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "clear legal hold of a specific object version",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "clear legal hold on an object version at specified time",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "versions",
 			Usage: "clear legal hold on multiple versions of object(s)",
 		},
 	}
 )
 
-var legalHoldClearCmd = cli.Command{
+var legalHoldClearCmd = &cli.Command{
 	Name:         "clear",
 	Usage:        "clear legal hold for object(s)",
-	Action:       mainLegalHoldClear,
+	Action:       commandAction(mainLegalHoldClear),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(lhClearFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET
+  {{.FullName}} [FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -66,21 +66,21 @@ FLAGS:
 
 EXAMPLES:
    1. Disable legal hold on a specific object
-      $ {{.HelpName}} store/mybucket/prefix/obj.csv
+      $ {{.FullName}} store/mybucket/prefix/obj.csv
 
    2. Disable legal hold on a specific object version
-      $ {{.HelpName}} store/mybucket/prefix/obj.csv --version-id "HiMFUTOowG6ylfNi4LKxD3ieHbgfgrvC"
+      $ {{.FullName}} store/mybucket/prefix/obj.csv --version-id "HiMFUTOowG6ylfNi4LKxD3ieHbgfgrvC"
 
    3. Disable object legal hold recursively for all objects at a prefix
-      $ {{.HelpName}} store/mybucket/prefix --recursive
+      $ {{.FullName}} store/mybucket/prefix --recursive
 
    4. Disable object legal hold recursively for all objects versions older than one year
-      $ {{.HelpName}} store/mybucket/prefix --recursive --rewind 365d --versions
+      $ {{.FullName}} store/mybucket/prefix --recursive --rewind 365d --versions
 `,
 }
 
 // main for legalhold clear command.
-func mainLegalHoldClear(cliCtx *cli.Context) error {
+func mainLegalHoldClear(cliCtx *cli.Command) error {
 	console.SetColor("LegalHoldSuccess", color.New(color.FgGreen, color.Bold))
 	console.SetColor("LegalHoldPartialFailure", color.New(color.FgRed, color.Bold))
 	console.SetColor("LegalHoldMessageFailure", color.New(color.FgYellow))

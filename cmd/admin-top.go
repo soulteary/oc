@@ -16,24 +16,24 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var adminTopSubcommands = []cli.Command{
+var adminTopSubcommands = []*cli.Command{
 	adminTopLocksCmd,
 }
 
-var adminTopCmd = cli.Command{
+var adminTopCmd = &cli.Command{
 	Name:            "top",
 	Usage:           "provide top like statistics for OtterIO",
-	Action:          mainAdminTop,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainAdminTop),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     adminTopSubcommands,
+	Commands:        adminTopSubcommands,
 	HideHelpCommand: true,
 }
 
 // mainAdminTop is the handle for "mc admin top" command.
-func mainAdminTop(ctx *cli.Context) error {
+func mainAdminTop(ctx *cli.Command) error {
 	commandNotFound(ctx, adminTopSubcommands)
 	return nil
 	// Sub-commands like "locks" have their own main.

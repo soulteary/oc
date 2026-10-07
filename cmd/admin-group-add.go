@@ -17,43 +17,44 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
-var adminGroupAddCmd = cli.Command{
+var adminGroupAddCmd = &cli.Command{
 	Name:         "add",
 	Usage:        "add users to a new or existing group",
-	Action:       mainAdminGroupAdd,
+	Action:       commandAction(mainAdminGroupAdd),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET GROUPNAME MEMBERS...
+  {{.FullName}} TARGET GROUPNAME MEMBERS...
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Add users 'fivecent' and 'tencent' to the group 'allcents':
-     {{.Prompt}} {{.HelpName}} store allcents fivecent tencent
+     {{Prompt}} {{.FullName}} store allcents fivecent tencent
 `,
 }
 
 // checkAdminGroupAddSyntax - validate all the passed arguments
-func checkAdminGroupAddSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) < 3 {
-		cli.ShowCommandHelpAndExit(ctx, "add", 1) // last argument is exit code
+func checkAdminGroupAddSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() < 3 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "add", 1) // last argument is exit code
 	}
 }
 
@@ -110,14 +111,14 @@ func (u groupMessage) JSON() string {
 }
 
 // mainAdminGroupAdd is the handle for "mc admin group add" command.
-func mainAdminGroupAdd(ctx *cli.Context) error {
+func mainAdminGroupAdd(ctx *cli.Command) error {
 	checkAdminGroupAddSyntax(ctx)
 
 	console.SetColor("GroupMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
@@ -125,10 +126,10 @@ func mainAdminGroupAdd(ctx *cli.Context) error {
 
 	members := []string{}
 	for i := 2; i < ctx.NArg(); i++ {
-		members = append(members, args.Get(i))
+		members = append(members, argumentAt(args, i))
 	}
 	gAddRemove := madmin.GroupAddRemove{
-		Group:    args.Get(1),
+		Group:    argumentAt(args, 1),
 		Members:  members,
 		IsRemove: false,
 	}
@@ -136,7 +137,7 @@ func mainAdminGroupAdd(ctx *cli.Context) error {
 
 	printMsg(groupMessage{
 		op:        "add",
-		GroupName: args.Get(1),
+		GroupName: argumentAt(args, 1),
 		Members:   members,
 	})
 

@@ -43,7 +43,7 @@ make build-console
 
 ## 上传和覆盖
 
-上传默认只创建新 key。服务端必须在 HEAD 响应中宣告 `X-Otterio-Conditional-Writes: v1`，并在目标写锁内检查普通 PUT 和分段完成的 `If-None-Match: *`。需要[条件写兼容补丁](../../buildscripts/otterio-conditional-writes-compat.patch)；仅做 HEAD 存在性预检不能保证并发时不覆盖。没有此能力的服务端会明确拒绝默认上传。
+上传默认只创建新 key。服务端必须在 HEAD 响应中宣告 `X-Otterio-Conditional-Writes: v1`，并在目标写锁内检查普通 PUT 和分段完成的 `If-None-Match: *`。固定版本服务端已包含该保证；仅做 HEAD 存在性预检不能保证并发时不覆盖。没有此能力的服务端会明确拒绝默认上传。
 
 目前 OtterIO 的 FS 和单 pool erasure 支持这项能力；gateway、多 pool 和写回缓存不宣告能力并拒绝条件写请求。该保护没有宣称任意第三方 S3 兼容。
 
@@ -67,7 +67,7 @@ make build-console
 
 ## 浏览、权限与限制
 
-列举、下载和写操作均遵循当前身份的实际 S3 权限。桶根目录 Read/Write 只作概览，不替代具体对象或前缀授权。root AccountInfo 需要[账户兼容补丁](../../buildscripts/otterio-account-info-compat.patch)；概览接口不可用或被拒绝时，S3 操作继续工作。
+列举、下载和写操作均遵循当前身份的实际 S3 权限。桶根目录 Read/Write 只作概览，不替代具体对象或前缀授权。固定版本服务端已支持 root AccountInfo；概览接口不可用或被拒绝时，S3 操作继续工作。
 
 下载通过 OC 流式转发，作为附件交给浏览器下载管理器。失败信息在独立标签显示，控制台保留；到期会话在开始下载前检查。尚不支持版本选择、Range、ZIP、预签名共享、OIDC、管理编辑或集中部署，尚未达到旧控制台完整功能等价。
 

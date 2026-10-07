@@ -23,32 +23,32 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/ioutils"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 // ls specific flags.
 var (
 	lsFlags = []cli.Flag{
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "list all object versions no later than specified date",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "versions",
 			Usage: "list all versions",
 		},
-		cli.BoolFlag{
-			Name:  "recursive, r",
+		&cli.BoolFlag{
+			Name: "recursive", Aliases: []string{"r"},
 			Usage: "list recursively",
 		},
-		cli.BoolFlag{
-			Name:  "incomplete, I",
+		&cli.BoolFlag{
+			Name: "incomplete", Aliases: []string{"I"},
 			Usage: "list incomplete uploads",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "summarize",
 			Usage: "display summary information (number of objects, total size)",
 		},
@@ -56,51 +56,51 @@ var (
 )
 
 // list files and folders.
-var lsCmd = cli.Command{
+var lsCmd = &cli.Command{
 	Name:         "ls",
 	Usage:        "list buckets and objects",
-	Action:       mainList,
+	Action:       commandAction(mainList),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(lsFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET [TARGET ...]
+  {{.FullName}} [FLAGS] TARGET [TARGET ...]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. List buckets on Amazon S3 cloud storage.
-     {{.Prompt}} {{.HelpName}} s3
+     {{Prompt}} {{.FullName}} s3
 
   2. List buckets and all its contents from Amazon S3 cloud storage recursively.
-     {{.Prompt}} {{.HelpName}} --recursive s3
+     {{Prompt}} {{.FullName}} --recursive s3
 
   3. List all contents of mybucket on Amazon S3 cloud storage.
-     {{.Prompt}} {{.HelpName}} s3/mybucket/
+     {{Prompt}} {{.FullName}} s3/mybucket/
 
   4. List all contents of mybucket on Amazon S3 cloud storage on Microsoft Windows.
-     {{.Prompt}} {{.HelpName}} s3\mybucket\
+     {{Prompt}} {{.FullName}} s3\mybucket\
 
   5. List files recursively on a local filesystem on Microsoft Windows.
-     {{.Prompt}} {{.HelpName}} --recursive C:\Users\Worf\
+     {{Prompt}} {{.FullName}} --recursive C:\Users\Worf\
 
   6. List incomplete (previously failed) uploads of objects on Amazon S3.
-     {{.Prompt}} {{.HelpName}} --incomplete s3/mybucket
+     {{Prompt}} {{.FullName}} --incomplete s3/mybucket
 
   7. List contents at a specific time in the past if the bucket versioning is enabled.
-     {{.Prompt}} {{.HelpName}} --rewind 2020.01.01 s3/mybucket
-     {{.Prompt}} {{.HelpName}} --rewind 2020.01.01T11:30 s3/mybucket
-     {{.Prompt}} {{.HelpName}} --rewind 7d s3/mybucket
+     {{Prompt}} {{.FullName}} --rewind 2020.01.01 s3/mybucket
+     {{Prompt}} {{.FullName}} --rewind 2020.01.01T11:30 s3/mybucket
+     {{Prompt}} {{.FullName}} --rewind 7d s3/mybucket
 
   8. List all contents versions if the bucket versioning is enabled.
-     {{.Prompt}} {{.HelpName}} --versions s3/mybucket
+     {{Prompt}} {{.FullName}} --versions s3/mybucket
 
   9. List all objects on mybucket, summarize the number of objects and total size.
-     {{.Prompt}} {{.HelpName}} --summarize s3/mybucket/
+     {{Prompt}} {{.FullName}} --summarize s3/mybucket/
 `,
 }
 
@@ -146,8 +146,8 @@ func parseRewindFlag(rewind string) (timeRef time.Time) {
 }
 
 // checkListSyntax - validate all the passed arguments
-func checkListSyntax(ctx context.Context, cliCtx *cli.Context) ([]string, bool, bool, bool, time.Time, bool) {
-	args := cliCtx.Args()
+func checkListSyntax(ctx context.Context, cliCtx *cli.Command) ([]string, bool, bool, bool, time.Time, bool) {
+	args := cliCtx.Args().Slice()
 	if !cliCtx.Args().Present() {
 		args = []string{"."}
 	}
@@ -171,7 +171,7 @@ func checkListSyntax(ctx context.Context, cliCtx *cli.Context) ([]string, bool, 
 }
 
 // mainList - is a handler for mc ls command
-func mainList(cliCtx *cli.Context) error {
+func mainList(cliCtx *cli.Command) error {
 	ctx, cancelList := context.WithCancel(globalContext)
 	defer cancelList()
 

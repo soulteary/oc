@@ -16,9 +16,9 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var adminUserSubcommands = []cli.Command{
+var adminUserSubcommands = []*cli.Command{
 	adminUserAddCmd,
 	adminUserDisableCmd,
 	adminUserEnableCmd,
@@ -29,18 +29,18 @@ var adminUserSubcommands = []cli.Command{
 	adminUserSvcAcctCmd,
 }
 
-var adminUserCmd = cli.Command{
+var adminUserCmd = &cli.Command{
 	Name:            "user",
 	Usage:           "manage users",
-	Action:          mainAdminUser,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainAdminUser),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     adminUserSubcommands,
+	Commands:        adminUserSubcommands,
 	HideHelpCommand: true,
 }
 
 // mainAdminUser is the handle for "mc admin config" command.
-func mainAdminUser(ctx *cli.Context) error {
+func mainAdminUser(ctx *cli.Command) error {
 	commandNotFound(ctx, adminUserSubcommands)
 	return nil
 	// Sub-commands like "get", "set" have their own main.

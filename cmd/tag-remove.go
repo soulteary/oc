@@ -21,39 +21,39 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var tagRemoveFlags = []cli.Flag{
-	cli.StringFlag{
-		Name:  "version-id, vid",
+	&cli.StringFlag{
+		Name: "version-id", Aliases: []string{"vid"},
 		Usage: "remove tags on a specific object version",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "rewind",
 		Usage: "remove tags on an object version at specified time",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "versions",
 		Usage: "remote tags on multiple versions of an object",
 	},
 }
 
-var tagRemoveCmd = cli.Command{
+var tagRemoveCmd = &cli.Command{
 	Name:         "remove",
 	Usage:        "remove tags assigned to a bucket or an object",
-	Action:       mainRemoveTag,
+	Action:       commandAction(mainRemoveTag),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(tagRemoveFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [COMMAND FLAGS] TARGET
+  {{.FullName}} [COMMAND FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -63,16 +63,16 @@ DESCRIPTION:
 
 EXAMPLES:
   1. Remove the tags assigned to an object.
-     {{.Prompt}} {{.HelpName}} store/testbucket/testobject
+     {{Prompt}} {{.FullName}} store/testbucket/testobject
 
   2. Remove the tags assigned to a particular version of an object.
-     {{.Prompt}} {{.HelpName}} --version-id "ieQq7aXsyhlhDt47YURGlrucYY3GxWHa" store/testbucket/testobject
+     {{Prompt}} {{.FullName}} --version-id "ieQq7aXsyhlhDt47YURGlrucYY3GxWHa" store/testbucket/testobject
 
   3. Remove the tags assigned to an object versions that are older than one week
-     {{.Prompt}} {{.HelpName}} --versions --rewind 7d store/testbucket/testobject
+     {{Prompt}} {{.FullName}} --versions --rewind 7d store/testbucket/testobject
 
   4. Remove the tags assigned to a bucket.
-     {{.Prompt}} {{.HelpName}} store/testbucket
+     {{Prompt}} {{.FullName}} store/testbucket
 `,
 }
 
@@ -101,9 +101,9 @@ func (t tagRemoveMessage) JSON() string {
 	return string(msgBytes)
 }
 
-func parseRemoveTagSyntax(ctx *cli.Context) (targetURL, versionID string, timeRef time.Time, withVersions bool) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "remove", globalErrorExitStatus)
+func parseRemoveTagSyntax(ctx *cli.Command) (targetURL, versionID string, timeRef time.Time, withVersions bool) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "remove", globalErrorExitStatus)
 	}
 
 	targetURL = ctx.Args().Get(0)
@@ -139,7 +139,7 @@ func deleteTags(ctx context.Context, clnt Client, versionID string, verbose bool
 	})
 }
 
-func mainRemoveTag(cliCtx *cli.Context) error {
+func mainRemoveTag(cliCtx *cli.Command) error {
 	ctx, cancelList := context.WithCancel(globalContext)
 	defer cancelList()
 

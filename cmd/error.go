@@ -23,10 +23,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 // causeMessage container for golang error messages
@@ -126,7 +126,7 @@ func fatal(err *probe.Error, msg string, data ...interface{}) {
 // after an action. Which woud allow cli package to
 // exit with the specified `exitStatus`.
 func exitStatus(status int) error {
-	return cli.NewExitError("", status)
+	return cli.Exit("", status)
 }
 
 // errorIf synonymous with fatalIf but doesn't exit on error != nil

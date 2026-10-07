@@ -6,6 +6,11 @@ were published. The release uses OtterIO's UTC timestamp tag format.
 
 ## Changes
 
+- Migrate OC and the pinned OtterIO source to urfave/cli v3.14.0. Preserve
+  command scope, environment/list parsing, help, completion, initialization,
+  output streams and signal cleanup with fixed old-binary snapshots. Correct the
+  invalid health-selector usage panic. Gateway Go plugins use fresh command
+  factories and the native v3 API; see [CLI migration](docs/cli-migration.md).
 - Fix Windows notification decoding without weakening race/checkptr checks.
   Preserve asynchronous read buffers until cancellation completes, close idle
   handles, and keep old completions from removing replacement watches. Report
@@ -38,9 +43,9 @@ were published. The release uses OtterIO's UTC timestamp tag format.
 
 ## Compatibility and upgrade
 
-The module path remains `github.com/soulteary/mc`. The OtterIO SDK remains pinned
-to `v0.0.0-20261004215341-be8596f0d69d`; the compatibility fixture applies the
-three recorded server patches. This release does not claim compatibility with
+The module path remains `github.com/soulteary/mc`. The OtterIO SDK is pinned
+to the full remote source recorded in `docs/compatibility.json`; the same source
+builds the integration server without additional patches. This release does not claim compatibility with
 all historical OtterIO versions or every third-party S3 service.
 See [the compatibility manifest](https://github.com/soulteary/oc/blob/main/docs/compatibility.json) and
 [current validation scope](https://github.com/soulteary/oc/blob/main/docs/compatibility.md).
@@ -79,6 +84,9 @@ for verified installation steps and current operational guidance.
 
 ## 本次变化
 
+- OC 与固定版本的 OtterIO 迁移到 urfave/cli v3.14.0，使用旧程序快照保留参数作用域、
+  环境变量和列表解析、帮助、补全、初始化、输出流与信号清理；修复非法健康参数的帮助渲染
+  panic。Go gateway 插件改用独立命令工厂和原生 v3 API，见 [CLI 迁移说明](docs/cli-migration.md)。
 - 修复 Windows 通知解码、空闲句柄释放、异步取消缓冲区生命周期和重复监听。
   保留竞态及 checkptr 检查，真正的事件丢失仍会触发镜像同步恢复。
 - 处理 Windows 长文件名、操作系统阻止的暂存目录替换和不支持的文件属性；
@@ -100,8 +108,8 @@ for verified installation steps and current operational guidance.
 
 ## 升级与兼容性
 
-Go 模块路径仍为 `github.com/soulteary/mc`，OtterIO SDK 仍固定为
-`v0.0.0-20261004215341-be8596f0d69d`，兼容性测试服务端应用已记录的三个补丁。
+Go 模块路径仍为 `github.com/soulteary/mc`，OtterIO SDK 固定到
+`docs/compatibility.json` 记录的完整远程提交；集成服务端使用同一源码构建，无需附加补丁。
 本次不扩大为所有历史 OtterIO 或第三方 S3 均兼容的承诺，具体范围见
 [兼容性清单](https://github.com/soulteary/oc/blob/main/docs/compatibility.json)和[当前验收范围](https://github.com/soulteary/oc/blob/main/docs/zh_CN/compatibility.md)。
 

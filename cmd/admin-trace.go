@@ -28,86 +28,86 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
 	"github.com/soulteary/otterio/pkg/trace"
+	"github.com/urfave/cli/v3"
 )
 
 var adminTraceFlags = []cli.Flag{
-	cli.BoolFlag{
-		Name:  "verbose, v",
+	&cli.BoolFlag{
+		Name: "verbose", Aliases: []string{"v"},
 		Usage: "print verbose trace",
 	},
-	cli.BoolFlag{
-		Name:  "all, a",
+	&cli.BoolFlag{
+		Name: "all", Aliases: []string{"a"},
 		Usage: "trace all call types",
 	},
-	cli.StringSliceFlag{
+	&cli.StringSliceFlag{
 		Name:  "call",
 		Usage: "trace only matching Call types (values: `s3`, `internal`, `storage`, `os`)",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "response-threshold",
 		Usage: "trace calls only with response duration greater than this threshold (e.g. `5ms`)",
 	},
 
-	cli.IntSliceFlag{
+	&cli.IntSliceFlag{
 		Name:  "status-code",
 		Usage: "trace only matching status code",
 	},
-	cli.StringSliceFlag{
+	&cli.StringSliceFlag{
 		Name:  "method",
 		Usage: "trace only matching HTTP method",
 	},
-	cli.StringSliceFlag{
+	&cli.StringSliceFlag{
 		Name:  "funcname",
 		Usage: "trace only matching func name",
 	},
-	cli.StringSliceFlag{
+	&cli.StringSliceFlag{
 		Name:  "path",
 		Usage: "trace only matching path",
 	},
-	cli.BoolFlag{
-		Name:  "errors, e",
+	&cli.BoolFlag{
+		Name: "errors", Aliases: []string{"e"},
 		Usage: "trace only failed requests",
 	},
 }
 
-var adminTraceCmd = cli.Command{
+var adminTraceCmd = &cli.Command{
 	Name:            "trace",
 	Usage:           "show http trace for OtterIO server",
-	Action:          mainAdminTrace,
+	Action:          commandAction(mainAdminTrace),
 	OnUsageError:    onUsageError,
-	Before:          setGlobalsFromContext,
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           append(adminTraceFlags, globalFlags...),
 	HideHelpCommand: true,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET
+  {{.FullName}} [FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Show verbose console trace for OtterIO server
-     {{.Prompt}} {{.HelpName}} -v -a store
+     {{Prompt}} {{.FullName}} -v -a store
 
   2. Show trace only for failed requests for OtterIO server
-    {{.Prompt}} {{.HelpName}} -v -e store
+    {{Prompt}} {{.FullName}} -v -e store
 
   3. Show verbose console trace for requests with '503' status code
-    {{.Prompt}} {{.HelpName}} -v --status-code 503 store
+    {{Prompt}} {{.FullName}} -v --status-code 503 store
 
   4. Show console trace for a specific path
-    {{.Prompt}} {{.HelpName}} --path my-bucket/my-prefix/ store
+    {{Prompt}} {{.FullName}} --path my-bucket/my-prefix/ store
 
   5. Show console trace for requests with '404' and '503' status code
-    {{.Prompt}} {{.HelpName}} --status-code 404 --status-code 503 store
+    {{Prompt}} {{.FullName}} --status-code 404 --status-code 503 store
 `,
 }
 
@@ -117,9 +117,9 @@ var (
 	colors = []color.Attribute{color.FgCyan, color.FgWhite, color.FgYellow, color.FgGreen}
 )
 
-func checkAdminTraceSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "trace", 1) // last argument is exit code
+func checkAdminTraceSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "trace", 1) // last argument is exit code
 	}
 }
 
@@ -131,7 +131,7 @@ func printTrace(verbose bool, traceInfo madmin.ServiceTraceInfo) {
 	}
 }
 
-func matchTrace(ctx *cli.Context, traceInfo madmin.ServiceTraceInfo) bool {
+func matchTrace(ctx *cli.Command, traceInfo madmin.ServiceTraceInfo) bool {
 	statusCodes := ctx.IntSlice("status-code")
 	methods := ctx.StringSlice("method")
 	funcNames := ctx.StringSlice("funcname")
@@ -204,7 +204,7 @@ func matchTrace(ctx *cli.Context, traceInfo madmin.ServiceTraceInfo) bool {
 }
 
 // Calculate tracing options for command line flags
-func tracingOpts(ctx *cli.Context) (opts madmin.ServiceTraceOpts, e error) {
+func tracingOpts(ctx *cli.Command) (opts madmin.ServiceTraceOpts, e error) {
 
 	if t := ctx.String("response-threshold"); t != "" {
 		d, e := time.ParseDuration(t)
@@ -251,7 +251,7 @@ func tracingOpts(ctx *cli.Context) (opts madmin.ServiceTraceOpts, e error) {
 }
 
 // mainAdminTrace - the entry function of trace command
-func mainAdminTrace(ctx *cli.Context) error {
+func mainAdminTrace(ctx *cli.Command) error {
 	// Check for command syntax
 	checkAdminTraceSyntax(ctx)
 

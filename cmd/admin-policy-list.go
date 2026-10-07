@@ -17,51 +17,53 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminPolicyListCmd = cli.Command{
+var adminPolicyListCmd = &cli.Command{
 	Name:         "list",
 	Usage:        "list all policies",
-	Action:       mainAdminPolicyList,
+	Action:       commandAction(mainAdminPolicyList),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. List all policies on OtterIO server.
-     {{.Prompt}} {{.HelpName}} store
+     {{Prompt}} {{.FullName}} store
 `,
 }
 
 // checkAdminPolicyListSyntax - validate all the passed arguments
-func checkAdminPolicyListSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "list", 1) // last argument is exit code
+func checkAdminPolicyListSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "list", 1) // last argument is exit code
 	}
 }
 
 // mainAdminPolicyList is the handle for "mc admin policy add" command.
-func mainAdminPolicyList(ctx *cli.Context) error {
+func mainAdminPolicyList(ctx *cli.Command) error {
 	checkAdminPolicyListSyntax(ctx)
 
 	console.SetColor("PolicyMessage", color.New(color.FgGreen))
 	console.SetColor("Policy", color.New(color.FgBlue))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

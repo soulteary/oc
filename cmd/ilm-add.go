@@ -19,27 +19,27 @@ package cmd
 import (
 	"context"
 
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/soulteary/mc/cmd/ilm"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var ilmAddCmd = cli.Command{
+var ilmAddCmd = &cli.Command{
 	Name:         "add",
 	Usage:        "add a lifecycle configuration rule to existing (if any) rule(s) on a bucket",
-	Action:       mainILMAdd,
+	Action:       commandAction(mainILMAdd),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(ilmAddFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [COMMAND FLAGS] TARGET
+  {{.FullName}} [COMMAND FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -49,60 +49,60 @@ DESCRIPTION:
 
 EXAMPLES:
   1. Add expiration rule on mybucket.
-     {{.Prompt}} {{.HelpName}} --expiry-days "200" store/mybucket
+     {{Prompt}} {{.FullName}} --expiry-days "200" store/mybucket
 
   2. Add expiry and transition date rules on a prefix in mybucket.
-     {{.Prompt}} {{.HelpName}} --expiry-date "2025-09-17" --transition-date "2025-05-01" \
+     {{Prompt}} {{.FullName}} --expiry-date "2025-09-17" --transition-date "2025-05-01" \
           --storage-class "GLACIER" s3/mybucket/doc
 
   3. Add expiry and transition days rules on a prefix in mybucket.
-     {{.Prompt}} {{.HelpName}} --expiry-days "300" --transition-days "200" \
+     {{Prompt}} {{.FullName}} --expiry-days "300" --transition-days "200" \
           --storage-class "GLACIER" s3/mybucket/doc
 `,
 }
 
 var ilmAddFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "tags",
 		Usage: "format '<key1>=<value1>&<key2>=<value2>&<key3>=<value3>', multiple values allowed for multiple key/value pairs",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "expiry-date",
 		Usage: "format 'YYYY-MM-DD' the date of expiration",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "expiry-days",
 		Usage: "the number of days to expiration",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "transition-date",
 		Usage: "format 'YYYY-MM-DD' for the date to transition",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "transition-days",
 		Usage: "the number of days to transition",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "storage-class",
 		Usage: "storage class for transition (STANDARD_IA, ONEZONE_IA, GLACIER. Etc).",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "disable",
 		Usage: "disable the rule",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "expired-object-delete-marker",
 		Usage: "remove delete markers with no parallel versions",
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "noncurrentversion-expiration-days",
 		Usage: "the number of days to remove noncurrent versions",
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "noncurrentversion-transition-days",
 		Usage: "the number of days to transition noncurrent versions",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "noncurrentversion-transition-storage-class",
 		Usage: "the transition storage class for noncurrent versions",
 	},
@@ -125,21 +125,21 @@ func (i ilmAddMessage) JSON() string {
 }
 
 // Validate user given arguments
-func checkILMAddSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "add", globalErrorExitStatus)
+func checkILMAddSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "add", globalErrorExitStatus)
 	}
 }
 
 // Calls SetBucketLifecycle with the XML representation of lifecycleConfiguration type.
-func mainILMAdd(cliCtx *cli.Context) error {
+func mainILMAdd(cliCtx *cli.Command) error {
 	ctx, cancelILMAdd := context.WithCancel(globalContext)
 	defer cancelILMAdd()
 
 	checkILMAddSyntax(cliCtx)
 	setILMDisplayColorScheme()
-	args := cliCtx.Args()
-	urlStr := args.Get(0)
+	args := cliCtx.Args().Slice()
+	urlStr := argumentAt(args, 0)
 
 	client, err := newClient(urlStr)
 	fatalIf(err.Trace(urlStr), "Unable to initialize client for "+urlStr)

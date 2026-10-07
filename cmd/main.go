@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -31,12 +32,12 @@ import (
 	"syscall"
 
 	"github.com/cheggaaa/pb"
-	"github.com/minio/cli"
 	"github.com/pkg/profile"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/trie"
 	"github.com/soulteary/otterio/pkg/words"
+	"github.com/urfave/cli/v3"
 
 	completeinstall "github.com/posener/complete/cmd/install"
 )
@@ -44,7 +45,7 @@ import (
 var (
 	// global flags for mc.
 	mcFlags = []cli.Flag{
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "autocompletion",
 			Usage: "install auto-completion for your shell",
 		},
@@ -129,18 +130,28 @@ func runMain(args []string) (exitCode int) {
 	// Run the app - exit on error.
 	runArgs := append([]string(nil), args...)
 	runArgs[0] = appName
-	err := registerApp(appName).Run(runArgs)
+	err := runCLICommand(globalContext, registerApp(appName), runArgs)
 	if code := signalExitCode.Load(); code != 0 {
 		return int(code)
 	}
 	if err != nil {
+		if code, ok := err.(cli.ExitCoder); ok {
+			return code.ExitCode()
+		}
 		return 1
 	}
 	return 0
 }
 
 // Function invoked when invalid flag is passed
-func onUsageError(ctx *cli.Context, err error, subcommand bool) error {
+func onUsageError(_ context.Context, ctx *cli.Command, err error, subcommand bool) error {
+	if aliasError := commandAliasUsageError(ctx); aliasError != nil {
+		return aliasError
+	}
+	if completed, completionError := commandShellCompletion(ctx, true); completed {
+		return completionError
+	}
+	err = legacyCommandUsageError(ctx, err)
 	type subCommandHelp struct {
 		flagName string
 		usage    string
@@ -148,15 +159,20 @@ func onUsageError(ctx *cli.Context, err error, subcommand bool) error {
 
 	// Calculate the maximum width of the flag name field
 	// for a good looking printing
-	var help = make([]subCommandHelp, len(ctx.Command.Flags))
+	flags := ctx.Flags
+	// An application-level usage error previously had an empty Command value.
+	if ctx == ctx.Root() {
+		flags = nil
+	}
+	var help = make([]subCommandHelp, len(flags))
 	maxWidth := 0
-	for i, f := range ctx.Command.Flags {
-		s := strings.Split(f.String(), "\t")
-		if len(s[0]) > maxWidth {
-			maxWidth = len(s[0])
+	for i, f := range flags {
+		flagName, usage := commandFlagHelp(f)
+		if len(flagName) > maxWidth {
+			maxWidth = len(flagName)
 		}
 
-		help[i] = subCommandHelp{flagName: s[0], usage: s[1]}
+		help[i] = subCommandHelp{flagName: flagName, usage: usage}
 	}
 	maxWidth += 2
 
@@ -175,10 +191,10 @@ func onUsageError(ctx *cli.Context, err error, subcommand bool) error {
 }
 
 // Function invoked when invalid command is passed.
-func commandNotFound(ctx *cli.Context, cmds []cli.Command) {
+func commandNotFound(ctx *cli.Command, cmds []*cli.Command) {
 	command := ctx.Args().First()
 	if command == "" {
-		cli.ShowCommandHelp(ctx, command)
+		cli.ShowCommandHelp(context.Background(), ctx, command)
 		return
 	}
 	msg := fmt.Sprintf("`%s` is not a recognized command. Get help using `--help` flag.", command)
@@ -355,13 +371,13 @@ func installAutoCompletion() {
 	}
 }
 
-func registerBefore(ctx *cli.Context) error {
+func registerBefore(ctx *cli.Command) error {
 	if ctx.IsSet("config-dir") {
 		// Set the config directory.
 		setMcConfigDir(ctx.String("config-dir"))
-	} else if ctx.GlobalIsSet("config-dir") {
+	} else if commandGlobalIsSet(ctx, "config-dir") {
 		// Set the config directory.
-		setMcConfigDir(ctx.GlobalString("config-dir"))
+		setMcConfigDir(commandGlobalString(ctx, "config-dir"))
 	}
 
 	// Set global flags.
@@ -396,7 +412,7 @@ func findClosestCommands(commandsTree *trie.Trie, command string) []string {
 	return closestCommands
 }
 
-var appCmds = []cli.Command{
+var appCmds = []*cli.Command{
 	aliasCmd,
 	lsCmd,
 	mbCmd,
@@ -432,16 +448,11 @@ var appCmds = []cli.Command{
 	updateCmd,
 }
 
-func registerApp(name string) *cli.App {
-	cli.HelpFlag = cli.BoolFlag{
-		Name:  "help, h",
-		Usage: "show help",
-	}
-
-	app := cli.NewApp()
+func registerApp(name string) *cli.Command {
+	app := &cli.Command{}
 	app.Name = name
-	app.Action = func(ctx *cli.Context) error {
-		if ctx.Bool("autocompletion") || ctx.GlobalBool("autocompletion") {
+	app.Action = commandAction(func(ctx *cli.Command) error {
+		if ctx.Bool("autocompletion") || commandGlobalBool(ctx, "autocompletion") {
 			// Install shell completions
 			installAutoCompletion()
 			return nil
@@ -454,9 +465,9 @@ func registerApp(name string) *cli.App {
 		}
 
 		return exitStatus(globalErrorExitStatus)
-	}
+	})
 
-	app.Before = registerBefore
+	app.Before = commandBefore(registerBefore)
 	app.ExtraInfo = func() map[string]string {
 		if globalDebug {
 			return getSystemData()
@@ -467,14 +478,25 @@ func registerApp(name string) *cli.App {
 	app.HideHelpCommand = true
 	app.Usage = "OC client for cloud storage and filesystems."
 	app.Commands = appCmds
-	app.Author = "OtterIO contributors"
+	app.Authors = []any{"OtterIO contributors"}
 	app.Version = ReleaseTag
-	app.Flags = append(mcFlags, globalFlags...)
-	app.CustomAppHelpTemplate = mcHelpTemplate
-	app.EnableBashCompletion = true
+	app.Flags = append(append([]cli.Flag{}, mcFlags...), globalFlags...)
+	app.Flags = append(app.Flags, &cli.BoolFlag{Name: "help", Aliases: []string{"h"}, Usage: "show help"},
+		&cli.BoolFlag{Name: "version", Aliases: []string{"v"}, Usage: "print the version"})
+	// Our sourced flag lifecycle preserves Bool semantics for --version=false.
+	app.HideVersion = true
+	app.CustomRootCommandHelpTemplate = mcHelpTemplate
 	app.OnUsageError = onUsageError
+	// Keep exit handling at Main so command defers and signal cleanup can finish.
+	app.ExitErrHandler = func(_ context.Context, _ *cli.Command, err error) {
+		if _, coded := err.(cli.ExitCoder); coded && err.Error() != "" {
+			fmt.Fprintln(os.Stderr, err)
+		}
+	}
+	app.DisableSliceFlagSeparator = true
+	installCommandHelpPrinter()
 
-	return app
+	return cloneCommand(app)
 }
 
 // mustGetProfilePath must get location that the profile will be written to.

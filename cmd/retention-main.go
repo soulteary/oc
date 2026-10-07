@@ -17,26 +17,26 @@
 package cmd
 
 import (
-	"github.com/minio/cli"
+	"github.com/urfave/cli/v3"
 )
 
-var retentionSubcommands = []cli.Command{
+var retentionSubcommands = []*cli.Command{
 	retentionSetCmd,
 	retentionClearCmd,
 	retentionInfoCmd,
 }
 
-var retentionCmd = cli.Command{
-	Name:        "retention",
-	Usage:       "set retention for object(s)",
-	Action:      mainRetention,
-	Before:      setGlobalsFromContext,
-	Flags:       globalFlags,
-	Subcommands: retentionSubcommands,
+var retentionCmd = &cli.Command{
+	Name:     "retention",
+	Usage:    "set retention for object(s)",
+	Action:   commandAction(mainRetention),
+	Before:   commandBefore(setGlobalsFromContext),
+	Flags:    globalFlags,
+	Commands: retentionSubcommands,
 }
 
 // main for retention command.
-func mainRetention(ctx *cli.Context) error {
+func mainRetention(ctx *cli.Command) error {
 	commandNotFound(ctx, retentionSubcommands)
 	return nil
 }

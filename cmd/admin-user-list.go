@@ -17,43 +17,45 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminUserListCmd = cli.Command{
+var adminUserListCmd = &cli.Command{
 	Name:         "list",
 	Usage:        "list all users",
-	Action:       mainAdminUserList,
+	Action:       commandAction(mainAdminUserList),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. List all users on OtterIO server.
-     {{.Prompt}} {{.HelpName}} store
+     {{Prompt}} {{.FullName}} store
 `,
 }
 
 // checkAdminUserListSyntax - validate all the passed arguments
-func checkAdminUserListSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "list", 1) // last argument is exit code
+func checkAdminUserListSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "list", 1) // last argument is exit code
 	}
 }
 
 // mainAdminUserList is the handle for "mc admin user list" command.
-func mainAdminUserList(ctx *cli.Context) error {
+func mainAdminUserList(ctx *cli.Command) error {
 	checkAdminUserListSyntax(ctx)
 
 	// Additional command speific theme customization.
@@ -63,8 +65,8 @@ func mainAdminUserList(ctx *cli.Context) error {
 	console.SetColor("UserStatus", color.New(color.FgCyan))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)

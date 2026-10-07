@@ -21,50 +21,50 @@ import (
 	"sort"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var aliasListCmd = cli.Command{
-	Name:      "list",
-	ShortName: "ls",
-	Usage:     "list aliases in configuration file",
-	Action: func(ctx *cli.Context) error {
+var aliasListCmd = &cli.Command{
+	Name:    "list",
+	Aliases: []string{"ls"},
+	Usage:   "list aliases in configuration file",
+	Action: commandAction(func(ctx *cli.Command) error {
 		return mainAliasList(ctx, false)
-	},
-	Before:          setGlobalsFromContext,
+	}),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
 	OnUsageError:    onUsageError,
 	HideHelpCommand: true,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [ALIAS]
+  {{.FullName}} [ALIAS]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. List all aliases.
-     {{.Prompt}} {{.HelpName}}
+     {{Prompt}} {{.FullName}}
 
   2. List a specific alias.
-     {{.Prompt}} {{.HelpName}} s3
+     {{Prompt}} {{.FullName}} s3
 `,
 }
 
 // Input argument validator..
-func checkAliasListSyntax(ctx *cli.Context) {
-	args := ctx.Args()
+func checkAliasListSyntax(ctx *cli.Command) {
+	args := ctx.Args().Slice()
 
-	if len(ctx.Args()) > 1 {
+	if ctx.Args().Len() > 1 {
 		fatalIf(errInvalidArgument().Trace(args...),
 			"Incorrect number of arguments to alias list command.")
 	}
 }
 
-func mainAliasList(ctx *cli.Context, deprecated bool) error {
+func mainAliasList(ctx *cli.Command, deprecated bool) error {
 	checkAliasListSyntax(ctx)
 
 	// Additional command specific theme customization.

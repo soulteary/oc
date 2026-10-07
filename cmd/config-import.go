@@ -9,23 +9,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
-var configImportCmd = cli.Command{
+var configImportCmd = &cli.Command{
 	OnUsageError: onUsageError,
 	Name:         "import", Usage: "import a version 10 mc/oc config file with a backup; source stays unchanged",
-	Flags: globalFlags, Before: setGlobalsFromContext,
-	Action: func(ctx *cli.Context) error {
-		if len(ctx.Args()) != 1 {
+	Flags: globalFlags, Before: commandBefore(setGlobalsFromContext),
+	Action: commandAction(func(ctx *cli.Command) error {
+		if ctx.Args().Len() != 1 {
 			return fmt.Errorf("usage: oc config import PATH_TO_CONFIG_JSON")
 		}
 		count, err := importClientConfig(ctx.Args().Get(0), mustGetMcConfigPath())
 		fatalIf(probe.NewError(err), "Unable to import configuration.")
 		printMsg(clientConfigImportMessage{Status: "success", Aliases: count})
 		return nil
-	},
+	}),
 }
 
 type clientConfigImportMessage struct {

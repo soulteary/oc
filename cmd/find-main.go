@@ -23,77 +23,77 @@ import (
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 // List of all flags supported by find command.
 var (
 	findFlags = []cli.Flag{
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "exec",
 			Usage: "spawn an external process for each matching object (see FORMAT)",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "ignore",
 			Usage: "exclude objects matching the wildcard pattern",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "name",
 			Usage: "find object names matching wildcard pattern",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "newer-than",
 			Usage: "match all objects newer than L days, M hours and N minutes",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "older-than",
 			Usage: "match all objects older than L days, M hours and N minutes",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "path",
 			Usage: "match directory names matching wildcard pattern",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "print",
 			Usage: "print in custom format to STDOUT (see FORMAT)",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "regex",
 			Usage: "match directory and object name with PCRE regex pattern",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "larger",
 			Usage: "match all objects larger than specified size in units (see UNITS)",
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "smaller",
 			Usage: "match all objects smaller than specified size in units (see UNITS)",
 		},
-		cli.UintFlag{
+		&cli.UintFlag{
 			Name:  "maxdepth",
 			Usage: "limit directory navigation to specified depth",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "watch",
 			Usage: "monitor a specified path for newly created object(s)",
 		},
 	}
 )
 
-var findCmd = cli.Command{
+var findCmd = &cli.Command{
 	Name:         "find",
 	Usage:        "search for objects",
-	Action:       mainFind,
+	Action:       commandAction(mainFind),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(findFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} PATH [FLAGS]
+  {{.FullName}} PATH [FLAGS]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -124,44 +124,44 @@ FORMAT
 
 EXAMPLES:
   01. Find all "foo.jpg" in all buckets under "s3" account.
-      {{.Prompt}} {{.HelpName}} s3 --name "foo.jpg"
+      {{Prompt}} {{.FullName}} s3 --name "foo.jpg"
 
   02. Find all objects with ".txt" extension under "s3/mybucket".
-      {{.Prompt}} {{.HelpName}} s3/mybucket --name "*.txt"
+      {{Prompt}} {{.FullName}} s3/mybucket --name "*.txt"
 
   03. Find only the object names without the directory component under "s3/mybucket".
-      {{.Prompt}} {{.HelpName}} s3/mybucket --name "*" -print {base}
+      {{Prompt}} {{.FullName}} s3/mybucket --name "*" -print {base}
 
   04. Find all images with ".jpg" extension under "s3/photos", prefixed with "album".
-      {{.Prompt}} {{.HelpName}} s3/photos --name "*.jpg" --path "*/album*/*"
+      {{Prompt}} {{.FullName}} s3/photos --name "*.jpg" --path "*/album*/*"
 
   05. Find all images with ".jpg", ".png", and ".gif" extensions, using regex under "s3/photos".
-      {{.Prompt}} {{.HelpName}} s3/photos --regex "(?i)\.(jpg|png|gif)$"
+      {{Prompt}} {{.FullName}} s3/photos --regex "(?i)\.(jpg|png|gif)$"
 
   06. Find all images with ".jpg" extension under "s3/bucket" and copy to "store/bucket" *continuously*.
-      {{.Prompt}} {{.HelpName}} s3/bucket --name "*.jpg" --watch --exec "mc cp {} store/bucket"
+      {{Prompt}} {{.FullName}} s3/bucket --name "*.jpg" --watch --exec "mc cp {} store/bucket"
 
   07. Find and generate public URLs valid for 7 days, for all objects between 64 MB, and 1 GB in size under "s3" account.
-      {{.Prompt}} {{.HelpName}} s3 --larger 64MB --smaller 1GB --print {url}
+      {{Prompt}} {{.FullName}} s3 --larger 64MB --smaller 1GB --print {url}
 
   08. Find all objects created in the last week under "s3/bucket".
-      {{.Prompt}} {{.HelpName}} s3/bucket --newer-than 7d
+      {{Prompt}} {{.FullName}} s3/bucket --newer-than 7d
 
   09. Find all objects which were created are older than 2 days, 5 hours and 10 minutes and exclude the ones with ".jpg"
       extension under "s3".
-      {{.Prompt}} {{.HelpName}} s3 --older-than 2d5h10m --ignore "*.jpg"
+      {{Prompt}} {{.FullName}} s3 --older-than 2d5h10m --ignore "*.jpg"
 
   10. List all objects up to 3 levels sub-directory deep under "s3/bucket".
-      {{.Prompt}} {{.HelpName}} s3/bucket --maxdepth 3
+      {{Prompt}} {{.FullName}} s3/bucket --maxdepth 3
 `,
 }
 
 // checkFindSyntax - validate the passed arguments
-func checkFindSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[string][]prefixSSEPair) {
-	args := cliCtx.Args()
-	if !args.Present() {
+func checkFindSyntax(ctx context.Context, cliCtx *cli.Command, encKeyDB map[string][]prefixSSEPair) {
+	args := cliCtx.Args().Slice()
+	if len(args) == 0 {
 		args = []string{"./"} // No args just default to present directory.
-	} else if args.Get(0) == "." {
+	} else if argumentAt(args, 0) == "." {
 		args[0] = "./" // If the arg is '.' treat it as './'.
 	}
 
@@ -188,7 +188,7 @@ func checkFindSyntax(ctx context.Context, cliCtx *cli.Context, encKeyDB map[stri
 // each parsed input is stored in its native typed form for
 // ease of repurposing.
 type findContext struct {
-	*cli.Context
+	*cli.Command
 	execCmd       string
 	ignorePattern string
 	namePattern   string
@@ -210,7 +210,7 @@ type findContext struct {
 }
 
 // mainFind - handler for mc find commands
-func mainFind(cliCtx *cli.Context) error {
+func mainFind(cliCtx *cli.Command) error {
 	ctx, cancelFind := context.WithCancel(globalContext)
 	defer cancelFind()
 
@@ -224,10 +224,10 @@ func mainFind(cliCtx *cli.Context) error {
 
 	checkFindSyntax(ctx, cliCtx, encKeyDB)
 
-	args := cliCtx.Args()
-	if !args.Present() {
+	args := cliCtx.Args().Slice()
+	if len(args) == 0 {
 		args = []string{"./"} // Not args present default to present directory.
-	} else if args.Get(0) == "." {
+	} else if argumentAt(args, 0) == "." {
 		args[0] = "./" // If the arg is '.' treat it as './'.
 	}
 
@@ -267,7 +267,7 @@ func mainFind(cliCtx *cli.Context) error {
 	}
 
 	return doFind(ctx, &findContext{
-		Context:       cliCtx,
+		Command:       cliCtx,
 		maxDepth:      cliCtx.Uint("maxdepth"),
 		execCmd:       cliCtx.String("exec"),
 		printFmt:      cliCtx.String("print"),

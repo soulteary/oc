@@ -17,30 +17,32 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var adminBucketRemoteRmFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "arn",
 		Usage: "ARN to be removed",
 	},
 }
-var adminBucketRemoteRmCmd = cli.Command{
+var adminBucketRemoteRmCmd = &cli.Command{
 	Name:         "rm",
 	Usage:        "remove configured remote target",
-	Action:       mainAdminBucketRemoteRemove,
+	Action:       commandAction(mainAdminBucketRemoteRemove),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(globalFlags, adminBucketRemoteRmFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -48,27 +50,27 @@ FLAGS:
 EXAMPLES:
   1. Remove existing remote target with arn "arn:minio:replication:us-west-1:993bc6b6-accd-45e3-884f-5f3e652aed2a:dest1"
      for bucket srcbucket on OtterIO server.
-     {{.Prompt}} {{.HelpName}} store/srcbucket --arn "arn:minio:replication:us-west-1:993bc6b6-accd-45e3-884f-5f3e652aed2a:dest1"
+     {{Prompt}} {{.FullName}} store/srcbucket --arn "arn:minio:replication:us-west-1:993bc6b6-accd-45e3-884f-5f3e652aed2a:dest1"
 `,
 }
 
 // checkAdminBucketRemoteRemoveSyntax - validate all the passed arguments
-func checkAdminBucketRemoteRemoveSyntax(ctx *cli.Context) {
+func checkAdminBucketRemoteRemoveSyntax(ctx *cli.Command) {
 
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, ctx.Command.Name, 1) // last argument is exit code
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, ctx.Name, 1) // last argument is exit code
 	}
 }
 
 // mainAdminBucketRemoteRemove is the handle for "mc admin bucket remote rm" command.
-func mainAdminBucketRemoteRemove(ctx *cli.Context) error {
+func mainAdminBucketRemoteRemove(ctx *cli.Command) error {
 	checkAdminBucketRemoteRemoveSyntax(ctx)
 
 	console.SetColor("RemoteMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new MinIO Admin Client
 	client, cerr := newAdminClient(aliasedURL)
 	fatalIf(cerr.Trace(aliasedURL), "Unable to initialize admin connection.")
@@ -83,7 +85,7 @@ func mainAdminBucketRemoteRemove(ctx *cli.Context) error {
 	fatalIf(probe.NewError(client.RemoveRemoteTarget(globalContext, sourceBucket, arn)).Trace(args...), "Unable to remove remote target")
 
 	printMsg(RemoteMessage{
-		op:           ctx.Command.Name,
+		op:           ctx.Name,
 		SourceBucket: sourceBucket,
 		RemoteARN:    arn,
 	})

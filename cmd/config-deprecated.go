@@ -16,36 +16,40 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import (
+	"context"
 
-var configCmd = cli.Command{
+	"github.com/urfave/cli/v3"
+)
+
+var configCmd = &cli.Command{
 	Name:  "config",
 	Usage: "configure OC client",
-	Action: func(ctx *cli.Context) error {
-		cli.ShowCommandHelp(ctx, ctx.Args().First())
+	Action: commandAction(func(ctx *cli.Command) error {
+		cli.ShowCommandHelp(context.Background(), ctx, ctx.Args().First())
 		return nil
-	},
+	}),
 	Hidden:          false,
-	Before:          setGlobalsFromContext,
+	Before:          commandBefore(setGlobalsFromContext),
 	HideHelpCommand: true,
 	Flags:           globalFlags,
-	Subcommands: []cli.Command{
+	Commands: []*cli.Command{
 		configHostCmd,
 		configImportCmd,
 	},
 }
 
-var configHostCmd = cli.Command{
+var configHostCmd = &cli.Command{
 	Hidden: true,
 	Name:   "host",
 	Usage:  "add, remove and list hosts in configuration file",
-	Action: func(ctx *cli.Context) error {
-		cli.ShowCommandHelp(ctx, ctx.Args().First())
+	Action: commandAction(func(ctx *cli.Command) error {
+		cli.ShowCommandHelp(context.Background(), ctx, ctx.Args().First())
 		return nil
-	},
-	Before: setGlobalsFromContext,
+	}),
+	Before: commandBefore(setGlobalsFromContext),
 	Flags:  globalFlags,
-	Subcommands: []cli.Command{
+	Commands: []*cli.Command{
 		configHostAddCmd,
 		configHostRemoveCmd,
 		configHostListCmd,
@@ -54,49 +58,49 @@ var configHostCmd = cli.Command{
 }
 
 var configHostAddFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "lookup",
 		Value: "auto",
 		Usage: "bucket lookup supported by the server. Valid options are '[dns, path, auto]'",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "api",
 		Usage: "API signature. Valid options are '[S3v4, S3v2]'",
 	},
 }
 
-var configHostAddCmd = cli.Command{
-	Name:      "add",
-	ShortName: "a",
-	Usage:     "add a new host to configuration file",
-	Action: func(cli *cli.Context) error {
+var configHostAddCmd = &cli.Command{
+	Name:    "add",
+	Aliases: []string{"a"},
+	Usage:   "add a new host to configuration file",
+	Action: commandAction(func(cli *cli.Command) error {
 		return mainAliasSet(cli, true)
-	},
-	Before:          setGlobalsFromContext,
+	}),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           append(configHostAddFlags, globalFlags...),
 	HideHelpCommand: true,
 }
 
-var configHostListCmd = cli.Command{
-	Name:      "list",
-	ShortName: "ls",
-	Usage:     "list hosts in configuration file",
-	Action: func(cli *cli.Context) error {
+var configHostListCmd = &cli.Command{
+	Name:    "list",
+	Aliases: []string{"ls"},
+	Usage:   "list hosts in configuration file",
+	Action: commandAction(func(cli *cli.Command) error {
 		return mainAliasList(cli, true)
-	},
-	Before:          setGlobalsFromContext,
+	}),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
 	HideHelpCommand: true,
 }
 
-var configHostRemoveCmd = cli.Command{
-	Name:      "remove",
-	ShortName: "rm",
-	Usage:     "remove a host from configuration file",
-	Action: func(cli *cli.Context) error {
+var configHostRemoveCmd = &cli.Command{
+	Name:    "remove",
+	Aliases: []string{"rm"},
+	Usage:   "remove a host from configuration file",
+	Action: commandAction(func(cli *cli.Command) error {
 		return mainAliasRemove(cli, true)
-	},
-	Before:          setGlobalsFromContext,
+	}),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
 	HideHelpCommand: true,
 }

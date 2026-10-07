@@ -27,41 +27,41 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	headFlags = []cli.Flag{
-		cli.Int64Flag{
-			Name:  "n,lines",
+		&cli.Int64Flag{
+			Name: "n", Aliases: []string{"lines"},
 			Usage: "print the first 'n' lines",
 			Value: 10,
 		},
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "rewind",
 			Usage: "select an object version at specified time",
 		},
-		cli.StringFlag{
-			Name:  "version-id, vid",
+		&cli.StringFlag{
+			Name: "version-id", Aliases: []string{"vid"},
 			Usage: "select an object version to display",
 		},
 	}
 )
 
 // Display contents of a file.
-var headCmd = cli.Command{
+var headCmd = &cli.Command{
 	Name:         "head",
 	Usage:        "display first 'n' lines of an object",
-	Action:       mainHead,
+	Action:       commandAction(mainHead),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(append(headFlags, ioFlags...), globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] SOURCE [SOURCE...]
+  {{.FullName}} [FLAGS] SOURCE [SOURCE...]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -70,21 +70,21 @@ ENVIRONMENT VARIABLES:
   OC_ENCRYPT_KEY (MC_ENCRYPT_KEY):  list of comma delimited prefix=secret values
 
 NOTE:
-  '{{.HelpName}}' automatically decompresses 'gzip', 'bzip2' compressed objects.
+  '{{.FullName}}' automatically decompresses 'gzip', 'bzip2' compressed objects.
 
 EXAMPLES:
   1. Display only first line from a 'gzip' compressed object on Amazon S3.
-     {{.Prompt}} {{.HelpName}} -n 1 s3/csv-data/population.csv.gz
+     {{Prompt}} {{.FullName}} -n 1 s3/csv-data/population.csv.gz
 
   2. Display only first line from server encrypted object on Amazon S3.
-     {{.Prompt}} {{.HelpName}} -n 1 --encrypt-key 's3/csv-data=32byteslongsecretkeymustbegiven1' s3/csv-data/population.csv
+     {{Prompt}} {{.FullName}} -n 1 --encrypt-key 's3/csv-data=32byteslongsecretkeymustbegiven1' s3/csv-data/population.csv
 
   3. Display only first line from server encrypted object on Amazon S3. In case the encryption key contains non-printable character like tab, pass the
      base64 encoded string as key.
-     {{.Prompt}} {{.HelpName}} --encrypt-key "s3/json-data=MzJieXRlc2xvbmdzZWNyZXRrZQltdXN0YmVnaXZlbjE="  s3/json-data/population.json
+     {{Prompt}} {{.FullName}} --encrypt-key "s3/json-data=MzJieXRlc2xvbmdzZWNyZXRrZQltdXN0YmVnaXZlbjE="  s3/json-data/population.json
 
   4. Display the first lines of a specific object version.
-     {{.Prompt}} {{.HelpName}} --version-id "3ddac055-89a7-40fa-8cd3-530a5581b6b8" s3/json-data/population.json
+     {{Prompt}} {{.FullName}} --version-id "3ddac055-89a7-40fa-8cd3-530a5581b6b8" s3/json-data/population.json
 `,
 }
 
@@ -163,8 +163,8 @@ func headOut(r io.Reader, nlines int64) *probe.Error {
 }
 
 // parseHeadSyntax performs command-line input validation for head command.
-func parseHeadSyntax(ctx *cli.Context) (args []string, versionID string, timeRef time.Time) {
-	args = ctx.Args()
+func parseHeadSyntax(ctx *cli.Command) (args []string, versionID string, timeRef time.Time) {
+	args = ctx.Args().Slice()
 
 	versionID = ctx.String("version-id")
 	rewind := ctx.String("rewind")
@@ -182,7 +182,7 @@ func parseHeadSyntax(ctx *cli.Context) (args []string, versionID string, timeRef
 }
 
 // mainHead is the main entry point for head command.
-func mainHead(ctx *cli.Context) error {
+func mainHead(ctx *cli.Command) error {
 	// Parse encryption keys per command.
 	encKeyDB, err := getEncKeys(ctx)
 	fatalIf(err, "Unable to parse encryption keys.")
@@ -198,7 +198,7 @@ func mainHead(ctx *cli.Context) error {
 	}
 
 	// Convert arguments to URLs: expand alias, fix format.
-	for _, url := range ctx.Args() {
+	for _, url := range ctx.Args().Slice() {
 		fatalIf(headURL(url, versionID, timeRef, encKeyDB, ctx.Int64("lines")).Trace(url), "Unable to read from `"+url+"`.")
 	}
 

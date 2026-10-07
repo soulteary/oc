@@ -16,25 +16,25 @@
 
 package cmd
 
-import "github.com/minio/cli"
+import "github.com/urfave/cli/v3"
 
-var adminKMSKeySubcommands = []cli.Command{
+var adminKMSKeySubcommands = []*cli.Command{
 	adminKMSCreateKeyCmd,
 	adminKMSKeyStatusCmd,
 }
 
-var adminKMSKeyCmd = cli.Command{
+var adminKMSKeyCmd = &cli.Command{
 	Name:            "key",
 	Usage:           "manage KMS master keys: Request key status information",
-	Action:          mainAdminKMSKey,
-	Before:          setGlobalsFromContext,
+	Action:          commandAction(mainAdminKMSKey),
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
-	Subcommands:     adminKMSKeySubcommands,
+	Commands:        adminKMSKeySubcommands,
 	HideHelpCommand: true,
 }
 
 // mainAdminKMSKey is the handle for the "mc admin kms key" command.
-func mainAdminKMSKey(ctx *cli.Context) error {
+func mainAdminKMSKey(ctx *cli.Command) error {
 	commandNotFound(ctx, adminKMSKeySubcommands)
 	return nil
 }

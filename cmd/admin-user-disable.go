@@ -17,62 +17,64 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
-var adminUserDisableCmd = cli.Command{
+var adminUserDisableCmd = &cli.Command{
 	Name:         "disable",
 	Usage:        "disable user",
-	Action:       mainAdminUserDisable,
+	Action:       commandAction(mainAdminUserDisable),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET USERNAME
+  {{.FullName}} TARGET USERNAME
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Disable a user 'foobar' on OtterIO server.
-     {{.Prompt}} {{.HelpName}} store foobar
+     {{Prompt}} {{.FullName}} store foobar
 `,
 }
 
 // checkAdminUserDisableSyntax - validate all the passed arguments
-func checkAdminUserDisableSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
-		cli.ShowCommandHelpAndExit(ctx, "disable", 1) // last argument is exit code
+func checkAdminUserDisableSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "disable", 1) // last argument is exit code
 	}
 }
 
 // mainAdminUserDisable is the handle for "mc admin user disable" command.
-func mainAdminUserDisable(ctx *cli.Context) error {
+func mainAdminUserDisable(ctx *cli.Command) error {
 	checkAdminUserDisableSyntax(ctx)
 
 	console.SetColor("UserMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
-	e := client.SetUserStatus(globalContext, args.Get(1), madmin.AccountDisabled)
+	e := client.SetUserStatus(globalContext, argumentAt(args, 1), madmin.AccountDisabled)
 	fatalIf(probe.NewError(e).Trace(args...), "Unable to disable user")
 
 	printMsg(userMessage{
 		op:        "disable",
-		AccessKey: args.Get(1),
+		AccessKey: argumentAt(args, 1),
 	})
 
 	return nil

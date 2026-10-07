@@ -21,38 +21,38 @@ import (
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var encryptInfoCmd = cli.Command{
+var encryptInfoCmd = &cli.Command{
 	Name:         "info",
 	Usage:        "show bucket encryption status",
-	Action:       mainEncryptInfo,
+	Action:       commandAction(mainEncryptInfo),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Display bucket encryption status for bucket "mybucket".
-     {{.Prompt}} {{.HelpName}} store/mybucket
+     {{Prompt}} {{.FullName}} store/mybucket
 `,
 }
 
 // checkversionInfoSyntax - validate all the passed arguments
-func checkEncryptInfoSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, ctx.Command.Name, 1) // last argument is exit code
+func checkEncryptInfoSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, ctx.Name, 1) // last argument is exit code
 	}
 }
 
@@ -87,7 +87,7 @@ func (v encryptInfoMessage) String() string {
 	return console.Colorize("encryptInfoMessage", msg)
 }
 
-func mainEncryptInfo(cliCtx *cli.Context) error {
+func mainEncryptInfo(cliCtx *cli.Command) error {
 	ctx, cancelEncryptInfo := context.WithCancel(globalContext)
 	defer cancelEncryptInfo()
 
@@ -96,15 +96,15 @@ func mainEncryptInfo(cliCtx *cli.Context) error {
 	checkEncryptInfoSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(0)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")
 	algorithm, keyID, e := client.GetEncryption(ctx)
 	fatalIf(e, "Unable to get encryption info")
 	msg := encryptInfoMessage{
-		Op:     cliCtx.Command.Name,
+		Op:     cliCtx.Name,
 		Status: "success",
 		URL:    aliasedURL,
 	}

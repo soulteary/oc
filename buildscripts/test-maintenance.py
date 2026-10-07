@@ -52,7 +52,13 @@ class MaintenanceTests(unittest.TestCase):
             report = Path(temp) / 'results.json'
             argv = ['integration', '--cli', __file__, '--console', __file__, '--server', __file__,
                     '--server-source', 'fixture', '--output', str(report)]
-            with patch.object(sys, 'argv', argv), patch.object(integration, 'scenario', side_effect=fail):
+            sdk = json.loads((Path(__file__).resolve().parents[1] / 'docs' / 'compatibility.json').read_text())['otterioSDK']
+            build_info = {'Deps': [{'Path': 'github.com/soulteary/otterio', 'Version': sdk}],
+                          'Settings': [{'Key': 'vcs.revision', 'Value': 'fixture'},
+                                       {'Key': 'vcs.modified', 'Value': 'false'}]}
+            with patch.object(sys, 'argv', argv), patch.object(integration, 'scenario', side_effect=fail), \
+                    patch.object(integration.platform, 'platform', return_value='fixture-platform'), \
+                    patch.object(integration.subprocess, 'check_output', return_value=json.dumps(build_info)):
                 with self.assertRaises(RuntimeError):
                     integration.main()
             failed = json.loads(report.read_text())
@@ -90,7 +96,7 @@ class MaintenanceTests(unittest.TestCase):
             clean = {'vcs':'git', 'vcs.modified':'false','vcs.revision':'abc123','vcs.time':'2026-10-07T00:00:00Z'}
             variants = [{k:v for k,v in clean.items() if k != 'vcs'}, {}, {'vcs.modified':'false'}, dict(clean, **{'vcs.modified':'true'}), clean]
             for settings in variants:
-                info = {'GoVersion':'go1.27.1','Main':{'Version':'v1.0.0'},'Deps':[], 'Settings':[{'Key':k,'Value':v} for k,v in settings.items()] + [{'Key':'GO_EXTLINK_ENABLED'}]}
+                info = {'GoVersion':'go1.27.1','Main':{'Version':'v1.0.0'},'Deps':[{'Path':'github.com/urfave/cli/v3','Version':'v3.14.0'}], 'Settings':[{'Key':k,'Value':v} for k,v in settings.items()] + [{'Key':'GO_EXTLINK_ENABLED'}]}
                 with patch.object(sbom.subprocess,'check_output',return_value=json.dumps(info).encode()):
                     if settings == clean:
                         sbom.inventory(binary, True)
@@ -99,6 +105,15 @@ class MaintenanceTests(unittest.TestCase):
             info['Deps']=[{'Path':'module','Replace':{'Path':'other','Version':'v1.0.0'}}]
             with patch.object(sbom.subprocess,'check_output',return_value=json.dumps(info).encode()):
                 with self.assertRaises(ValueError): sbom.inventory(binary, True)
+
+    def test_compiled_cli_boundary(self):
+        sbom.validate_cli_modules([{'Path': 'github.com/urfave/cli/v3', 'Version': 'v3.14.0'},
+                                   {'Path': 'github.com/minio/minio-go/v7', 'Version': 'v7.0.0'}], True)
+        for modules in ([], [{'Path': 'github.com/urfave/cli/v3', 'Version': 'v3.13.0'}],
+                        [{'Path': 'github.com/minio/cli', 'Version': 'v1.24.2'}],
+                        [{'Path': 'github.com/minio/cli/v2', 'Version': 'v2.0.0'}]):
+            with self.subTest(modules=modules), self.assertRaises(ValueError):
+                sbom.validate_cli_modules(modules, True)
 
     def test_failed_scenario_retains_partial_metrics(self):
         spec = importlib.util.spec_from_file_location('integration', Path(__file__).with_name('test-core-integration.py'))

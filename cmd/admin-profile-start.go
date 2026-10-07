@@ -17,53 +17,54 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 
-	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 var adminProfileStartFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "type",
 		Usage: "start profiler type, possible values are 'cpu', 'mem', 'block', 'mutex', 'trace', 'threads' and 'goroutines'",
 		Value: "cpu,mem,block,goroutines",
 	},
 }
 
-var adminProfileStartCmd = cli.Command{
+var adminProfileStartCmd = &cli.Command{
 	Name:            "start",
 	Usage:           "start recording profile data",
-	Action:          mainAdminProfileStart,
+	Action:          commandAction(mainAdminProfileStart),
 	OnUsageError:    onUsageError,
-	Before:          setGlobalsFromContext,
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           append(adminProfileStartFlags, globalFlags...),
 	HideHelpCommand: true,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET
+  {{.FullName}} [FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
     1. Start CPU profiling only
-       {{.Prompt}} {{.HelpName}} --type cpu store/
+       {{Prompt}} {{.FullName}} --type cpu store/
 
     2. Start CPU, Memory and Block profiling concurrently
-       {{.Prompt}} {{.HelpName}} --type cpu,mem,block store/
+       {{Prompt}} {{.FullName}} --type cpu,mem,block store/
 `,
 }
 
-func checkAdminProfileStartSyntax(ctx *cli.Context) {
+func checkAdminProfileStartSyntax(ctx *cli.Command) {
 	// Check flags combinations
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "start", 1) // last argument is exit code
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "start", 1) // last argument is exit code
 	}
 
 	s := set.NewStringSet()
@@ -97,13 +98,13 @@ func checkAdminProfileStartSyntax(ctx *cli.Context) {
 }
 
 // mainAdminProfileStart - the entry function of profile command
-func mainAdminProfileStart(ctx *cli.Context) error {
+func mainAdminProfileStart(ctx *cli.Command) error {
 	// Check for command syntax
 	checkAdminProfileStartSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	profilers := ctx.String("type")
 

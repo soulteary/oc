@@ -6,17 +6,9 @@ OC 的兼容承诺限于已有通过记录的版本、部署和操作。API 能�
 
 ## SDK 固定版本与服务端测试基线
 
-当前构建使用 Go `1.27.1`，OtterIO SDK module 固定为 `v0.0.0-20261004215341-be8596f0d69d`，对应提交 `be8596f0d69d530586f35366fb2d5c79bdc54399`。OC 的 module 名仍为 `github.com/soulteary/mc`，该名称不会选择旧的更新或发布渠道。
+当前 Go 工具链、固定 OtterIO SDK 版本、完整服务端源码 SHA 和 CLI 框架版本记录在 [compatibility.json](../compatibility.json)。OC 的 module 名保持 `github.com/soulteary/mc`。
 
-客户端使用远程固定模块，没有本地 `replace`。真实服务验收则从同一基线构建服务端，并按顺序应用以下补丁：
-
-1. [otterio-core-compat.patch](../../buildscripts/otterio-core-compat.patch)：管理查询参数桥接及回归测试。
-2. [otterio-runtime-compat.patch](../../buildscripts/otterio-runtime-compat.patch)：HTTP 关闭期限和 Darwin 重启监督。
-3. [otterio-http-api-compat.patch](../../buildscripts/otterio-http-api-compat.patch)：HTTP、对象路径、管理流和资源释放修正。
-4. [otterio-account-info-compat.patch](../../buildscripts/otterio-account-info-compat.patch)：已验签 root 的 AccountInfo 跳过 IAM 用户查找，普通和临时身份仍按各自策略授权。
-5. [otterio-conditional-writes-compat.patch](../../buildscripts/otterio-conditional-writes-compat.patch): FS 与单 pool erasure 的原子仅创建 PUT/分段完成检查；写回缓存、gateway 和多 pool 不宣告能力并明确拒绝。
-
-SDK 固定版本与带补丁的服务端是基线的两个部分。使用原始、未修补的 SDK / 服务端提交，不能直接引用带补丁环境的通过结果。部署需要包含这些修复；扩展基线时，应固定新版本并重新运行矩阵。可重复验证的方法见 [开发说明](development.md)。
+客户端与集成服务端使用同一固定远程 OtterIO 源码，不使用本地替换或兼容补丁。管理查询桥接、运行时关闭、HTTP API、账户信息和条件写修复已包含在该源码中。旧补丁与旧报告保留为历史证据，不再作为当前环境搭建步骤。更新固定版本后必须重跑验收矩阵，见[开发指南](development.md)和 [CLI 迁移说明](../cli-migration.md)。
 
 ## 测试工具覆盖的部署
 
@@ -28,7 +20,7 @@ SDK 固定版本与带补丁的服务端是基线的两个部分。使用原始�
 - `dual-tls`：独立 TLS 监听，分别验证证书信任。
 - `dual-http-public`：独立 HTTP 监听，指标公开访问。
 
-稳定性测试使用 `dual-tls`。高级验收使用单节点四盘纠删码部署。这些场景不等于多节点分布式或网关矩阵。
+稳定性测试使用 `dual-tls`。高级验收使用单节点四盘纠删码部署。这些场景不等于多节点分布式矩阵。独立 CLI 验收还覆盖本地文件系统 NAS gateway 和以本地 OtterIO 为上游的 S3 gateway，包括文件操作和信号退出；不代表外部服务提供商或其他 gateway 后端已经兼容。
 
 对象验收覆盖桶操作、空对象与小对象、特殊字符和非 ASCII 名称、65 MiB 分片传输与下载哈希、服务端复制、stat、mirror、分享及权限失败。高级检查覆盖部分 IAM 与服务账号操作、服务配置往返、配额、对象版本与标签、对象锁与保留、生命周期配置、CSV Select、SSE-C、实时事件、管理流、profile / 健康输出、heal 状态及服务控制。
 
@@ -36,7 +28,7 @@ SDK 固定版本与带补丁的服务端是基线的两个部分。使用原始�
 
 ## 原生 CI 与交叉编译
 
-[Go CI](../../.github/workflows/go.yml) 配置了 Linux、macOS、Windows 的原生单元和竞态测试。真实 OtterIO 集成配置在 Linux / macOS 上分别使用 `CGO_ENABLED=0`、`1`，先构建带补丁的服务端，再执行矩阵。工作流无论成功或失败都会归档报告和诊断证据。
+[Go CI](../../.github/workflows/go.yml) 配置了 Linux、macOS、Windows 的原生单元和竞态测试。真实 OtterIO 集成配置在 Linux / macOS 上分别使用 `CGO_ENABLED=0`、`1`，先构建固定版本服务端，再执行矩阵。工作流无论成功或失败都会归档报告和诊断证据。
 
 交叉编译包含 11 个目标：
 
@@ -77,7 +69,7 @@ windows/arm64
 
 兼容清单明确列出以下未验证范围：
 
-- 分布式拓扑和网关。
+- 分布式拓扑、其他 gateway 后端和外部 gateway 上游。
 - 外部 KMS、外部通知目标。
 - 跨实例复制。
 - 第三方 S3 服务和历史 OtterIO 版本。
@@ -87,7 +79,7 @@ windows/arm64
 
 实时通知没有持久化重放游标，重连不保证补发断线期间的事件。需要完整历史时，应使用持久化通知目标和消费确认机制。`mirror --watch` 的周期核对用于当前状态收敛，不提供完整事件审计，见 [使用说明](usage.md)。
 
-SDK 流修复、SDK 拆分和 SDK 独立发布仍列为暂缓事项，OC 的适配不改变 SDK 固定版本。`MC_*` 在 OC 0.x 系列内继续兼容，移除前至少提前一个次版本公告，见 [迁移说明](migration.md)。
+SDK 流修复、SDK 拆分和 SDK 独立发布仍列为暂缓事项。CLI 迁移更新了 SDK 固定源码版本，SDK 的流投递行为不在本次变更范围内。`MC_*` 在 OC 0.x 系列内继续兼容，移除前至少提前一个次版本公告，见 [迁移说明](migration.md)。
 
 ## 查看验证记录
 

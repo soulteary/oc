@@ -21,38 +21,38 @@ import (
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var versionSuspendCmd = cli.Command{
+var versionSuspendCmd = &cli.Command{
 	Name:         "suspend",
 	Usage:        "suspend bucket versioning",
-	Action:       mainVersionSuspend,
+	Action:       commandAction(mainVersionSuspend),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} ALIAS/BUCKET
+  {{.FullName}} ALIAS/BUCKET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Suspend versioning on bucket "mybucket" for alias "store".
-     {{.Prompt}} {{.HelpName}} store/mybucket
+     {{Prompt}} {{.FullName}} store/mybucket
 `,
 }
 
 // checkVersionSuspendSyntax - validate all the passed arguments
-func checkVersionSuspendSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "suspend", 1) // last argument is exit code
+func checkVersionSuspendSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "suspend", 1) // last argument is exit code
 	}
 }
 
@@ -77,7 +77,7 @@ func (v versionSuspendMessage) String() string {
 	return console.Colorize("versionSuspendMessage", fmt.Sprintf("%s versioning is suspended", v.URL))
 }
 
-func mainVersionSuspend(cliCtx *cli.Context) error {
+func mainVersionSuspend(cliCtx *cli.Command) error {
 	ctx, cancelVersionSuspend := context.WithCancel(globalContext)
 	defer cancelVersionSuspend()
 
@@ -86,8 +86,8 @@ func mainVersionSuspend(cliCtx *cli.Context) error {
 	checkVersionSuspendSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(0)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")

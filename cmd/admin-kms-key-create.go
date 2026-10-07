@@ -17,42 +17,43 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
 
-var adminKMSCreateKeyCmd = cli.Command{
+var adminKMSCreateKeyCmd = &cli.Command{
 	Name:         "create",
 	Usage:        "creates a new master key at the KMS",
-	Action:       mainAdminKMSCreateKey,
+	Action:       commandAction(mainAdminKMSCreateKey),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET [KEY_NAME]
+  {{.FullName}} TARGET [KEY_NAME]
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Create a new master key named 'my-key' default master key.
-     $ {{.HelpName}} play my-key
+     $ {{.FullName}} play my-key
 `,
 }
 
 // adminKMSCreateKeyCmd is the handler for the "mc admin kms key create" command.
-func mainAdminKMSCreateKey(ctx *cli.Context) error {
-	if len(ctx.Args()) != 2 {
-		cli.ShowCommandHelpAndExit(ctx, "create", 1) // last argument is exit code
+func mainAdminKMSCreateKey(ctx *cli.Command) error {
+	if ctx.Args().Len() != 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "create", 1) // last argument is exit code
 	}
 
 	client, err := newAdminClient(ctx.Args().Get(0))

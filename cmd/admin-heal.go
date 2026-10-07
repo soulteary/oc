@@ -17,16 +17,17 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -35,46 +36,46 @@ const (
 )
 
 var adminHealFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "scan",
 		Usage: "[DEPRECATED] select the healing scan mode (normal/deep)",
 		Value: scanNormalMode,
 	},
-	cli.BoolFlag{
-		Name:  "recursive, r",
+	&cli.BoolFlag{
+		Name: "recursive", Aliases: []string{"r"},
 		Usage: "[DEPRECATED] heal recursively",
 	},
-	cli.BoolFlag{
-		Name:  "dry-run, n",
+	&cli.BoolFlag{
+		Name: "dry-run", Aliases: []string{"n"},
 		Usage: "[DEPRECATED] only inspect data, but do not mutate",
 	},
-	cli.BoolFlag{
-		Name:  "force-start, f",
+	&cli.BoolFlag{
+		Name: "force-start", Aliases: []string{"f"},
 		Usage: "[DEPRECATED] force start a new heal sequence",
 	},
-	cli.BoolFlag{
-		Name:  "force-stop, s",
+	&cli.BoolFlag{
+		Name: "force-stop", Aliases: []string{"s"},
 		Usage: "[DEPRECATED] force stop a running heal sequence",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "remove",
 		Usage: "[DEPRECATED] remove dangling objects in heal sequence",
 	},
 }
 
-var adminHealCmd = cli.Command{
+var adminHealCmd = &cli.Command{
 	Name:            "heal",
 	Usage:           "[DEPRECATED] heal disks, buckets and objects on OtterIO server",
-	Action:          mainAdminHeal,
+	Action:          commandAction(mainAdminHeal),
 	OnUsageError:    onUsageError,
-	Before:          setGlobalsFromContext,
+	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           append(adminHealFlags, globalFlags...),
 	HideHelpCommand: true,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET
+  {{.FullName}} [FLAGS] TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
@@ -88,16 +89,16 @@ DEPRECATED:
 `,
 }
 
-func checkAdminHealSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "heal", 1) // last argument is exit code
+func checkAdminHealSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "heal", 1) // last argument is exit code
 	}
 
 	// Check for scan argument
 	scanArg := ctx.String("scan")
 	scanArg = strings.ToLower(scanArg)
 	if scanArg != scanNormalMode && scanArg != scanDeepMode {
-		cli.ShowCommandHelpAndExit(ctx, "heal", 1) // last argument is exit code
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "heal", 1) // last argument is exit code
 	}
 }
 
@@ -154,14 +155,14 @@ func transformScanArg(scanArg string) madmin.HealScanMode {
 }
 
 // mainAdminHeal - the entry function of heal command
-func mainAdminHeal(ctx *cli.Context) error {
+func mainAdminHeal(ctx *cli.Command) error {
 
 	// Check for command syntax
 	checkAdminHealSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	console.SetColor("Heal", color.New(color.FgGreen, color.Bold))
 	console.SetColor("Dot", color.New(color.FgGreen, color.Bold))

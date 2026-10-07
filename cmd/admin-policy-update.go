@@ -17,28 +17,29 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminPolicyUpdateCmd = cli.Command{
+var adminPolicyUpdateCmd = &cli.Command{
 	Name:         "update",
 	Usage:        "Attach new IAM policy to a user or group",
-	Action:       mainAdminPolicyUpdate,
+	Action:       commandAction(mainAdminPolicyUpdate),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET POLICYNAME [ user=username1 | group=groupname1 ]
+  {{.FullName}} TARGET POLICYNAME [ user=username1 | group=groupname1 ]
 
 POLICYNAME:
   Name of the policy on the OtterIO server.
@@ -48,16 +49,16 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Add the "diagnostics" policy for user "james".
-     {{.Prompt}} {{.HelpName}} store diagnostics user=james
+     {{Prompt}} {{.FullName}} store diagnostics user=james
 
   2. add the "diagnostics" policy for group "auditors".
-     {{.Prompt}} {{.HelpName}} store diagnostics group=auditors
+     {{Prompt}} {{.FullName}} store diagnostics group=auditors
 `,
 }
 
-func checkAdminPolicyUpdateSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 3 {
-		cli.ShowCommandHelpAndExit(ctx, "update", 1) // last argument is exit code
+func checkAdminPolicyUpdateSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 3 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "update", 1) // last argument is exit code
 	}
 }
 
@@ -90,17 +91,17 @@ func updateCannedPolicies(existingPolicies, policiesToAdd string) (string, error
 }
 
 // mainAdminPolicyUpdate is the handler for "mc admin policy update" command.
-func mainAdminPolicyUpdate(ctx *cli.Context) error {
+func mainAdminPolicyUpdate(ctx *cli.Command) error {
 	checkAdminPolicyUpdateSyntax(ctx)
 
 	console.SetColor("PolicyMessage", color.New(color.FgGreen))
 	console.SetColor("Policy", color.New(color.FgBlue))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
-	policiesToAdd := args.Get(1)
-	entityArg := args.Get(2)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
+	policiesToAdd := argumentAt(args, 1)
+	entityArg := argumentAt(args, 2)
 
 	userOrGroup, isGroup, e1 := parseEntityArg(entityArg)
 	fatalIf(probe.NewError(e1).Trace(args...), "Bad last argument")

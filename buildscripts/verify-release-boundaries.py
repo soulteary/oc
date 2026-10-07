@@ -23,11 +23,27 @@ for name in ('Dockerfile', 'Dockerfile.dev', 'Dockerfile.release'):
 mod = (root / 'go.mod').read_text()
 if re.search(r'^replace\b', mod, re.M):
     failures.append('go.mod must not depend on development replacements')
-if 'go 1.27.1' not in mod or 'v0.0.0-20261004215341-be8596f0d69d' not in mod:
-    failures.append('build baseline differs from the reviewed OtterIO commit')
 support = json.loads((root / 'docs/compatibility.json').read_text())
-if support['otterioSDK'] not in mod or 'go ' + support['goToolchain'] not in mod:
+def required_version(module):
+    matches = re.findall(r'^\s*' + re.escape(module) + r'\s+(\S+)\s*(?://.*)?$', mod, re.M)
+    return matches[0] if len(matches) == 1 else None
+
+toolchain = re.search(r'^go\s+(\S+)\s*$', mod, re.M)
+if required_version('github.com/soulteary/otterio') != support['otterioSDK'] or not toolchain or toolchain.group(1) != support['goToolchain']:
     failures.append('compatibility manifest differs from the pinned dependencies')
+framework = support['cliFramework']
+if framework['module'] != 'github.com/urfave/cli/v3' or required_version(framework['module']) != framework['version']:
+    failures.append('CLI framework differs from the reviewed compatibility manifest')
+if re.search(r'github\.com/minio/cli(?:/v\d+)?\s', mod):
+    failures.append('go.mod retains the retired CLI framework')
+for path in root.rglob('*.go'):
+    if re.search(r'"github\.com/minio/cli(?:/v\d+)?"', path.read_text(encoding='utf-8')):
+        failures.append(f'{path.relative_to(root)} imports the retired CLI framework')
+source = support.get('otterioSource', '')
+if not re.fullmatch(r'[0-9a-f]{40}', source):
+    failures.append('compatibility manifest requires the full OtterIO source SHA')
+elif re.search(r'-[0-9a-f]{12}$', support['otterioSDK']) and not support['otterioSDK'].endswith('-' + source[:12]):
+    failures.append('OtterIO module version does not match the recorded source SHA')
 try:
     budgets()
 except (ValueError, TypeError, KeyError) as error:

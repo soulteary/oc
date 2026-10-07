@@ -23,25 +23,25 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
 
-var adminUserAddCmd = cli.Command{
+var adminUserAddCmd = &cli.Command{
 	Name:         "add",
 	Usage:        "add a new user",
-	Action:       mainAdminUserAdd,
+	Action:       commandAction(mainAdminUserAdd),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET ACCESSKEY SECRETKEY
+  {{.FullName}} TARGET ACCESSKEY SECRETKEY
 
 ACCESSKEY:
   Also called as username.
@@ -54,23 +54,23 @@ FLAGS:
   {{end}}
 EXAMPLES:
   1. Add a new user 'foobar' to OtterIO server.
-     {{.DisableHistory}}
-     {{.Prompt}} {{.HelpName}} store foobar foo12345
-     {{.EnableHistory}}
+     {{DisableHistory}}
+     {{Prompt}} {{.FullName}} store foobar foo12345
+     {{EnableHistory}}
   2. Add a new user 'foobar' to OtterIO server, prompting for keys.
-     {{.Prompt}} {{.HelpName}} store
+     {{Prompt}} {{.FullName}} store
      Enter Access Key: foobar
      Enter Secret Key: foobar12345
   3. Add a new user 'foobar' to OtterIO server using piped keys.
-     {{.DisableHistory}}
-     {{.Prompt}} echo -e "foobar\nfoobar12345" | {{.HelpName}} store
-     {{.EnableHistory}}
+     {{DisableHistory}}
+     {{Prompt}} echo -e "foobar\nfoobar12345" | {{.FullName}} store
+     {{EnableHistory}}
 `,
 }
 
 // checkAdminUserAddSyntax - validate all the passed arguments
-func checkAdminUserAddSyntax(ctx *cli.Context) {
-	argsNr := len(ctx.Args())
+func checkAdminUserAddSyntax(ctx *cli.Command) {
+	argsNr := ctx.Args().Len()
 	if argsNr > 3 || argsNr < 1 {
 		fatalIf(errInvalidArgument().Trace(ctx.Args().Tail()...),
 			"Incorrect number of arguments for user add command.")
@@ -130,7 +130,7 @@ func (u userMessage) JSON() string {
 }
 
 // fetchUserKeys - returns the access and secret key
-func fetchUserKeys(args cli.Args) (string, string) {
+func fetchUserKeys(args []string) (string, string) {
 	accessKey := ""
 	secretKey := ""
 	console.SetColor(cred, color.New(color.FgYellow, color.Italic))
@@ -146,7 +146,7 @@ func fetchUserKeys(args cli.Args) (string, string) {
 		value, _, _ := reader.ReadLine()
 		accessKey = string(value)
 	} else {
-		accessKey = args.Get(1)
+		accessKey = argumentAt(args, 1)
 	}
 
 	if argCount == 1 || argCount == 2 {
@@ -160,21 +160,21 @@ func fetchUserKeys(args cli.Args) (string, string) {
 			secretKey = string(value)
 		}
 	} else {
-		secretKey = args.Get(2)
+		secretKey = argumentAt(args, 2)
 	}
 
 	return accessKey, secretKey
 }
 
 // mainAdminUserAdd is the handle for "mc admin user add" command.
-func mainAdminUserAdd(ctx *cli.Context) error {
+func mainAdminUserAdd(ctx *cli.Command) error {
 	checkAdminUserAddSyntax(ctx)
 
 	console.SetColor("UserMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	accessKey, secretKey := fetchUserKeys(args)
 
 	// Create a new MinIO Admin Client

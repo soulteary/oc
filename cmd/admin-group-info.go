@@ -17,56 +17,58 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var adminGroupInfoCmd = cli.Command{
+var adminGroupInfoCmd = &cli.Command{
 	Name:         "info",
 	Usage:        "display group info",
-	Action:       mainAdminGroupInfo,
+	Action:       commandAction(mainAdminGroupInfo),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET GROUPNAME
+  {{.FullName}} TARGET GROUPNAME
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Get info on group 'allcents'.
-     {{.Prompt}} {{.HelpName}} store allcents
+     {{Prompt}} {{.FullName}} store allcents
 `,
 }
 
 // checkAdminGroupInfoSyntax - validate all the passed arguments
-func checkAdminGroupInfoSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 2 {
-		cli.ShowCommandHelpAndExit(ctx, "info", 1) // last argument is exit code
+func checkAdminGroupInfoSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 2 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "info", 1) // last argument is exit code
 	}
 }
 
 // mainAdminGroupInfo is the handle for "mc admin group info" command.
-func mainAdminGroupInfo(ctx *cli.Context) error {
+func mainAdminGroupInfo(ctx *cli.Command) error {
 	checkAdminGroupInfoSyntax(ctx)
 
 	console.SetColor("GroupMessage", color.New(color.FgGreen))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
 	fatalIf(err, "Unable to initialize admin connection.")
 
-	group := args.Get(1)
+	group := argumentAt(args, 1)
 	gd, err1 := client.GetGroupDescription(globalContext, group)
 	fatalIf(probe.NewError(err1).Trace(args...), "Could not get group info")
 

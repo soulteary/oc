@@ -8,10 +8,21 @@ import subprocess
 import urllib.parse
 
 
+def validate_cli_modules(modules, require_framework=False):
+    versions = {item['Path']: item.get('Version') for item in modules}
+    if any(path == 'github.com/minio/cli' or path.startswith('github.com/minio/cli/') for path in versions):
+        raise ValueError('compiled binary contains the retired MinIO CLI framework')
+    framework = json.loads((Path(__file__).resolve().parents[1] / 'docs' / 'compatibility.json').read_text())['cliFramework']
+    actual = versions.get(framework['module'])
+    if (require_framework or actual is not None) and actual != framework['version']:
+        raise ValueError('compiled CLI framework differs from the compatibility manifest')
+
+
 def inventory(binary, require_clean=False):
     info = json.loads(subprocess.check_output(['go', 'version', '-m', '-json', str(binary)]))
     settings = {item['Key']: item.get('Value', '') for item in info.get('Settings', [])}
     modules = info.get('Deps', [])
+    validate_cli_modules(modules, require_framework=require_clean)
     if require_clean and (not settings.get('vcs') or settings.get('vcs.modified') != 'false' or
                           not settings.get('vcs.revision') or not settings.get('vcs.time') or
                           any('Replace' in item for item in modules)):

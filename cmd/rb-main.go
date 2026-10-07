@@ -24,19 +24,19 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	rbFlags = []cli.Flag{
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "force",
 			Usage: "force a recursive remove operation on all object versions",
 		},
-		cli.BoolFlag{
+		&cli.BoolFlag{
 			Name:  "dangerous",
 			Usage: "allow site-wide removal of objects",
 		},
@@ -44,34 +44,34 @@ var (
 )
 
 // remove a bucket.
-var rbCmd = cli.Command{
+var rbCmd = &cli.Command{
 	Name:         "rb",
 	Usage:        "remove a bucket",
-	Action:       mainRemoveBucket,
+	Action:       commandAction(mainRemoveBucket),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(rbFlags, globalFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} [FLAGS] TARGET [TARGET...]
+  {{.FullName}} [FLAGS] TARGET [TARGET...]
 {{if .VisibleFlags}}
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}{{end}}
 EXAMPLES:
   1. Remove an empty bucket on Amazon S3 cloud storage
-     {{.Prompt}} {{.HelpName}} s3/mybucket
+     {{Prompt}} {{.FullName}} s3/mybucket
 
   2. Remove a directory hierarchy.
-     {{.Prompt}} {{.HelpName}} /tmp/this/new/dir1
+     {{Prompt}} {{.FullName}} /tmp/this/new/dir1
 
   3. Remove bucket 'jazz-songs' and all its contents
-     {{.Prompt}} {{.HelpName}} --force s3/jazz-songs
+     {{Prompt}} {{.FullName}} --force s3/jazz-songs
 
   4. Remove all buckets and objects recursively from S3 host
-     {{.Prompt}} {{.HelpName}} --force --dangerous s3
+     {{Prompt}} {{.FullName}} --force --dangerous s3
 `,
 }
 
@@ -95,16 +95,16 @@ func (s removeBucketMessage) JSON() string {
 }
 
 // Validate command line arguments.
-func checkRbSyntax(ctx context.Context, cliCtx *cli.Context) {
+func checkRbSyntax(ctx context.Context, cliCtx *cli.Command) {
 	if !cliCtx.Args().Present() {
 		exitCode := 1
-		cli.ShowCommandHelpAndExit(cliCtx, "rb", exitCode)
+		cli.ShowCommandHelpAndExit(context.Background(), cliCtx, "rb", exitCode)
 	}
 	// Set command flags from context.
 	isForce := cliCtx.Bool("force")
 	isDangerous := cliCtx.Bool("dangerous")
 
-	for _, url := range cliCtx.Args() {
+	for _, url := range cliCtx.Args().Slice() {
 		if isNamespaceRemoval(ctx, url) {
 			if isForce && isDangerous {
 				continue
@@ -189,7 +189,7 @@ func isNamespaceRemoval(ctx context.Context, url string) bool {
 }
 
 // mainRemoveBucket is entry point for rb command.
-func mainRemoveBucket(cliCtx *cli.Context) error {
+func mainRemoveBucket(cliCtx *cli.Command) error {
 	ctx, cancelRemoveBucket := context.WithCancel(globalContext)
 	defer cancelRemoveBucket()
 
@@ -201,7 +201,7 @@ func mainRemoveBucket(cliCtx *cli.Context) error {
 	console.SetColor("RemoveBucket", color.New(color.FgGreen, color.Bold))
 
 	var cErr error
-	for _, targetURL := range cliCtx.Args() {
+	for _, targetURL := range cliCtx.Args().Slice() {
 		// Instantiate client for URL.
 		clnt, err := newClient(targetURL)
 		if err != nil {

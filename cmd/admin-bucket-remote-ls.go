@@ -17,60 +17,61 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 var adminBucketRemoteListFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "service",
 		Usage: "type of service. valid options are '[replication]'",
 	},
 }
 
-var adminBucketRemoteListCmd = cli.Command{
+var adminBucketRemoteListCmd = &cli.Command{
 	Name:         "ls",
 	Usage:        "list remote target ARN(s)",
-	Action:       mainAdminBucketRemoteList,
+	Action:       commandAction(mainAdminBucketRemoteList),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        append(globalFlags, adminBucketRemoteListFlags...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Get remote bucket target for replication on OtterIO server for bucket 'srcbucket'.
-     {{.Prompt}} {{.HelpName}} store/srcbucket --service "replication"
+     {{Prompt}} {{.FullName}} store/srcbucket --service "replication"
 
   2. List all remote bucket target(s) on OtterIO server for bucket 'srcbucket'.
-     {{.Prompt}} {{.HelpName}} store/srcbucket
+     {{Prompt}} {{.FullName}} store/srcbucket
 
   3. List all remote bucket target(s) on OtterIO tenant.
-     {{.Prompt}} {{.HelpName}} store
+     {{Prompt}} {{.FullName}} store
 `,
 }
 
 // checkAdminBucketRemoteListSyntax - validate all the passed arguments
-func checkAdminBucketRemoteListSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, ctx.Command.Name, 1) // last argument is exit code
+func checkAdminBucketRemoteListSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, ctx.Name, 1) // last argument is exit code
 	}
 }
 
 // mainAdminBucketRemoteList is the handle for "mc admin bucket remote list" command.
-func mainAdminBucketRemoteList(ctx *cli.Context) error {
+func mainAdminBucketRemoteList(ctx *cli.Command) error {
 	checkAdminBucketRemoteListSyntax(ctx)
 
 	// Additional command specific theme customization.
@@ -85,8 +86,8 @@ func mainAdminBucketRemoteList(ctx *cli.Context) error {
 	console.SetColor("ProxyLabel", color.New(color.FgHiYellow))
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	aliasedURL = filepath.Clean(aliasedURL)
 	_, sourceBucket := url2Alias(aliasedURL)
 	// Create a new MinIO Admin Client
@@ -98,7 +99,7 @@ func mainAdminBucketRemoteList(ctx *cli.Context) error {
 	return nil
 }
 
-func printRemotes(ctx *cli.Context, urlStr string, targets []madmin.BucketTarget) {
+func printRemotes(ctx *cli.Command, urlStr string, targets []madmin.BucketTarget) {
 
 	maxURLLen := 10
 	maxTgtLen := 6
@@ -147,7 +148,7 @@ func printRemotes(ctx *cli.Context, urlStr string, targets []madmin.BucketTarget
 			}
 		}
 		printMsg(RemoteMessage{
-			op:              ctx.Command.Name,
+			op:              ctx.Name,
 			AccessKey:       target.Credentials.AccessKey,
 			TargetBucket:    target.TargetBucket,
 			TargetURL:       targetURL,

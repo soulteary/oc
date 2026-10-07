@@ -22,38 +22,38 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/urfave/cli/v3"
 )
 
-var versionInfoCmd = cli.Command{
+var versionInfoCmd = &cli.Command{
 	Name:         "info",
 	Usage:        "show bucket versioning status",
-	Action:       mainVersionInfo,
+	Action:       commandAction(mainVersionInfo),
 	OnUsageError: onUsageError,
-	Before:       setGlobalsFromContext,
+	Before:       commandBefore(setGlobalsFromContext),
 	Flags:        globalFlags,
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} ALIAS/BUCKET
+  {{.FullName}} ALIAS/BUCKET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
    1. Display bucket versioning status for bucket "mybucket".
-      {{.Prompt}} {{.HelpName}} store/mybucket
+      {{Prompt}} {{.FullName}} store/mybucket
 `,
 }
 
 // checkVersionInfoSyntax - validate all the passed arguments
-func checkVersionInfoSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) != 1 {
-		cli.ShowCommandHelpAndExit(ctx, "info", 1) // last argument is exit code
+func checkVersionInfoSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() != 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "info", 1) // last argument is exit code
 	}
 }
 
@@ -85,7 +85,7 @@ func (v versioningInfoMessage) String() string {
 	return console.Colorize("versioningInfoMessage", msg)
 }
 
-func mainVersionInfo(cliCtx *cli.Context) error {
+func mainVersionInfo(cliCtx *cli.Command) error {
 	ctx, cancelVersioningInfo := context.WithCancel(globalContext)
 	defer cancelVersioningInfo()
 
@@ -94,8 +94,8 @@ func mainVersionInfo(cliCtx *cli.Context) error {
 	checkVersionInfoSyntax(cliCtx)
 
 	// Get the alias parameter from cli
-	args := cliCtx.Args()
-	aliasedURL := args.Get(0)
+	args := cliCtx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 	// Create a new Client
 	client, err := newClient(aliasedURL)
 	fatalIf(err, "Unable to initialize connection.")

@@ -17,23 +17,24 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/cli"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
+	"github.com/urfave/cli/v3"
 )
 
 var topLocksFlag = []cli.Flag{
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "stale",
 		Usage: "list stale locks",
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:   "count",
 		Usage:  "number of top locks",
 		Hidden: true,
@@ -41,25 +42,25 @@ var topLocksFlag = []cli.Flag{
 	},
 }
 
-var adminTopLocksCmd = cli.Command{
+var adminTopLocksCmd = &cli.Command{
 	Name:         "locks",
 	Usage:        "get a list of the 10 oldest locks on an OtterIO cluster.",
-	Before:       setGlobalsFromContext,
-	Action:       mainAdminTopLocks,
+	Before:       commandBefore(setGlobalsFromContext),
+	Action:       commandAction(mainAdminTopLocks),
 	OnUsageError: onUsageError,
 	Flags:        append(globalFlags, topLocksFlag...),
 	CustomHelpTemplate: `NAME:
-  {{.HelpName}} - {{.Usage}}
+  {{.FullName}} - {{.Usage}}
 
 USAGE:
-  {{.HelpName}} TARGET
+  {{.FullName}} TARGET
 
 FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
   1. Get a list of the 10 oldest locks on a OtterIO cluster.
-     {{.Prompt}} {{.HelpName}} store/
+     {{Prompt}} {{.FullName}} store/
 `,
 }
 
@@ -109,19 +110,19 @@ func (u lockMessage) JSON() string {
 }
 
 // checkAdminTopLocksSyntax - validate all the passed arguments
-func checkAdminTopLocksSyntax(ctx *cli.Context) {
-	if len(ctx.Args()) == 0 || len(ctx.Args()) > 1 {
-		cli.ShowCommandHelpAndExit(ctx, "locks", 1) // last argument is exit code
+func checkAdminTopLocksSyntax(ctx *cli.Command) {
+	if ctx.Args().Len() == 0 || ctx.Args().Len() > 1 {
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, "locks", 1) // last argument is exit code
 	}
 }
 
-func mainAdminTopLocks(ctx *cli.Context) error {
+func mainAdminTopLocks(ctx *cli.Command) error {
 
 	checkAdminTopLocksSyntax(ctx)
 
 	// Get the alias parameter from cli
-	args := ctx.Args()
-	aliasedURL := args.Get(0)
+	args := ctx.Args().Slice()
+	aliasedURL := argumentAt(args, 0)
 
 	// Create a new MinIO Admin Client
 	client, err := newAdminClient(aliasedURL)
