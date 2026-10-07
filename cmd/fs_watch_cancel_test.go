@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/minio/cli"
-	"github.com/rjeczalik/notify"
+	"github.com/soulteary/mc/internal/notify"
 	"github.com/soulteary/mc/pkg/probe"
 )
 

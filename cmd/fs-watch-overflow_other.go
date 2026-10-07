@@ -1,8 +1,8 @@
-//go:build !darwin || kqueue || !cgo
+//go:build !windows && (!darwin || kqueue || !cgo)
 
 package cmd
 
-import "github.com/rjeczalik/notify"
+import "github.com/soulteary/mc/internal/notify"
 
 // Other notify backends do not expose kernel overflow reliably. Local mirror
 // sources therefore also reconcile periodically, independently of this hook.

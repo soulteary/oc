@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -204,6 +205,7 @@ func TestFSPutReplacedStagingDirectory(t *testing.T) {
 					source = fsFailingReader{}
 				}
 				var stage, moved string
+				var replacementBlocked bool
 				reader := &fsPutCallbackReader{Reader: source, before: func() {
 					entries, err := os.ReadDir(dir)
 					if err != nil {
@@ -219,6 +221,10 @@ func TestFSPutReplacedStagingDirectory(t *testing.T) {
 					}
 					moved = stage + "-moved"
 					if err := os.Rename(stage, moved); err != nil {
+						if runtime.GOOS == "windows" && (os.IsPermission(err) || errors.Is(err, syscall.Errno(32))) {
+							replacementBlocked = true
+							return
+						}
 						t.Fatal(err)
 					}
 					if replacement == "symlink" {
@@ -240,7 +246,29 @@ func TestFSPutReplacedStagingDirectory(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := client.Put(context.Background(), reader, -1, nil, PutOptions{}); err == nil {
+				_, putErr := client.Put(context.Background(), reader, -1, nil, PutOptions{})
+				if replacementBlocked {
+					if failure {
+						if putErr == nil {
+							t.Fatal("read failure was accepted")
+						}
+						assertFSFileContents(t, target, "original")
+					} else {
+						if putErr != nil {
+							t.Fatal(putErr)
+						}
+						assertFSFileContents(t, target, "new")
+					}
+					for _, name := range []string{partialDataName, partialManifestName} {
+						assertFSFileContents(t, filepath.Join(outside, name), "untouched")
+					}
+					entries, err := os.ReadDir(dir)
+					if err != nil || len(entries) != 1 || entries[0].Name() != "object" {
+						t.Fatalf("blocked replacement leaked staging: %v, %v", entries, err)
+					}
+					return
+				}
+				if putErr == nil {
 					t.Fatal("changed staging path was accepted")
 				}
 				assertFSFileContents(t, target, "original")

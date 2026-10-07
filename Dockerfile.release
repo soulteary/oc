@@ -7,6 +7,7 @@ COPY oc /usr/bin/oc
 COPY CREDITS /licenses/CREDITS
 COPY LICENSE /licenses/LICENSE
 COPY NOTICE /licenses/NOTICE
+COPY internal/notify/LICENSE /licenses/notify-LICENSE
 
 RUN microdnf install ca-certificates --nodocs && microdnf clean all
 

@@ -2,7 +2,7 @@
 
 package cmd
 
-import "github.com/rjeczalik/notify"
+import "github.com/soulteary/mc/internal/notify"
 
 const fsWatchNativeLoss = notify.FSEventsMustScanSubDirs | notify.FSEventsUserDropped | notify.FSEventsKernelDropped | notify.FSEventsRootChanged
 

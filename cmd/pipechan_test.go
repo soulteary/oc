@@ -21,7 +21,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/rjeczalik/notify"
+	"github.com/soulteary/mc/internal/notify"
 )
 
 func testPipeChan(inputCh, outputCh chan notify.EventInfo, totalMsgs int) error {

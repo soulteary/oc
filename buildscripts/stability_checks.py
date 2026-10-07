@@ -275,7 +275,10 @@ def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence
         child = subprocess.Popen([oc, '--config-dir', str(config), '--quiet', 'cp', '--continue', str(source),
                                   'uploadfault/core-check/multipart-abort'], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
-            deadline = time.monotonic()+20
+            # A complete part must traverse the throttled TLS relay before
+            # ListParts can observe it. Use the transfer budget, not a shorter
+            # wall-clock assumption; keep the cancellation budget unchanged.
+            deadline = time.monotonic()+limits['transferSeconds']
             while time.monotonic() < deadline:
                 sessions, uploaded_bytes = multipart_state('multipart-abort')
                 evidence['activeUpload'] = {'sessions':sessions,'uploadedPartBytes':uploaded_bytes}
@@ -285,7 +288,7 @@ def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence
                     raise AssertionError('upload finished before multipart observation: '+str(child.returncode)+' '+child.communicate()[1].decode(errors='replace'))
                 time.sleep(0.1)
             else:
-                raise AssertionError('no real multipart session observed')
+                raise AssertionError('no uploaded multipart part observed within transfer budget: '+str(evidence['activeUpload']))
             child.terminate()
             child.communicate(timeout=limits['cancellationSeconds'])
             if child.returncode != 143:
