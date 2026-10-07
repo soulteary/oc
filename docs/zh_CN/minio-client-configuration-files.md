@@ -1,80 +1,11 @@
-# MinIO Client配置文件指南 [![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/minio/minio?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+# OC 配置文件
 
-本文我们将详细介绍MinIO Client的配置文件。
+保留这个历史文件名作为已有链接的入口。当前配置说明见[配置指南](configuration.md)，导入与备份步骤见[迁移指南](migration.md)。
 
-## MinIO Client配置目录
-MinIO Client配置信息存储在``.mc``文件夹，它是用户home目录下的一个隐藏文件夹。
+[文档目录](README.md) · [English](../minio-client-configuration-files.md)
 
-**这就是配置文件夹的目录结构：**
+Unix 默认目录为 `~/.oc`，Windows 为用户目录下的 `oc`。OC 不会隐式读取或覆盖 mc 配置。`--config-dir` 优先于环境设置，`OC_*` 优先于对应的受支持 `MC_*` 变量。
 
-```
-tree ~/.mc
-/home/supernova/.mc
-├── config.json
-├── session
-└── share
-2 directories, 5 files
-```
-### 文件和目录
+使用 `oc alias set/list/remove` 管理别名。`oc config import` 支持版本 10 的 mc/OC 配置，校验后备份目标配置并整体替换别名。证书和已保存的会话需要单独迁移。
 
-#### ``session``目录
-``session``目录保存所有不完整上传或镜像的元数据信息。你可以运行`mc session list``列出这些信息。
-
-#### ``config.json``
-config.json是MinIO Client的配置文件，它在安装并启动MinIO后生成。我们通过``mc config host``添加的所有凭证，endpoint信息都存储在这里。
-
-```
-cat config.json 
-{
-	"version": "8",
-	"hosts": {
-		"XL": {
-			"url": "http://127.0.0.1:9000",
-			"accessKey": "YI7S1CKXB76RGOGT6R8W",
-			"secretKey": "FJ9PWUVNXGPfiI72WMRFepN3LsFgW3MjsxSALroV",
-			"api": "S3v4"
-		},
-		"fs": {
-			"url": "http://127.0.0.1:9000",
-			"accessKey": "YI7S1CKXB76RGOGT6R8W",
-			"secretKey": "FJ9PWUVNXGPfiI72WMRFepN3LsFgW3MjsxSALroV",
-			"api": "S3v4"
-		},
-		"gcs": {
-			"url": "https://storage.googleapis.com",
-			"accessKey": "YOUR-ACCESS-KEY-HERE",
-			"secretKey": "YOUR-SECRET-KEY-HERE",
-			"api": "S3v2"
-		},
-		"play": {
-			"url": "https://play.min.io",
-			"accessKey": "Q3AM3UQ867SPQQA43P2F",
-			"secretKey": "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG",
-			"api": "S3v4"
-		},
-		"s3": {
-			"url": "https://s3.amazonaws.com",
-			"accessKey": "YOUR-ACCESS-KEY-HERE",
-			"secretKey": "YOUR-SECRET-KEY-HERE",
-			"api": "S3v4"
-		}
-	}
-}
-```
-
-``version``代表的是这个文件的版本。
-
-``hosts``存储将被MinIO Client使用的认证证书。
-
-#### ``config.json.old``
-这个文件保存了以前的配置文件版本细节。
-
-#### ``share``目录
-``share``目录保存MinIO Client ``mc share``命令使用的所有对象的上传和下载URL的元数据信息。
-
-## 了解更多
-* [MinIO Client完全指南](https://docs.min.io/docs/minio-client-complete-guide)
-
-
-
-
+不要在公开 issue 中上传完整配置文件，其中含有凭据。[安全说明](security.md)和[故障排查](troubleshooting.md)提供更合适的诊断方式。

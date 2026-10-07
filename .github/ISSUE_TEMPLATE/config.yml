@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: MinIO Community Support
-    url: https://slack.min.io
-    about: Please ask and answer questions here.
+  - name: OC documentation / OC 文档
+    url: https://github.com/soulteary/oc/blob/main/docs/README.md
+    about: Installation, configuration, operations and troubleshooting / 安装、配置、操作与故障排查
+  - name: Report a security vulnerability privately / 私下报告安全漏洞
+    url: https://github.com/soulteary/oc/security/advisories/new
+    about: Use GitHub private vulnerability reporting; do not disclose vulnerabilities in public issues / 请使用 GitHub 私下报告入口

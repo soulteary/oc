@@ -1,11 +1,15 @@
 # Releasing OC
 
 OC uses `RELEASE.YYYY-MM-DDTHH-MM-SSZ` in UTC, matching OtterIO.
-The [release preparation](releases/2026-10-07-release-review.md) records this
-update's source range. Root `RELEASE_NOTES.md` supplies the GitHub release body.
-Generate the actual tag after the preparation PR is merged and the resulting
-main commit passes **Go** and **Code scanning - action**. A green PR run does not
-replace these exact-commit main checks.
+
+[Documentation index](README.md) · [Installation](installation.md) · [Maintainer workflow](MAINTAINERS.md) · [简体中文](zh_CN/releasing.md)
+
+Merge source and documentation changes first, then wait for **Go** and
+**Code scanning - action** to pass on that exact main commit before creating a
+fresh tag. A green PR run does not replace these exact-commit main checks.
+Root `RELEASE_NOTES.md` supplies the GitHub release body. Keep dated preparation
+records under `docs/releases/`; the [2026-10-07 preparation](releases/2026-10-07-release-review.md)
+is a historical source-range record, not a template that reserves a future tag.
 
 ## Prepare the tag
 
@@ -53,12 +57,16 @@ publication disabled; this workflow does not invoke it.
 
 ## Container images
 
-Every release publishes `ghcr.io/soulteary/oc:RELEASE.YYYY-MM-DDTHH-MM-SSZ`
+Releases from the container-enabled workflow publish
+`ghcr.io/soulteary/oc:RELEASE.YYYY-MM-DDTHH-MM-SSZ`
 for `linux/amd64` and `linux/arm64`. Images contain the exact executables from the
 matching release archives, CA certificates, LICENSE, NOTICE, CREDITS and the
 notification MIT license. The image's entrypoint is `oc`; pass client arguments
 directly after the image name. The workflow checks the pushed image by digest
-before publishing the GitHub release.
+before publishing the GitHub release. Older archive-only releases, including
+`RELEASE.2026-10-07T14-10-00Z`, have no `images` entry and do not establish image
+availability. Use [the container guide](containers.md) to select and run a version
+whose manifest records image identities.
 
 To also publish Docker Hub images, set both repository Actions secrets
 `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. The image name is
@@ -80,7 +88,13 @@ below if an earlier attempt pushed only some images.
 An automatic tag push requests a `latest` update after the GitHub release is
 published. The separate **Stable release promotion** workflow copies the verified
 release digest to `latest` only when that tag is the newest published stable OC
-release. A manually dispatched **Release** defaults `promote_latest` to `false`;
+release. The publication job and the entire promotion workflow share the
+`oc-stable-promotion` concurrency group. Preserve this shared lock when changing
+the workflows; putting it on the reusable workflow's caller would prevent the
+called promotion from acquiring it. Publication must finish and release the lock
+before requesting promotion.
+
+A manually dispatched **Release** defaults `promote_latest` to `false`;
 enable it when the manual release should request the same promotion. Promotion
 does not rebuild executables or change version tags. After all image aliases
 have been verified, its final step marks that GitHub release as latest.
@@ -106,8 +120,9 @@ Download all thirteen files into one directory and run:
 shasum -a 256 -c checksums.txt
 ```
 
-Extract your platform archive, check `oc --version` and match its tag/commit to
-`release-manifest.json`. For containers, match the registry digest to the
+Extract your platform archive and match the `oc --version` tag to
+`release-manifest.json`; the manifest records the full source commit, which
+`--version` does not print. For containers, match the registry digest to the
 manifest, run the image by digest with `--version` and `--help`, and check the
 reported release tag. Verify normal operations and your deployment's TLS, mirror
 and retention settings before replacing production binaries or images.

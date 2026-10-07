@@ -1,5 +1,7 @@
 # OC release preparation for 2026 10 07
 
+> Historical release preparation record. Source cutoffs and acceptance items below describe preparation, not a claim that every later release completed every check. The archive-only `RELEASE.2026-10-07T14-10-00Z` release records source `29bb213e69b57e369d7d96e115c5463df8ef53ac` and has no image entries; subsequent container-enabled releases must record their own digest identities. For the current procedure see [releasing OC](../releasing.md).
+
 Prepare a fresh timestamp release after this PR merges and its resulting main
 commit passes Go and Code scanning. This preparation does not reserve a tag or
 publish artifacts. Its archive and container workflow follows OtterIO's tag

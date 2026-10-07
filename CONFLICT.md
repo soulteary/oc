@@ -1,11 +1,11 @@
-## mc (MinIO Client) v/s Midnight Commander (mc)
+# OC, mc and executable names
 
-There has been some amount of [requests](https://github.com/soulteary/mc/issues?q=is%3Aissue+midnight+commander+is%3Aclosed) on renaming this project to avoid the conflict with Midnight Commander for Unix distributions. We struggled with this, it is harder to find a name sweeter and shorter than `mc` for MinIO Client.
+This repository builds and installs the executable as `oc`. It can coexist with the upstream MinIO Client executable `mc` and with Midnight Commander, which also uses the command name `mc`. OC does not require either program to be removed or renamed.
 
-Besides `mc` is a single static binary and can reside inside your application and is fully self contained. Midnight Commander (mc) is a free software clone of Norton Commander (nc). MinIO and Midnight shares no code or ideas. Only their abbreviation matches.
+Use `oc --version` to identify the program you are running. A binary built in this checkout is invoked as `./oc` on Unix or `oc.exe` on Windows; putting a different executable earlier in `PATH` can otherwise select the wrong program.
 
-Package managers are free to choose a different name if they like. One such solution [pointed out](https://github.com/soulteary/mc/issues/873#issuecomment-267583013) by one of our community members.
+The Go module path remains `github.com/soulteary/mc` for source compatibility. Existing copyright notices, attribution and some historical file conventions retain upstream names. These names do not change the executable name or make OC affiliated with or endorsed by MinIO, Inc.
 
-```
-mv ./mc ./mcli
-```
+OC uses its own default configuration directory: `~/.oc` on Unix and the user-directory `oc` folder on Windows. Renaming the binary does not change that directory. OC does not automatically load or modify an existing mc configuration; use the explicit import described in [migration](docs/migration.md).
+
+Use the [installation guide](docs/installation.md) for current artifacts and container names, the [configuration guide](docs/configuration.md) for overrides, and the [contribution guide](CONTRIBUTING.md) when changing source or packaging. Package descriptions should identify this repository as OC and retain its license and upstream attribution.

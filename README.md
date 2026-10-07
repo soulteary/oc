@@ -1,73 +1,94 @@
-# OC client
+# OC
 
-OC provides filesystem and S3 object operations together with OtterIO administration. It derives from Apache-2.0 MinIO Client; upstream attribution remains in LICENSE, NOTICE and source headers.
+[![Go checks](https://github.com/soulteary/oc/actions/workflows/go.yml/badge.svg)](https://github.com/soulteary/oc/actions/workflows/go.yml)
+[![Release](https://github.com/soulteary/oc/actions/workflows/release.yml/badge.svg)](https://github.com/soulteary/oc/actions/workflows/release.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-[中文说明](README_zh_CN.md)
+A command-line client for OtterIO, S3 object storage and local filesystems.
 
-Release instructions and asset verification: [releasing OC](docs/releasing.md).
+[简体中文](README_zh_CN.md) · [Documentation](docs/README.md) · [Releases](https://github.com/soulteary/oc/releases) · [Contributing](CONTRIBUTING.md)
 
-## Run in a container
+OC uploads, downloads and inspects objects, synchronizes directories, and manages OtterIO servers. It derives from the Apache-2.0 MinIO Client codebase and retains the upstream notices. OC is an independent community project; it is not affiliated with or endorsed by MinIO, Inc.
 
-Release images are published to `ghcr.io/soulteary/oc` for Linux amd64 and arm64.
-Replace the placeholder with a published release tag:
+## Install
+
+Download a platform archive from [GitHub Releases](https://github.com/soulteary/oc/releases), verify its SHA-256 checksum, and put `oc` (`oc.exe` on Windows) on your `PATH`. The [installation guide](docs/installation.md) includes Linux, macOS, Windows and source-build instructions.
+
+The release workflow builds container images for Linux amd64 and arm64. Select a version whose release manifest contains `images`:
 
 ```sh
-TAG="RELEASE.YYYY-MM-DDTHH-MM-SSZ"
+# Select a published release whose manifest records container images.
+TAG=RELEASE.YYYY-MM-DDTHH-MM-SSZ
 docker run --rm "ghcr.io/soulteary/oc:$TAG" --version
-docker run --rm -v "$HOME/.oc:/root/.oc" "ghcr.io/soulteary/oc:$TAG" --help
 ```
 
-Pass OC arguments directly after the image name. Mount `/root/.oc` to preserve
-configuration between runs. Use a version tag or the digest recorded in the
-release manifest to pin a deployment; `ghcr.io/soulteary/oc:latest` follows the
-newest promoted stable release. Docker Hub publication is optional; setup and
-verification are covered in the [release guide](docs/releasing.md).
+See [container usage](docs/containers.md) for persistent configuration, file mounts, networking and digest pinning. Docker Hub publication is enabled when the release's repository secrets are configured; the release manifest records the registries actually published.
 
-## Build and connect
+## Connect and transfer a file
 
-Use the Go toolchain declared in `go.mod`:
+After installing OC, replace the example addresses with your deployment's S3 and management endpoints. This example uses local HTTP; use HTTPS for connections across an untrusted network. OC prompts for the access key and secret key when they are omitted:
 
 ```sh
-make build
-./oc --help
-oc alias set store http://127.0.0.1:9000 ACCESS_KEY SECRET_KEY \
+oc --version
+oc alias set store http://127.0.0.1:9000 \
   --api s3v4 --path on --admin-url http://127.0.0.1:9001
 oc ls store
 oc mb store/example
-oc cp ./file.txt store/example/file.txt
+printf 'Hello from OC\n' > hello.txt
+oc cp hello.txt store/example/hello.txt
+oc cp store/example/hello.txt downloaded.txt
+oc stat store/example/hello.txt
 oc admin info store
 ```
 
-Omit `--admin-url` for single-port deployments. Use `--admin-ca` for a private management CA. Put additional S3 CAs under the configuration directory's `certs/CAs/`. See [core connection and TLS](docs/oc-phase-two.md).
+For a single-port OtterIO deployment, omit `--admin-url`. For another S3 provider, use its endpoint, credentials and supported bucket addressing; OtterIO administration is a separate API. Creating a bucket requires the corresponding permission. [Configuration](docs/configuration.md) covers private CAs and endpoint precedence; [everyday usage](docs/usage.md) covers copying, mirroring and object features.
+
+## What OC provides
+
+- Local and S3 file operations: `ls`, `cp`, `mv`, `cat`, `find`, `stat`, `du` and `mirror`.
+- Object features: versioning, lifecycle, tags, retention, legal hold, notifications and replication, where the server supports them.
+- OtterIO administration: server information, users, groups, policies, service accounts, metrics configuration and diagnostics.
+- Separate S3 and management endpoints, including independently configured management CA trust.
+- Explicit configuration import from mc, JSON output and credential-free `doctor` diagnostics.
+
+[Compatibility and validation scope](docs/compatibility.md) distinguish tested operations from features that need provider or deployment acceptance. The pinned OtterIO fixture requires three recorded server patches. Distributed deployments, external KMS/notification targets and arbitrary third-party S3 services are not covered by the recorded acceptance matrix.
 
 ## Migrate from mc
 
-The default directory is always `~/.oc` (user-directory `oc` on Windows), regardless of executable name. OC does not automatically read or modify mc configuration.
+OC uses its own configuration directory: `~/.oc` on Unix, and `oc` under the user profile on Windows. It does not automatically load `~/.mc`.
 
 ```sh
 oc config import ~/.mc/config.json
-OC_CONFIG_DIR=/path/to/config oc ls store
-OC_HOST_store=http://ACCESS_KEY:SECRET_KEY@127.0.0.1:9000 oc ls store
+oc --json doctor store
 ```
 
-Import accepts version 10 configuration and replaces the destination aliases after validation and a private backup. The source stays unchanged. Relative management CA paths resolve against the source configuration directory. Upgrade older formats with the original client first. S3 certificates, sessions and saved shares are not copied automatically.
+Import accepts configuration version 10, replaces destination aliases after validation, and backs up the previous destination configuration. Certificates and saved sessions are not copied automatically. Read [the migration guide](docs/migration.md) before importing an existing setup.
 
-Explicit `--config-dir` wins over environment settings. `OC_*` settings take precedence over corresponding `MC_*`; legacy names remain supported throughout OC 0.x and will receive at least one minor release of notice before removal. Environment aliases override file aliases. Region, encryption, profiling and health-check settings also accept the OC prefix. Management endpoint precedence is documented in phase two.
+`OC_*` environment variables take precedence over supported legacy `MC_*` variables. Self-update and MinIO SUBNET uploads are disabled; install reviewed OC release artifacts manually.
 
-The Go module path remains `github.com/soulteary/mc`. Self-update and MinIO SUBNET upload are disabled; see [release boundaries](docs/oc-phase-one.md).
+## Find the right guide
 
-## Verify compatibility
+- [Install and upgrade](docs/installation.md), or [run in a container](docs/containers.md).
+- [Configure endpoints and TLS](docs/configuration.md), [transfer and synchronize](docs/usage.md), or [look up commands](docs/commands.md).
+- [Administer OtterIO](docs/administration.md) and [check compatibility](docs/compatibility.md).
+- [Troubleshoot problems](docs/troubleshooting.md) and [report vulnerabilities privately](SECURITY.md).
+- [Build and test](docs/development.md), [contribute](CONTRIBUTING.md), or [prepare a release](docs/releasing.md).
 
-See [phase three support and migration](docs/oc-phase-three.md) for deployment requirements and verified coverage. Advanced features depend on erasure/distributed storage and configured external services; interface presence alone is not a support guarantee.
+The [documentation index](docs/README.md) also links the dated implementation and validation records.
+
+## Build from source
+
+Use the Go version declared in `go.mod` (currently `1.27.1`), Git and Make:
 
 ```sh
-python3 buildscripts/test-core-integration.py \
-  --oc /path/to/oc --otterio /path/to/otterio --extended \
-  --report /tmp/oc-compatibility.json
+git clone https://github.com/soulteary/oc.git
+cd oc
+make build
+./oc --help
 ```
 
-Tests use disposable local servers and credentials. The pinned server needs the three patches in the [compatibility manifest](docs/compatibility.json), covering query bridging, shutdown/restart, and HTTP/object path fixes. See the phase-three guide for the Darwin restart supervisor and platform validation. JSON errors keep existing fields and add `error.code` and `error.category`; each error is one JSON line. Error exit status remains 1, with existing cancellation/signal statuses preserved.
+The Go module path remains `github.com/soulteary/mc` for source compatibility. Clone the `oc` repository rather than relying on that historical module name as an installation channel. [Development](docs/development.md) explains test tools, platform coverage and the patched integration fixture.
 
-## Stability and diagnostics
+## License and attribution
 
-Use `oc --json doctor [ALIAS]` for offline credential-free diagnostics and add `--online` for a read-only management connectivity check. See [phase four stability and support policy](docs/oc-phase-four.md) for fault injection, memory budgets, platform coverage and compiled-module inventories. SDK changes are deferred.
+OC is distributed under [Apache-2.0](LICENSE). Preserve [NOTICE](NOTICE), [CREDITS](CREDITS) and the [MIT license for the internal notification fork](internal/notify/LICENSE) when redistributing it. The [notification fork notes](internal/notify/README.md) explain that component's maintenance and packaging requirements.

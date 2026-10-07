@@ -57,9 +57,14 @@ further defined and clarified by project maintainers.
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported by contacting the project team at dev@min.io. The project team
-will review and investigate all complaints, and will respond in a way that it deems
+Instances of abusive, harassing, or otherwise unacceptable behavior should be
+reported to the maintainers of this repository. OC does not currently document
+a dedicated confidential conduct-reporting channel. Use contact options a
+maintainer publishes on their GitHub profile, or request a confidential contact
+through a repository issue without including incident details or identifying
+anyone. A public issue is not confidential. The inherited upstream MinIO address
+is not an OC reporting channel. The project team will review and investigate all
+complaints received, and will respond in a way that it deems
 appropriate to the circumstances. The project team is obligated to maintain
 confidentiality with regard to the reporter of an incident.
 Further details of specific enforcement policies may be posted separately.
