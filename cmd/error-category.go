@@ -16,6 +16,9 @@ func classifyClientError(err error) (string, string) {
 	if errors.Is(err, errConsoleStreamClosed) {
 		return "ConsoleStreamClosed", "stream"
 	}
+	if errors.Is(err, errTraceStreamClosed) {
+		return "TraceStreamClosed", "trace"
+	}
 	if errors.Is(err, errWatchStreamClosed) {
 		return "WatchStreamClosed", "watch"
 	}

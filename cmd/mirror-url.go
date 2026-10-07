@@ -101,6 +101,15 @@ func matchExcludeOptions(excludeOptions []string, srcSuffix string) bool {
 }
 
 func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mirrorOptions, URLsCh chan<- URLs) {
+	send := func(value URLs) bool {
+		select {
+		case URLsCh <- value:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
 	// source and targets are always directories
 	sourceSeparator := string(newClientURL(sourceURL).Separator)
 	if !strings.HasSuffix(sourceURL, sourceSeparator) {
@@ -119,13 +128,17 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 
 	sourceClnt, err := newClientFromAlias(sourceAlias, sourceURL)
 	if err != nil {
-		URLsCh <- URLs{Error: err.Trace(sourceAlias, sourceURL)}
+		if !send(URLs{Error: err.Trace(sourceAlias, sourceURL)}) {
+			return
+		}
 		return
 	}
 
 	targetClnt, err := newClientFromAlias(targetAlias, targetURL)
 	if err != nil {
-		URLsCh <- URLs{Error: err.Trace(targetAlias, targetURL)}
+		if !send(URLs{Error: err.Trace(targetAlias, targetURL)}) {
+			return
+		}
 		return
 	}
 
@@ -134,7 +147,9 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 	for diffMsg := range diffs {
 		if diffMsg.Error != nil {
 			// Send all errors through the channel
-			URLsCh <- URLs{Error: diffMsg.Error, ErrorCond: differInUnknown}
+			if !send(URLs{Error: diffMsg.Error, ErrorCond: differInUnknown}) {
+				return
+			}
 			continue
 		}
 
@@ -150,6 +165,9 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 			continue
 		}
 
+		if source := diffMsg.firstContent; source != nil && (isOlder(source.Time, opts.olderThan) || isNewer(source.Time, opts.newerThan)) {
+			continue
+		}
 		switch diffMsg.Diff {
 		case differInNone:
 			if (!opts.reconcile && !opts.verifyContents) || opts.activeActive {
@@ -158,7 +176,9 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 			if opts.verifyContents && !opts.reconcile {
 				equal, err := mirrorContentsEqual(ctx, sourceAlias, targetAlias, diffMsg, opts.encKeyDB)
 				if err != nil {
-					URLsCh <- URLs{Error: probe.NewError(err), ErrorCond: differInUnknown}
+					if !send(URLs{Error: probe.NewError(err), ErrorCond: differInUnknown}) {
+						return
+					}
 					continue
 				}
 				if equal {
@@ -171,9 +191,11 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 		case differInSize, differInMetadata, differInAASourceMTime:
 			if !opts.isOverwrite && !opts.isFake && !opts.activeActive {
 				// Size or time or etag differs but --overwrite not set.
-				URLsCh <- URLs{
+				if !send(URLs{
 					Error:     errOverWriteNotAllowed(diffMsg.SecondURL),
 					ErrorCond: diffMsg.Diff,
+				}) {
+					return
 				}
 				continue
 			}
@@ -183,38 +205,48 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 			targetPath := urlJoinPath(targetURL, sourceSuffix)
 			sourceContent := diffMsg.firstContent
 			targetContent := &ClientContent{URL: *newClientURL(targetPath)}
-			URLsCh <- URLs{
+			if !send(URLs{
 				SourceAlias:   sourceAlias,
 				SourceContent: sourceContent,
 				TargetAlias:   targetAlias,
 				TargetContent: targetContent,
+			}) {
+				return
 			}
 		case differInType:
-			URLsCh <- URLs{Error: errInvalidTarget(diffMsg.SecondURL)}
+			if !send(URLs{Error: errInvalidTarget(diffMsg.SecondURL)}) {
+				return
+			}
 		case differInFirst:
 			// Only in first, always copy.
 			sourceSuffix := strings.TrimPrefix(diffMsg.FirstURL, sourceURL)
 			targetPath := urlJoinPath(targetURL, sourceSuffix)
 			sourceContent := diffMsg.firstContent
 			targetContent := &ClientContent{URL: *newClientURL(targetPath)}
-			URLsCh <- URLs{
+			if !send(URLs{
 				SourceAlias:   sourceAlias,
 				SourceContent: sourceContent,
 				TargetAlias:   targetAlias,
 				TargetContent: targetContent,
+			}) {
+				return
 			}
 		case differInSecond:
 			if !opts.isRemove && !opts.isFake {
 				continue
 			}
-			URLsCh <- URLs{
+			if !send(URLs{
 				TargetAlias:   targetAlias,
 				TargetContent: diffMsg.secondContent,
+			}) {
+				return
 			}
 		default:
-			URLsCh <- URLs{
+			if !send(URLs{
 				Error:     errUnrecognizedDiffType(diffMsg.Diff).Trace(diffMsg.FirstURL, diffMsg.SecondURL),
 				ErrorCond: diffMsg.Diff,
+			}) {
+				return
 			}
 		}
 	}
@@ -222,6 +254,8 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 
 type mirrorOptions struct {
 	watchRescanInterval               time.Duration
+	watchVerifyInterval               time.Duration
+	nextVerify                        time.Time
 	reconcile                         bool
 	verifyContents                    bool
 	isFake, isOverwrite, activeActive bool
@@ -250,6 +284,8 @@ func mirrorContentsEqual(ctx context.Context, sourceAlias, targetAlias string, d
 			return result, err.ToGoError()
 		}
 		defer reader.Close()
+		stop := context.AfterFunc(ctx, func() { _ = reader.Close() })
+		defer stop()
 		h := sha256.New()
 		if _, err := io.Copy(h, fsContextReader{ctx: ctx, reader: reader}); err != nil {
 			return result, err

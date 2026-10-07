@@ -19,6 +19,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -157,6 +158,10 @@ func watchFind(ctxCtx context.Context, ctx *findContext) error {
 		select {
 		case <-ctxCtx.Done():
 			console.Println()
+			if !errors.Is(ctxCtx.Err(), context.Canceled) {
+				errorIf(probe.NewError(ctxCtx.Err()), "Unable to watch for events.")
+				return ctxCtx.Err()
+			}
 			return nil
 		case events, ok := <-eventsCh:
 			if !ok {
@@ -188,7 +193,11 @@ func watchFind(ctxCtx context.Context, ctx *findContext) error {
 			}
 		}
 	}
-	return nil
+	if ctxCtx.Err() != nil {
+		return ctxCtx.Err()
+	}
+	errorIf(probe.NewError(errWatchStreamClosed), "Unable to watch for events.")
+	return exitStatus(globalErrorExitStatus)
 }
 
 // Descend at most (a non-negative integer) levels of files

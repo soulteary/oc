@@ -22,6 +22,7 @@ func TestMirrorWatchRecoveryTriggers(t *testing.T) {
 			job := &mirrorJob{watcher: watcher, statusCh: make(chan URLs, 1), stopCh: make(chan struct{})}
 			if trigger == "periodic" {
 				job.opts.watchRescanInterval = time.Millisecond
+				job.opts.watchVerifyInterval = time.Millisecond
 			}
 			stopped := make(chan struct{})
 			done := make(chan struct{})
@@ -126,7 +127,7 @@ func TestMirrorPeriodicRecoveryCLI(t *testing.T) {
 	if err := os.WriteFile(sourcePath, []byte("new"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal([]string{"--config-dir", filepath.Join(root, "config"), "--json", "mirror", "--watch", "--overwrite", "--remove", "--watch-rescan-interval", "1s", source, target})
+	args, _ := json.Marshal([]string{"--config-dir", filepath.Join(root, "config"), "--json", "mirror", "--watch", "--overwrite", "--remove", "--watch-rescan-interval", "1s", "--watch-verify-interval", "1s", source, target})
 	command := exec.Command(executable, "-test.run=^TestFSWatchCLIHelper$")
 	command.Env = append(os.Environ(), "OC_TEST_WATCH_CLI_ARGS="+string(args))
 	log, err := os.Create(filepath.Join(root, "output"))

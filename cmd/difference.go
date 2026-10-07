@@ -169,18 +169,42 @@ func dirDifference(ctx context.Context, sourceClnt, targetClnt Client, sourceURL
 }
 
 func differenceInternal(ctx context.Context, sourceClnt, targetClnt Client, sourceURL, targetURL string, isMetadata bool, isRecursive, returnSimilar bool, dirOpt DirOpt, diffCh chan<- diffMessage) *probe.Error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	send := func(value diffMessage) bool {
+		select {
+		case diffCh <- value:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	receive := func(ch <-chan *ClientContent) (*ClientContent, bool) {
+		select {
+		case value, ok := <-ch:
+			return value, ok
+		case <-ctx.Done():
+			return nil, false
+		}
+	}
+
 	// Set default values for listing.
 	srcCh := sourceClnt.List(ctx, ListOptions{Recursive: isRecursive, WithMetadata: isMetadata, ShowDir: dirOpt})
 	tgtCh := targetClnt.List(ctx, ListOptions{Recursive: isRecursive, WithMetadata: isMetadata, ShowDir: dirOpt})
 
-	srcCtnt, srcOk := <-srcCh
-	tgtCtnt, tgtOk := <-tgtCh
+	srcCtnt, srcOk := receive(srcCh)
+	tgtCtnt, tgtOk := receive(tgtCh)
 
 	var (
 		srcEOF, tgtEOF bool
 	)
 
 	for {
+		if ctx.Err() != nil {
+			return probe.NewError(ctx.Err())
+		}
 		srcEOF = !srcOk
 		tgtEOF = !tgtOk
 
@@ -199,23 +223,27 @@ func differenceInternal(ctx context.Context, sourceClnt, targetClnt Client, sour
 
 		// If source doesn't have objects anymore, comparison becomes obvious
 		if srcEOF {
-			diffCh <- diffMessage{
+			if !send(diffMessage{
 				SecondURL:     tgtCtnt.URL.String(),
 				Diff:          differInSecond,
 				secondContent: tgtCtnt,
+			}) {
+				return probe.NewError(ctx.Err())
 			}
-			tgtCtnt, tgtOk = <-tgtCh
+			tgtCtnt, tgtOk = receive(tgtCh)
 			continue
 		}
 
 		// The same for target
 		if tgtEOF {
-			diffCh <- diffMessage{
+			if !send(diffMessage{
 				FirstURL:     srcCtnt.URL.String(),
 				Diff:         differInFirst,
 				firstContent: srcCtnt,
+			}) {
+				return probe.NewError(ctx.Err())
 			}
-			srcCtnt, srcOk = <-srcCh
+			srcCtnt, srcOk = receive(srcCh)
 			continue
 		}
 
@@ -227,14 +255,18 @@ func differenceInternal(ctx context.Context, sourceClnt, targetClnt Client, sour
 
 		if !utf8.ValidString(srcSuffix) {
 			// Error. Keys must be valid UTF-8.
-			diffCh <- diffMessage{Error: errInvalidSource(current).Trace()}
-			srcCtnt, srcOk = <-srcCh
+			if !send(diffMessage{Error: errInvalidSource(current).Trace()}) {
+				return probe.NewError(ctx.Err())
+			}
+			srcCtnt, srcOk = receive(srcCh)
 			continue
 		}
 		if !utf8.ValidString(tgtSuffix) {
 			// Error. Keys must be valid UTF-8.
-			diffCh <- diffMessage{Error: errInvalidTarget(expected).Trace()}
-			tgtCtnt, tgtOk = <-tgtCh
+			if !send(diffMessage{Error: errInvalidTarget(expected).Trace()}) {
+				return probe.NewError(ctx.Err())
+			}
+			tgtCtnt, tgtOk = receive(tgtCh)
 			continue
 		}
 
@@ -245,12 +277,14 @@ func differenceInternal(ctx context.Context, sourceClnt, targetClnt Client, sour
 		normalizedExpected := norm.NFC.String(expected)
 
 		if normalizedExpected > normalizedCurrent {
-			diffCh <- diffMessage{
+			if !send(diffMessage{
 				FirstURL:     srcCtnt.URL.String(),
 				Diff:         differInFirst,
 				firstContent: srcCtnt,
+			}) {
+				return probe.NewError(ctx.Err())
 			}
-			srcCtnt, srcOk = <-srcCh
+			srcCtnt, srcOk = receive(srcCh)
 			continue
 		}
 		if normalizedExpected == normalizedCurrent {
@@ -259,44 +293,52 @@ func differenceInternal(ctx context.Context, sourceClnt, targetClnt Client, sour
 			if srcType.IsRegular() && !tgtType.IsRegular() ||
 				!srcType.IsRegular() && tgtType.IsRegular() {
 				// Type differs. Source is never a directory.
-				diffCh <- diffMessage{
+				if !send(diffMessage{
 					FirstURL:      srcCtnt.URL.String(),
 					SecondURL:     tgtCtnt.URL.String(),
 					Diff:          differInType,
 					firstContent:  srcCtnt,
 					secondContent: tgtCtnt,
+				}) {
+					return probe.NewError(ctx.Err())
 				}
 				continue
 			}
 			reportedDifference := true
 			if srcSize != tgtSize {
 				// Regular files differing in size.
-				diffCh <- diffMessage{
+				if !send(diffMessage{
 					FirstURL:      srcCtnt.URL.String(),
 					SecondURL:     tgtCtnt.URL.String(),
 					Diff:          differInSize,
 					firstContent:  srcCtnt,
 					secondContent: tgtCtnt,
+				}) {
+					return probe.NewError(ctx.Err())
 				}
 			} else if activeActiveModTimeUpdated(srcCtnt, tgtCtnt) {
-				diffCh <- diffMessage{
+				if !send(diffMessage{
 					FirstURL:      srcCtnt.URL.String(),
 					SecondURL:     tgtCtnt.URL.String(),
 					Diff:          differInAASourceMTime,
 					firstContent:  srcCtnt,
 					secondContent: tgtCtnt,
+				}) {
+					return probe.NewError(ctx.Err())
 				}
 			} else if isMetadata &&
 				!metadataEqual(srcCtnt.UserMetadata, tgtCtnt.UserMetadata) &&
 				!metadataEqual(srcCtnt.Metadata, tgtCtnt.Metadata) {
 
 				// Regular files user requesting additional metadata to same file.
-				diffCh <- diffMessage{
+				if !send(diffMessage{
 					FirstURL:      srcCtnt.URL.String(),
 					SecondURL:     tgtCtnt.URL.String(),
 					Diff:          differInMetadata,
 					firstContent:  srcCtnt,
 					secondContent: tgtCtnt,
+				}) {
+					return probe.NewError(ctx.Err())
 				}
 			} else {
 				reportedDifference = false
@@ -304,25 +346,29 @@ func differenceInternal(ctx context.Context, sourceClnt, targetClnt Client, sour
 
 			// No differ
 			if returnSimilar && !reportedDifference {
-				diffCh <- diffMessage{
+				if !send(diffMessage{
 					FirstURL:      srcCtnt.URL.String(),
 					SecondURL:     tgtCtnt.URL.String(),
 					Diff:          differInNone,
 					firstContent:  srcCtnt,
 					secondContent: tgtCtnt,
+				}) {
+					return probe.NewError(ctx.Err())
 				}
 			}
-			srcCtnt, srcOk = <-srcCh
-			tgtCtnt, tgtOk = <-tgtCh
+			srcCtnt, srcOk = receive(srcCh)
+			tgtCtnt, tgtOk = receive(tgtCh)
 			continue
 		}
 		// Differ in second
-		diffCh <- diffMessage{
+		if !send(diffMessage{
 			SecondURL:     tgtCtnt.URL.String(),
 			Diff:          differInSecond,
 			secondContent: tgtCtnt,
+		}) {
+			return probe.NewError(ctx.Err())
 		}
-		tgtCtnt, tgtOk = <-tgtCh
+		tgtCtnt, tgtOk = receive(tgtCh)
 		continue
 	}
 
@@ -343,12 +389,16 @@ func difference(ctx context.Context, sourceClnt, targetClnt Client, sourceURL, t
 		for range newRetryTimerContinous(retryCtx, time.Second, time.Second*30, minio.MaxJitter) {
 			err := differenceInternal(retryCtx, sourceClnt, targetClnt, sourceURL, targetURL,
 				isMetadata, isRecursive, returnSimilar, dirOpt, diffCh)
+			if retryCtx.Err() != nil {
+				return
+			}
 			if err != nil {
 				// handle this specifically for filesystem related errors.
 				switch err.ToGoError().(type) {
 				case PathNotFound, PathInsufficientPermission:
-					diffCh <- diffMessage{
-						Error: err,
+					select {
+					case diffCh <- diffMessage{Error: err}:
+					case <-retryCtx.Done():
 					}
 					return
 				}

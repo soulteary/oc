@@ -83,12 +83,12 @@ func (t adminNoRedirectTransport) RoundTrip(req *http.Request) (*http.Response, 
 		copied.TransferEncoding = nil
 		req = copied
 	}
-	stream, _ := req.Context().Value(adminStreamErrorsKey{}).(*adminLogStream)
+	stream, _ := req.Context().Value(adminStreamErrorsKey{}).(adminResponseStream)
 	if stream != nil {
 		if err := req.Context().Err(); err != nil {
 			return nil, err
 		}
-		req = req.Clone(stream.ioCtx)
+		req = req.Clone(stream.ioContext())
 	}
 	resp, err := t.RoundTripper.RoundTrip(req)
 	if err != nil {

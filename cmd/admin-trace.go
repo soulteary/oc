@@ -290,7 +290,9 @@ func mainAdminTrace(ctx *cli.Context) error {
 	fatalIf(probe.NewError(e), "Unable to start tracing")
 
 	// Start listening on all trace activity.
-	traceCh := client.ServiceTrace(ctxt, opts)
+	stream, cleanup := traceRecords(ctxt, client, opts)
+	defer cleanup()
+	traceCh := stream.records
 	for traceInfo := range traceCh {
 		if ctxt.Err() != nil {
 			return nil
@@ -302,7 +304,17 @@ func mainAdminTrace(ctx *cli.Context) error {
 			printTrace(verbose, traceInfo)
 		}
 	}
-	return nil
+	if ctxt.Err() != nil {
+		return ctxt.Err()
+	}
+	var streamErr error
+	select {
+	case streamErr = <-stream.failures:
+	default:
+		streamErr = errTraceStreamClosed
+	}
+	errorIf(probe.NewError(streamErr), "Unable to listen to http trace.")
+	return streamErr
 }
 
 // Short trace record

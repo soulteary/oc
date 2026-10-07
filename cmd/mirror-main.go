@@ -67,6 +67,7 @@ var (
 			Value: time.Minute,
 			Usage: "periodically reconcile local watch sources to recover missed notifications (minimum 1s)",
 		},
+		cli.DurationFlag{Name: "watch-verify-interval", Usage: "deep-verify unchanged local watch objects at this interval (0 disables, minimum 1s)"},
 		cli.BoolFlag{
 			Name:  "remove",
 			Usage: "remove extraneous object(s) on target",
@@ -229,6 +230,7 @@ const uaMirrorAppName = "mc-mirror"
 type mirrorJob struct {
 	rescanRequired bool
 	verifyContents bool
+	nextVerify     time.Time
 	stopCh         chan struct{}
 
 	// mutex for shutdown, this prevents the shutdown
@@ -660,7 +662,10 @@ func (mj *mirrorJob) watchMirror(ctx context.Context, stopParallel func()) {
 			}
 		case <-periodic:
 			// Native backends can coalesce or lose events before our queue.
-			mj.verifyContents = true
+			mj.verifyContents = mj.opts.watchVerifyInterval > 0 && !mj.opts.nextVerify.After(time.Now())
+			if mj.verifyContents {
+				mj.opts.nextVerify = time.Now().Add(mj.opts.watchVerifyInterval)
+			}
 			stopParallel()
 			return
 		case <-mj.stopCh:
@@ -863,6 +868,7 @@ func getEventPathURLWin(srcURL, eventPath string) string {
 type mirrorRecovery struct {
 	reconcile      bool
 	verifyContents bool
+	nextVerify     time.Time
 }
 
 // runMirror - mirrors all buckets to another S3 server
@@ -899,6 +905,8 @@ func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Context, enc
 
 	mopts := mirrorOptions{
 		watchRescanInterval: cli.Duration("watch-rescan-interval"),
+		watchVerifyInterval: cli.Duration("watch-verify-interval"),
+		nextVerify:          recovery.nextVerify,
 		reconcile:           recovery.reconcile,
 		verifyContents:      recovery.verifyContents,
 		isFake:              cli.Bool("fake"),
@@ -917,6 +925,9 @@ func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Context, enc
 		activeActive:        activeActive,
 	}
 
+	if mopts.watchVerifyInterval > 0 && mopts.nextVerify.IsZero() {
+		mopts.nextVerify = time.Now().Add(mopts.watchVerifyInterval)
+	}
 	// Create a new mirror job and execute it
 	mj := newMirrorJob(srcURL, dstURL, mopts)
 	defer func() { cancelMirror(); mj.watcher.Wait() }()
@@ -1007,7 +1018,7 @@ func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Context, enc
 	}
 
 	result := mj.mirror(ctx, cancelMirror)
-	*recovery = mirrorRecovery{reconcile: mj.rescanRequired, verifyContents: mj.verifyContents}
+	*recovery = mirrorRecovery{reconcile: mj.rescanRequired, verifyContents: mj.verifyContents, nextVerify: mj.opts.nextVerify}
 	return result
 }
 
@@ -1025,6 +1036,9 @@ func mainMirror(cliCtx *cli.Context) error {
 
 	if cliCtx.Duration("watch-rescan-interval") < time.Second {
 		return fmt.Errorf("watch-rescan-interval must be at least 1s")
+	}
+	if interval := cliCtx.Duration("watch-verify-interval"); interval < 0 || interval > 0 && interval < time.Second {
+		return fmt.Errorf("watch-verify-interval must be 0 or at least 1s")
 	}
 	// check 'mirror' cli arguments.
 	srcURL, tgtURL := checkMirrorSyntax(ctx, cliCtx, encKeyDB)
