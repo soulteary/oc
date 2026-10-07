@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -57,5 +58,37 @@ func TestCanceledMultipartAbortsOwnedSession(t *testing.T) {
 	case <-released:
 	case <-time.After(time.Second):
 		t.Fatal("upload connection remains open")
+	}
+}
+
+func TestCanceledMultipartPreservesCleanupFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Query().Has("uploads"):
+			fmt.Fprint(w, `<InitiateMultipartUploadResult><UploadId>owned</UploadId></InitiateMultipartUploadResult>`)
+		case r.Method == http.MethodPut:
+			cancel()
+			io.Copy(io.Discard, r.Body)
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, `<Error><Code>AccessDenied</Code><Message>cleanup denied</Message></Error>`)
+		default:
+			w.WriteHeader(400)
+		}
+	}))
+	defer server.Close()
+	api, err := minio.New(strings.TrimPrefix(server.URL, "http://"), &minio.Options{Creds: credentials.NewStaticV4("access", "secret", ""), Region: "us-east-1", Transport: uploadSessionTransport{base: http.DefaultTransport}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = putWithCleanup(ctx, api, "bucket", "object", strings.NewReader(strings.Repeat("x", 6*1024*1024)), 6*1024*1024, minio.PutObjectOptions{PartSize: 5 * 1024 * 1024})
+	var cleanup multipartCleanupError
+	if !errors.Is(err, context.Canceled) || !errors.As(err, &cleanup) {
+		t.Fatalf("cancellation or cleanup failure lost: %v", err)
+	}
+	if minio.ToErrorResponse(cleanup.cause).Code != "AccessDenied" {
+		t.Fatal(cleanup)
 	}
 }

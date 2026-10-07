@@ -161,6 +161,7 @@ func (w *Watcher) Join(ctx context.Context, client Client, recursive bool) *prob
 		defer finishWatch(cancel, wo)
 
 		eventsCh, errorsCh := wo.Events(), wo.Errors()
+		terminalReported := false
 		for eventsCh != nil || errorsCh != nil {
 			select {
 			case <-ctx.Done():
@@ -181,11 +182,21 @@ func (w *Watcher) Join(ctx context.Context, client Client, recursive bool) *prob
 					continue
 				}
 
+				if err != nil {
+					code, _ := classifyClientError(err.ToGoError())
+					terminalReported = code == "WatchQueueSaturated" || code == "WatchEventsLost" || code == "NotImplemented"
+				}
 				select {
 				case w.ErrorChan <- err:
 				case <-ctx.Done():
 					return
 				}
+			}
+		}
+		if ctx.Err() == nil && !terminalReported {
+			select {
+			case w.ErrorChan <- probe.NewError(errWatchStreamClosed):
+			case <-ctx.Done():
 			}
 		}
 	}()

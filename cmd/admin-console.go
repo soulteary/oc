@@ -201,13 +201,16 @@ func mainAdminConsole(ctx *cli.Context) error {
 	defer cancel()
 
 	// Start listening on all console log activity.
-	logCh := client.GetLogs(ctxt, node, limit, logType)
+	stream, cleanup := consoleLogs(ctxt, client, node, limit, logType)
+	defer cleanup()
+	logCh := stream.records
 	for logInfo := range logCh {
 		if ctxt.Err() != nil {
 			return nil
 		}
 		if logInfo.Err != nil {
-			fatalIf(probe.NewError(logInfo.Err), "Unable to listen to console logs")
+			errorIf(probe.NewError(logInfo.Err), "Unable to listen to console logs.")
+			return logInfo.Err
 		}
 		// drop nodeName from output if specified as cli arg
 		if node != "" {
@@ -215,7 +218,17 @@ func mainAdminConsole(ctx *cli.Context) error {
 		}
 		printMsg(logMessage{LogInfo: logInfo})
 	}
-	return nil
+	if ctxt.Err() != nil {
+		return ctxt.Err()
+	}
+	var streamErr error
+	select {
+	case streamErr = <-stream.failures:
+	default:
+		streamErr = fmt.Errorf("console log stream closed unexpectedly")
+	}
+	errorIf(probe.NewError(streamErr), "Unable to listen to console logs.")
+	return streamErr
 }
 
 func normalizeConsoleLogType(value string) (string, error) {

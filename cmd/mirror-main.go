@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -227,6 +228,7 @@ const uaMirrorAppName = "mc-mirror"
 
 type mirrorJob struct {
 	rescanRequired bool
+	verifyContents bool
 	stopCh         chan struct{}
 
 	// mutex for shutdown, this prevents the shutdown
@@ -632,7 +634,7 @@ func (mj *mirrorJob) watchMirror(ctx context.Context, stopParallel func()) {
 			if err == nil {
 				continue
 			}
-			if _, saturated := err.ToGoError().(fsWatchOverflow); saturated {
+			if _, saturated := err.ToGoError().(fsWatchOverflow); saturated || errors.Is(err.ToGoError(), errWatchStreamClosed) {
 				mj.rescanRequired = true
 				// Surface the loss before restarting the run and reconciling the
 				// full source/target state under a fresh native subscription.
@@ -658,7 +660,7 @@ func (mj *mirrorJob) watchMirror(ctx context.Context, stopParallel func()) {
 			}
 		case <-periodic:
 			// Native backends can coalesce or lose events before our queue.
-			mj.rescanRequired = true
+			mj.verifyContents = true
 			stopParallel()
 			return
 		case <-mj.stopCh:
@@ -858,8 +860,13 @@ func getEventPathURLWin(srcURL, eventPath string) string {
 	return eventPath
 }
 
+type mirrorRecovery struct {
+	reconcile      bool
+	verifyContents bool
+}
+
 // runMirror - mirrors all buckets to another S3 server
-func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Context, encKeyDB map[string][]prefixSSEPair, recovery *bool) bool {
+func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Context, encKeyDB map[string][]prefixSSEPair, recovery *mirrorRecovery) bool {
 	ctx, cancelMirror := context.WithCancel(ctx)
 	defer cancelMirror()
 	// Parse metadata.
@@ -892,7 +899,8 @@ func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Context, enc
 
 	mopts := mirrorOptions{
 		watchRescanInterval: cli.Duration("watch-rescan-interval"),
-		reconcile:           *recovery,
+		reconcile:           recovery.reconcile,
+		verifyContents:      recovery.verifyContents,
 		isFake:              cli.Bool("fake"),
 		isRemove:            isRemove,
 		isOverwrite:         isOverwrite,
@@ -999,7 +1007,7 @@ func runMirror(ctx context.Context, srcURL, dstURL string, cli *cli.Context, enc
 	}
 
 	result := mj.mirror(ctx, cancelMirror)
-	*recovery = mj.rescanRequired
+	*recovery = mirrorRecovery{reconcile: mj.rescanRequired, verifyContents: mj.verifyContents}
 	return result
 }
 
@@ -1032,11 +1040,11 @@ func mainMirror(cliCtx *cli.Context) error {
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	recovery := false
+	recovery := mirrorRecovery{}
 	for {
 		select {
 		case <-ctx.Done():
-			return exitStatus(globalErrorExitStatus)
+			return ctx.Err()
 		default:
 			errorDetected := runMirror(ctx, srcURL, tgtURL, cliCtx, encKeyDB, &recovery)
 			if cliCtx.Bool("watch") || cliCtx.Bool("multi-master") || cliCtx.Bool("active-active") {
@@ -1045,7 +1053,7 @@ func mainMirror(cliCtx *cli.Context) error {
 				select {
 				case <-ctx.Done():
 					timer.Stop()
-					return exitStatus(globalErrorExitStatus)
+					return ctx.Err()
 				case <-timer.C:
 				}
 				continue

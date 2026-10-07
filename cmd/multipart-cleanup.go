@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"sync"
@@ -11,6 +13,13 @@ import (
 
 	minio "github.com/minio/minio-go/v7"
 )
+
+type multipartCleanupError struct{ cause error }
+
+func (e multipartCleanupError) Error() string {
+	return fmt.Sprintf("abort multipart upload: %v", e.cause)
+}
+func (e multipartCleanupError) Unwrap() error { return e.cause }
 
 // Remember only the upload initiated by this Put call. Never remove sessions
 // belonging to another concurrent upload of the same object.
@@ -60,7 +69,7 @@ func putWithCleanup(ctx context.Context, api *minio.Client, bucket, object strin
 			if abortErr := core.AbortMultipartUpload(cleanup, bucket, object, id); abortErr != nil {
 				response := minio.ToErrorResponse(abortErr)
 				if response.Code != "NoSuchUpload" {
-					return info, abortErr
+					return info, errors.Join(err, multipartCleanupError{cause: abortErr})
 				}
 			}
 		}

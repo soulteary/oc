@@ -39,7 +39,7 @@ func TestMirrorWatchRecoveryTriggers(t *testing.T) {
 			default:
 				t.Fatal("parallel manager not stopped")
 			}
-			if !job.rescanRequired {
+			if trigger == "overflow" && !job.rescanRequired || trigger == "periodic" && (!job.verifyContents || job.rescanRequired) {
 				t.Fatal("next run will not reconcile")
 			}
 			if ctx.Err() != nil {
@@ -188,4 +188,17 @@ func TestMirrorPeriodicRecoveryCLI(t *testing.T) {
 		_, err := os.Stat(orphan)
 		return string(data) == "new" && os.IsNotExist(err)
 	})
+	before, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One interval plus the bounded retry jitter must pass without a rewrite.
+	time.Sleep(3500 * time.Millisecond)
+	after, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !before.ModTime().Equal(after.ModTime()) || !os.SameFile(before, after) {
+		t.Fatal("periodic verification rewrote unchanged target")
+	}
 }

@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 	"syscall"
 
@@ -77,9 +78,14 @@ EXAMPLES:
 }
 
 func pipe(targetURL string, encKeyDB map[string][]prefixSSEPair, storageClass string) *probe.Error {
+	input, closeInput, inputErr := openPipeInput(globalContext)
+	if inputErr != nil {
+		return probe.NewError(inputErr)
+	}
+	defer closeInput()
 	if targetURL == "" {
 		// When no target is specified, pipe cat's stdin to stdout.
-		return catOut(os.Stdin, -1).Trace()
+		return catOut(input, -1).Trace()
 	}
 	alias, _ := url2Alias(targetURL)
 	sseKey := getSSE(targetURL, encKeyDB[alias])
@@ -91,7 +97,7 @@ func pipe(targetURL string, encKeyDB map[string][]prefixSSEPair, storageClass st
 		sse:          sseKey,
 		storageClass: storageClass,
 	}
-	_, err := putTargetStreamWithURL(targetURL, os.Stdin, -1, opts)
+	_, err := putTargetStreamWithURL(globalContext, targetURL, input, -1, opts)
 	// TODO: See if this check is necessary.
 	switch e := err.ToGoError().(type) {
 	case *os.PathError:
@@ -121,14 +127,33 @@ func mainPipe(ctx *cli.Context) error {
 
 	if len(ctx.Args()) == 0 {
 		err = pipe("", nil, ctx.String("storage-class"))
+		if globalContext.Err() != nil {
+			reportPipeCleanupError(err)
+			return globalContext.Err()
+		}
 		fatalIf(err.Trace("stdout"), "Unable to write to one or more targets.")
 	} else {
 		// extract URLs.
 		URLs := ctx.Args()
 		err = pipe(URLs[0], encKeyDB, ctx.String("storage-class"))
+		if globalContext.Err() != nil {
+			reportPipeCleanupError(err)
+			return globalContext.Err()
+		}
 		fatalIf(err.Trace(URLs[0]), "Unable to write to one or more targets.")
 	}
 
 	// Done.
 	return nil
+}
+
+// Signal cancellation must not hide a failed best-effort server-side cleanup.
+func reportPipeCleanupError(err *probe.Error) {
+	if err == nil {
+		return
+	}
+	var cleanup multipartCleanupError
+	if errors.As(err.ToGoError(), &cleanup) {
+		errorIf(probe.NewError(cleanup), "Unable to clean up canceled multipart upload.")
+	}
 }

@@ -18,13 +18,16 @@ package cmd
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/minio/cli"
+	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/wildcard"
 )
 
@@ -127,7 +130,7 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 	}
 
 	// List both source and target, compare and return values through channel.
-	diffs := difference(ctx, sourceClnt, targetClnt, sourceURL, targetURL, opts.isMetadata, true, opts.reconcile && !opts.activeActive, DirNone)
+	diffs := difference(ctx, sourceClnt, targetClnt, sourceURL, targetURL, opts.isMetadata, true, (opts.reconcile || opts.verifyContents) && !opts.activeActive, DirNone)
 	for diffMsg := range diffs {
 		if diffMsg.Error != nil {
 			// Send all errors through the channel
@@ -149,8 +152,18 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 
 		switch diffMsg.Diff {
 		case differInNone:
-			if !opts.reconcile || opts.activeActive {
+			if (!opts.reconcile && !opts.verifyContents) || opts.activeActive {
 				continue
+			}
+			if opts.verifyContents && !opts.reconcile {
+				equal, err := mirrorContentsEqual(ctx, sourceAlias, targetAlias, diffMsg, opts.encKeyDB)
+				if err != nil {
+					URLsCh <- URLs{Error: probe.NewError(err), ErrorCond: differInUnknown}
+					continue
+				}
+				if equal {
+					continue
+				}
 			}
 			// Recopy even equal-size/equal-time files after event loss: a
 			// metadata comparison cannot prove their bytes are unchanged.
@@ -210,6 +223,7 @@ func deltaSourceTarget(ctx context.Context, sourceURL, targetURL string, opts mi
 type mirrorOptions struct {
 	watchRescanInterval               time.Duration
 	reconcile                         bool
+	verifyContents                    bool
 	isFake, isOverwrite, activeActive bool
 	isWatch, isRemove, isMetadata     bool
 	excludeOptions                    []string
@@ -225,4 +239,28 @@ func prepareMirrorURLs(ctx context.Context, sourceURL string, targetURL string, 
 	URLsCh := make(chan URLs)
 	go deltaSourceTarget(ctx, sourceURL, targetURL, opts, URLsCh)
 	return URLsCh
+}
+
+// Periodic checks read equal-metadata objects, but only rewrite changed bytes.
+func mirrorContentsEqual(ctx context.Context, sourceAlias, targetAlias string, diff diffMessage, keys map[string][]prefixSSEPair) (bool, error) {
+	hash := func(alias, path string) ([32]byte, error) {
+		var result [32]byte
+		reader, err := getSourceStreamFromURL(ctx, filepath.ToSlash(filepath.Join(alias, path)), "", keys)
+		if err != nil {
+			return result, err.ToGoError()
+		}
+		defer reader.Close()
+		h := sha256.New()
+		if _, err := io.Copy(h, fsContextReader{ctx: ctx, reader: reader}); err != nil {
+			return result, err
+		}
+		copy(result[:], h.Sum(nil))
+		return result, nil
+	}
+	source, err := hash(sourceAlias, diff.firstContent.URL.Path)
+	if err != nil {
+		return false, err
+	}
+	target, err := hash(targetAlias, diff.secondContent.URL.Path)
+	return source == target, err
 }

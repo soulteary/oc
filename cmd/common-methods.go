@@ -328,7 +328,7 @@ func putTargetStream(ctx context.Context, alias, urlStr, mode, until, legalHold 
 }
 
 // putTargetStreamWithURL writes to URL from reader. If length=-1, read until EOF.
-func putTargetStreamWithURL(urlStr string, reader io.Reader, size int64, opts PutOptions) (int64, *probe.Error) {
+func putTargetStreamWithURL(ctx context.Context, urlStr string, reader io.Reader, size int64, opts PutOptions) (int64, *probe.Error) {
 	alias, urlStrFull, _, err := expandAlias(urlStr)
 	if err != nil {
 		return 0, err.Trace(alias, urlStr)
@@ -338,7 +338,7 @@ func putTargetStreamWithURL(urlStr string, reader io.Reader, size int64, opts Pu
 		opts.metadata = map[string]string{}
 	}
 	opts.metadata["Content-Type"] = contentType
-	return putTargetStream(context.Background(), alias, urlStrFull, "", "", "", reader, size, nil, opts)
+	return putTargetStream(ctx, alias, urlStrFull, "", "", "", reader, size, nil, opts)
 }
 
 // copySourceToTargetURL copies to targetURL from source.

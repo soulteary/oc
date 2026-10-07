@@ -13,6 +13,9 @@ var errWatchStreamClosed = errors.New("watch notification stream closed unexpect
 
 // Additive machine-readable fields; original SDK errors and messages remain intact.
 func classifyClientError(err error) (string, string) {
+	if errors.Is(err, errConsoleStreamClosed) {
+		return "ConsoleStreamClosed", "stream"
+	}
 	if errors.Is(err, errWatchStreamClosed) {
 		return "WatchStreamClosed", "watch"
 	}
