@@ -65,24 +65,42 @@ func (b *countedLogBody) Close() error { b.closes.Add(1); return b.ReadCloser.Cl
 func TestConsoleStreamClosesBodyOnCancellation(t *testing.T) {
 	for _, blockedConsumer := range []bool{false, true} {
 		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
 		_, stream := adminStreamContext(ctx)
 		reader, writer := io.Pipe()
 		body := &countedLogBody{ReadCloser: reader}
 		fake := stream.decode(body)
 		fake.Close()
 		writeDone := make(chan struct{})
+		writerReady := make(chan struct{})
 		go func() {
 			defer close(writeDone)
 			defer writer.Close()
 			if blockedConsumer {
-				for i := 0; i < 3; i++ {
+				for i := 0; i < cap(stream.records)+2; i++ {
 					if _, err := fmt.Fprintln(writer, `{"ConsoleMsg":"message"}`); err != nil {
 						return
 					}
+					if i == cap(stream.records) {
+						close(writerReady)
+					}
 				}
 			}
-			<-ctx.Done()
+			// Keep the pipe open until the reader stops. Closing it when the
+			// parent is canceled can inject EOF before I/O cancellation arrives.
+			<-stream.readerDone
 		}()
+		if blockedConsumer {
+			// The reader has enough records to fill its output and block the
+			// next delivery; do not cancel before exercising backpressure.
+			select {
+			case <-writerReady:
+			case <-writeDone:
+				t.Fatal("writer stopped before the consumer could block")
+			case <-time.After(time.Second):
+				t.Fatal("reader did not reach the blocked-consumer state")
+			}
+		}
 		cancel()
 		select {
 		case <-stream.readerDone:
