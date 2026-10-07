@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rjeczalik/notify"
+	"github.com/soulteary/mc/internal/notify"
 	"github.com/soulteary/mc/pkg/probe"
 )
 

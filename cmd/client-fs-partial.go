@@ -310,7 +310,7 @@ func localPartials(target string) ([]*ClientContent, error) {
 		if !info.IsDir() {
 			found = append(found, &ClientContent{URL: *newClientURL(target), Size: info.Size(), Time: info.ModTime(), Type: info.Mode(), fsPartialPath: legacy, fsPartialInfo: info})
 		}
-	} else if !os.IsNotExist(err) && !nameTooLong(err) {
+	} else if !os.IsNotExist(err) && !legacyPartialNameTooLong(target, err) {
 		return nil, err
 	}
 	entries, err := os.ReadDir(filepath.Dir(target))
@@ -327,6 +327,26 @@ func localPartials(target string) ([]*ClientContent, error) {
 		}
 	}
 	return found, nil
+}
+
+// Windows may report ERROR_INVALID_NAME instead of ERROR_FILENAME_EXCED_RANGE
+// when the legacy suffix pushes a valid filename beyond 255 UTF-16 code units.
+// Do not suppress ERROR_INVALID_NAME for an otherwise short legacy name.
+func legacyPartialNameTooLong(target string, err error) bool {
+	if nameTooLong(err) {
+		return true
+	}
+	if runtime.GOOS != "windows" || !errors.Is(err, syscall.Errno(123)) {
+		return false
+	}
+	units := 0
+	for _, r := range filepath.Base(target + partSuffix) {
+		units++
+		if r > 0xffff {
+			units++
+		}
+	}
+	return units > 255
 }
 
 func removeLocalPartial(content *ClientContent) error {

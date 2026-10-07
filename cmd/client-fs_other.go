@@ -19,7 +19,7 @@
 
 package cmd
 
-import "github.com/rjeczalik/notify"
+import "github.com/soulteary/mc/internal/notify"
 
 var (
 	// EventTypePut contains the notify events that will cause a put (writer)

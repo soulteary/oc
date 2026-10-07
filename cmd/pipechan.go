@@ -16,7 +16,7 @@
 
 package cmd
 
-import "github.com/rjeczalik/notify"
+import "github.com/soulteary/mc/internal/notify"
 
 // PipeChan returns a bounded FIFO. Producers block once capacity is exhausted;
 // notify uses nonblocking sends and may drop events rather than growing memory.

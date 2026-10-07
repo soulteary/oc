@@ -24,7 +24,7 @@ import (
 	"strings"
 
 	"github.com/pkg/xattr"
-	"github.com/rjeczalik/notify"
+	"github.com/soulteary/mc/internal/notify"
 
 	"unicode/utf8"
 )

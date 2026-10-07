@@ -16,5 +16,6 @@ COPY --from=builder /out/oc /usr/bin/oc
 COPY --from=builder /src/CREDITS /licenses/CREDITS
 COPY --from=builder /src/LICENSE /licenses/LICENSE
 COPY --from=builder /src/NOTICE /licenses/NOTICE
+COPY --from=builder /src/internal/notify/LICENSE /licenses/notify-LICENSE
 RUN microdnf install ca-certificates --nodocs && microdnf clean all
 ENTRYPOINT ["oc"]

@@ -39,7 +39,16 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
-    files: [LICENSE, NOTICE, CREDITS, README.md, README_zh_CN.md, "docs/oc-phase*", docs/compatibility.json]
+    files:
+      - LICENSE
+      - NOTICE
+      - CREDITS
+      - src: internal/notify/LICENSE
+        dst: licenses/notify-LICENSE
+      - README.md
+      - README_zh_CN.md
+      - "docs/oc-phase*"
+      - docs/compatibility.json
 
 nfpms:
   - id: oc
@@ -58,6 +67,8 @@ nfpms:
         dst: /usr/share/doc/oc/NOTICE
       - src: CREDITS
         dst: /usr/share/doc/oc/CREDITS
+      - src: internal/notify/LICENSE
+        dst: /usr/share/doc/oc/notify-LICENSE
 
 checksum:
   name_template: checksums.txt

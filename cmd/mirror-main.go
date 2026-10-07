@@ -662,11 +662,14 @@ func (mj *mirrorJob) watchMirror(ctx context.Context, stopParallel func()) {
 			}
 		case <-periodic:
 			// Native backends can coalesce or lose events before our queue.
-			mj.verifyContents = mj.opts.watchVerifyInterval > 0 && !mj.opts.nextVerify.After(time.Now())
-			if mj.verifyContents {
+			verifyContents := mj.opts.watchVerifyInterval > 0 && !mj.opts.nextVerify.After(time.Now())
+			stopParallel()
+			// startMirror copies the options while scanning. Publish next-round
+			// state only after that scan and all copy workers have stopped.
+			mj.verifyContents = verifyContents
+			if verifyContents {
 				mj.opts.nextVerify = time.Now().Add(mj.opts.watchVerifyInterval)
 			}
-			stopParallel()
 			return
 		case <-mj.stopCh:
 			stopParallel()

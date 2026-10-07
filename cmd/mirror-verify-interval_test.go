@@ -38,3 +38,36 @@ func TestMirrorPeriodicScanDoesNotAlwaysVerify(t *testing.T) {
 		})
 	}
 }
+
+func TestMirrorPeriodicDeadlineWaitsForScanAndWorkers(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	job := &mirrorJob{watcher: NewWatcher(time.Now()), stopCh: make(chan struct{})}
+	job.watcher.localFilesystem = true
+	job.opts.watchRescanInterval = time.Millisecond
+	job.opts.watchVerifyInterval = time.Hour
+	stopping, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		job.watchMirror(ctx, func() { close(stopping); <-release })
+	}()
+	select {
+	case <-stopping:
+	case <-ctx.Done():
+		t.Fatal("periodic rescan never stopped workers")
+	}
+	// The initial scan can still be copying options while stopParallel waits.
+	unchanged := job.opts.nextVerify.IsZero() && !job.verifyContents
+	close(release)
+	select {
+	case <-done:
+	case <-ctx.Done():
+		t.Fatal("periodic rescan did not finish")
+	}
+	if !unchanged {
+		t.Fatal("next-round state changed before the current scan/workers stopped")
+	}
+	if !job.verifyContents || !job.opts.nextVerify.After(time.Now()) {
+		t.Fatal("next-round verification was not scheduled")
+	}
+}

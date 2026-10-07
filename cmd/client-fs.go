@@ -32,7 +32,7 @@ import (
 	"time"
 
 	"github.com/pkg/xattr"
-	"github.com/rjeczalik/notify"
+	"github.com/soulteary/mc/internal/notify"
 
 	minio "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
@@ -1255,7 +1255,11 @@ func (f *fsClient) Stat(ctx context.Context, opts StatOptions) (content *ClientC
 		for k, v := range metaData {
 			content.Metadata[k] = v
 		}
-		content.Metadata[metadataKey] = fileAttr
+		// Unsupported platforms return no attributes. An empty header is not a
+		// valid attribute record and would make local mirror/copy fail on write.
+		if fileAttr != "" {
+			content.Metadata[metadataKey] = fileAttr
+		}
 	}
 
 	return content, nil

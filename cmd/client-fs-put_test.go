@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -56,6 +57,33 @@ func TestFSPutWithStalePartial(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFSPreserveAttributeRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	source, target := filepath.Join(root, "source"), filepath.Join(root, "target")
+	if err := os.WriteFile(source, []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	client, err := fsNew(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := client.Stat(context.Background(), StatOptions{preserve: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attrs, present := content.Metadata[metadataKey]; present && attrs == "" {
+		t.Fatal("unsupported attributes were serialized as an invalid empty record")
+	}
+	destination, err := fsNew(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := destination.Put(context.Background(), strings.NewReader("data"), 4, nil, PutOptions{isPreserve: true, metadata: content.Metadata}); err != nil {
+		t.Fatal(err)
+	}
+	assertFSFileContents(t, target, "data")
 }
 
 func TestFSPutDoesNotFollowLegacyPartialSymlink(t *testing.T) {
@@ -204,6 +232,7 @@ func TestFSPutReplacedStagingDirectory(t *testing.T) {
 					source = fsFailingReader{}
 				}
 				var stage, moved string
+				var replacementBlocked bool
 				reader := &fsPutCallbackReader{Reader: source, before: func() {
 					entries, err := os.ReadDir(dir)
 					if err != nil {
@@ -219,6 +248,10 @@ func TestFSPutReplacedStagingDirectory(t *testing.T) {
 					}
 					moved = stage + "-moved"
 					if err := os.Rename(stage, moved); err != nil {
+						if runtime.GOOS == "windows" && (os.IsPermission(err) || errors.Is(err, syscall.Errno(32))) {
+							replacementBlocked = true
+							return
+						}
 						t.Fatal(err)
 					}
 					if replacement == "symlink" {
@@ -240,7 +273,29 @@ func TestFSPutReplacedStagingDirectory(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := client.Put(context.Background(), reader, -1, nil, PutOptions{}); err == nil {
+				_, putErr := client.Put(context.Background(), reader, -1, nil, PutOptions{})
+				if replacementBlocked {
+					if failure {
+						if putErr == nil {
+							t.Fatal("read failure was accepted")
+						}
+						assertFSFileContents(t, target, "original")
+					} else {
+						if putErr != nil {
+							t.Fatal(putErr)
+						}
+						assertFSFileContents(t, target, "new")
+					}
+					for _, name := range []string{partialDataName, partialManifestName} {
+						assertFSFileContents(t, filepath.Join(outside, name), "untouched")
+					}
+					entries, err := os.ReadDir(dir)
+					if err != nil || len(entries) != 1 || entries[0].Name() != "object" {
+						t.Fatalf("blocked replacement leaked staging: %v, %v", entries, err)
+					}
+					return
+				}
+				if putErr == nil {
 					t.Fatal("changed staging path was accepted")
 				}
 				assertFSFileContents(t, target, "original")
