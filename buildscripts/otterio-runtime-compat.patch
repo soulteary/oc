@@ -151,10 +151,10 @@ index 0000000..faa0154
 +}
 diff --git a/cmd/service_restart_darwin_test.go b/cmd/service_restart_darwin_test.go
 new file mode 100644
-index 0000000..4a80371
+index 0000000..6287051
 --- /dev/null
 +++ b/cmd/service_restart_darwin_test.go
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,125 @@
 +package cmd
 +
 +import (
@@ -245,8 +245,13 @@ index 0000000..4a80371
 +					t.Fatal(err)
 +				}
 +				deadline = time.Now().Add(5 * time.Second)
++				var received []byte
 +				for {
-+					if _, err := os.Stat(filepath.Join(root, "signal")); err == nil {
++					// File creation precedes WriteFile's contents. Wait for the
++					// acknowledgement, not just the directory entry.
++					data, err := os.ReadFile(filepath.Join(root, "signal"))
++					if err == nil && len(data) != 0 {
++						received = data
 +						break
 +					}
 +					if time.Now().After(deadline) {
@@ -259,7 +264,6 @@ index 0000000..4a80371
 +					}
 +					time.Sleep(10 * time.Millisecond)
 +				}
-+				received, _ := os.ReadFile(filepath.Join(root, "signal"))
 +				if string(received) != "terminated" {
 +					t.Fatalf("signal was not forwarded: %q", received)
 +				}
