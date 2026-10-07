@@ -106,60 +106,69 @@ func TestJSONErrorFlushNeverHoldsServerMutex(t *testing.T) {
 }
 
 func TestSlowJSONSocketFlushIsInterruptedByClose(t *testing.T) {
-	var handler *Server
-	finished := make(chan struct{})
-	backend := &fakeBackend{account: func(context.Context) (consoleapi.Account, error) {
-		return consoleapi.Account{Buckets: []consoleapi.AccountBucket{{Name: strings.Repeat("x", 8<<20)}}}, nil
-	}}
-	native := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/account" {
-			defer close(finished)
-		}
-		handler.ServeHTTP(w, r)
-	}))
-	var err error
-	handler, err = New(Config{Backend: backend, Alias: "local", BaseURL: "http://" + native.Listener.Addr().String(), LoginCode: "test-login-code"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	native.Start()
-	defer native.Close()
-	defer handler.Close()
-	login, _ := nativeJSON(t, native, "/api/login", map[string]string{"code": "test-login-code"}, nil, "")
-	connection, err := net.Dial("tcp", native.Listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Close()
-	if tcp, ok := connection.(*net.TCPConn); ok {
-		_ = tcp.SetReadBuffer(1024)
-	}
-	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
-	cookie := login.Cookies()[0]
-	_, err = io.WriteString(connection, "GET /api/account HTTP/1.1\r\nHost: "+native.Listener.Addr().String()+"\r\nCookie: "+cookie.Name+"="+cookie.Value+"\r\n\r\n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, err := http.ReadResponse(bufio.NewReader(connection), &http.Request{Method: http.MethodGet})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	if response.ContentLength < 8<<20 || len(response.TransferEncoding) != 0 {
-		t.Fatal("JSON response did not use known content length")
-	}
-	// Keep the browser from receiving the body until the server fills its send
-	// buffer and blocks in the real Write/Flush path.
-	time.Sleep(50 * time.Millisecond)
-	select {
-	case <-finished:
-		t.Fatal("could not establish a blocked JSON socket write")
-	default:
-	}
-	_ = handler.Close()
-	waitSignal(t, finished)
-	if _, err := io.ReadAll(response.Body); err == nil {
-		t.Fatal("canceled partial JSON looked complete")
+	for _, size := range []int{16, 64 << 10} {
+		t.Run(map[int]string{16: "buffered-flush", 64 << 10: "large-write"}[size], func(t *testing.T) {
+			var handler *Server
+			finished := make(chan struct{})
+			backend := &fakeBackend{account: func(context.Context) (consoleapi.Account, error) {
+				return consoleapi.Account{Buckets: []consoleapi.AccountBucket{{Name: strings.Repeat("x", size)}}}, nil
+			}}
+			native := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/account" {
+					defer close(finished)
+				}
+				handler.ServeHTTP(w, r)
+			}))
+			gate := &responseGateListener{Listener: native.Listener, mode: "json-body", entered: make(chan time.Time, 1)}
+			native.Listener = gate
+			var err error
+			handler, err = New(Config{Backend: backend, Alias: "local", BaseURL: "http://" + native.Listener.Addr().String(), LoginCode: "test-login-code"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			native.Start()
+			t.Cleanup(func() { _ = handler.Close(); native.CloseClientConnections(); native.Close() })
+			login, _ := nativeJSON(t, native, "/api/login", map[string]string{"code": "test-login-code"}, nil, "")
+			connection, err := net.Dial("tcp", native.Listener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer connection.Close()
+			_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
+			cookie := login.Cookies()[0]
+			_, err = io.WriteString(connection, "GET /api/account HTTP/1.1\r\nHost: "+native.Listener.Addr().String()+"\r\nCookie: "+cookie.Name+"="+cookie.Value+"\r\n\r\n")
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := http.ReadResponse(bufio.NewReader(connection), &http.Request{Method: http.MethodGet})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusOK || response.ContentLength < int64(size) || len(response.TransferEncoding) != 0 {
+				t.Fatal("JSON response did not use known content length")
+			}
+			// Wait for the body write itself instead of assuming that the operating
+			// system's socket buffers cannot absorb a fixed-size JSON response.
+			select {
+			case deadline := <-gate.entered:
+				if !deadline.After(time.Now()) {
+					t.Fatal("JSON body has no active write deadline")
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("JSON body write never reached the socket gate")
+			}
+			select {
+			case <-finished:
+				t.Fatal("could not establish a blocked JSON socket write")
+			default:
+			}
+			_ = handler.Close()
+			waitSignal(t, finished)
+			if _, err := io.ReadAll(response.Body); err == nil {
+				t.Fatal("canceled partial JSON looked complete")
+			}
+		})
 	}
 }
 

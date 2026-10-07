@@ -19,8 +19,8 @@ import (
 )
 
 // The listener uses real HTTP connections but stalls one selected socket write.
-// This makes otherwise tiny empty headers/final chunks deterministically block.
-type downloadGateListener struct {
+// This makes headers, JSON bodies and final chunks deterministically block.
+type responseGateListener struct {
 	net.Listener
 	mode    string
 	entered chan time.Time
@@ -29,7 +29,7 @@ type downloadGateListener struct {
 	accepts int
 }
 
-func (l *downloadGateListener) Accept() (net.Conn, error) {
+func (l *responseGateListener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
 		return nil, err
@@ -37,12 +37,13 @@ func (l *downloadGateListener) Accept() (net.Conn, error) {
 	l.mu.Lock()
 	l.accepts++
 	l.mu.Unlock()
-	return &downloadGateConn{Conn: conn, owner: l, changed: make(chan struct{}, 1), closed: make(chan struct{})}, nil
+	return &responseGateConn{Conn: conn, owner: l, changed: make(chan struct{}, 1), closed: make(chan struct{})}, nil
 }
 
-func (l *downloadGateListener) selectWrite(data []byte) bool {
+func (l *responseGateListener) selectWrite(data []byte) bool {
 	match := l.mode == "headers" && bytes.Contains(data, []byte("Content-Disposition: attachment")) ||
-		l.mode == "final-chunk" && bytes.Equal(data, []byte("0\r\n\r\n"))
+		l.mode == "final-chunk" && bytes.Equal(data, []byte("0\r\n\r\n")) ||
+		l.mode == "json-body" && bytes.Contains(data, []byte(`{"buckets":`))
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if !match || l.blocked {
@@ -52,9 +53,9 @@ func (l *downloadGateListener) selectWrite(data []byte) bool {
 	return true
 }
 
-type downloadGateConn struct {
+type responseGateConn struct {
 	net.Conn
-	owner    *downloadGateListener
+	owner    *responseGateListener
 	mu       sync.Mutex
 	deadline time.Time
 	changed  chan struct{}
@@ -62,7 +63,7 @@ type downloadGateConn struct {
 	once     sync.Once
 }
 
-func (c *downloadGateConn) SetWriteDeadline(deadline time.Time) error {
+func (c *responseGateConn) SetWriteDeadline(deadline time.Time) error {
 	c.mu.Lock()
 	c.deadline = deadline
 	c.mu.Unlock()
@@ -73,14 +74,26 @@ func (c *downloadGateConn) SetWriteDeadline(deadline time.Time) error {
 	return c.Conn.SetWriteDeadline(deadline)
 }
 
-func (c *downloadGateConn) Close() error {
+func (c *responseGateConn) Close() error {
 	c.once.Do(func() { close(c.closed) })
 	return c.Conn.Close()
 }
 
-func (c *downloadGateConn) Write(data []byte) (int, error) {
+func (c *responseGateConn) Write(data []byte) (int, error) {
 	if !c.owner.selectWrite(data) {
 		return c.Conn.Write(data)
+	}
+	written := 0
+	if c.owner.mode == "json-body" {
+		// net/http may combine headers and JSON in one socket write. Let the
+		// client inspect the headers before stalling the body, in either case.
+		if end := bytes.Index(data, []byte("\r\n\r\n")); end >= 0 {
+			var err error
+			written, err = c.Conn.Write(data[:end+4])
+			if err != nil {
+				return written, err
+			}
+		}
 	}
 	c.mu.Lock()
 	installed := c.deadline
@@ -99,7 +112,7 @@ func (c *downloadGateConn) Write(data []byte) (int, error) {
 		var timer *time.Timer
 		if !deadline.IsZero() {
 			if !deadline.After(time.Now()) {
-				return 0, os.ErrDeadlineExceeded
+				return written, os.ErrDeadlineExceeded
 			}
 			timer = time.NewTimer(time.Until(deadline))
 			timeout = timer.C
@@ -109,9 +122,9 @@ func (c *downloadGateConn) Write(data []byte) (int, error) {
 			if timer != nil {
 				timer.Stop()
 			}
-			return 0, net.ErrClosed
+			return written, net.ErrClosed
 		case <-timeout:
-			return 0, os.ErrDeadlineExceeded
+			return written, os.ErrDeadlineExceeded
 		case <-c.changed:
 			if timer != nil {
 				timer.Stop()
@@ -120,7 +133,7 @@ func (c *downloadGateConn) Write(data []byte) (int, error) {
 	}
 }
 
-func gatedDownloadConsole(t *testing.T, backend consoleapi.Backend, mode string) (*Server, *httptest.Server, *downloadGateListener, <-chan struct{}) {
+func gatedDownloadConsole(t *testing.T, backend consoleapi.Backend, mode string) (*Server, *httptest.Server, *responseGateListener, <-chan struct{}) {
 	t.Helper()
 	var handler *Server
 	finished := make(chan struct{})
@@ -130,7 +143,7 @@ func gatedDownloadConsole(t *testing.T, backend consoleapi.Backend, mode string)
 		}
 		handler.ServeHTTP(w, r)
 	}))
-	gate := &downloadGateListener{Listener: native.Listener, mode: mode, entered: make(chan time.Time, 1)}
+	gate := &responseGateListener{Listener: native.Listener, mode: mode, entered: make(chan time.Time, 1)}
 	native.Listener = gate
 	var err error
 	handler, err = New(Config{Backend: backend, Alias: "local", BaseURL: "http://" + native.Listener.Addr().String(), LoginCode: "test-login-code"})
@@ -148,6 +161,9 @@ func TestEmptyDownloadHeadersFlushUnderCancelableDeadline(t *testing.T) {
 	}}
 	handler, native, gate, finished := gatedDownloadConsole(t, backend, "headers")
 	login, _ := nativeJSON(t, native, "/api/login", map[string]string{"code": "test-login-code"}, nil, "")
+	// A GET on a reused login connection may be retried when cancellation
+	// prevents any response headers from arriving. Test a single fresh request.
+	native.Client().CloseIdleConnections()
 	request, _ := http.NewRequest(http.MethodGet, native.URL+"/api/download?bucket=bucket&key=empty", nil)
 	request.AddCookie(login.Cookies()[0])
 	result := make(chan error, 1)
