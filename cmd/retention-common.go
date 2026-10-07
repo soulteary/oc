@@ -108,15 +108,15 @@ func (m retentionBucketMessage) JSON() string {
 	return string(msgBytes)
 }
 
-func getRetainUntilDate(validity uint64, unit minio.ValidityUnit) (string, *probe.Error) {
-	if validity == 0 || validity > uint64(^uint(0)>>1) {
+func getRetainUntilDate(validity int, unit minio.ValidityUnit) (string, *probe.Error) {
+	if validity <= 0 {
 		return "", probe.NewError(fmt.Errorf("invalid validity '%v'", validity))
 	}
 	t := UTCNow()
 	if unit == minio.Years {
-		t = t.AddDate(int(validity), 0, 0)
+		t = t.AddDate(validity, 0, 0)
 	} else {
-		t = t.AddDate(0, 0, int(validity))
+		t = t.AddDate(0, 0, validity)
 	}
 	timeStr := t.Format(time.RFC3339)
 
@@ -148,13 +148,14 @@ func setRetentionSingle(ctx context.Context, op lockOpType, alias, url, versionI
 	return err
 }
 
-func parseRetentionValidity(validityStr string) (uint64, minio.ValidityUnit, *probe.Error) {
+func parseRetentionValidity(validityStr string) (int, minio.ValidityUnit, *probe.Error) {
 	unitStr := string(validityStr[len(validityStr)-1])
 	validityStr = validityStr[:len(validityStr)-1]
-	validity, e := strconv.ParseUint(validityStr, 10, 64)
+	parsedValidity, e := strconv.ParseInt(validityStr, 10, 32)
 	if e != nil {
 		return 0, "", probe.NewError(e).Trace(validityStr)
 	}
+	validity := int(parsedValidity)
 
 	var unit minio.ValidityUnit
 	switch unitStr {
