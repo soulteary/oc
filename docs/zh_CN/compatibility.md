@@ -89,6 +89,10 @@ SDK 流修复、SDK 拆分和 SDK 独立发布仍列为暂缓事项。CLI 迁移
 和 [OtterIO PR #30](https://github.com/soulteary/otterio/pull/30)。CLI 快照、程序模块清单和
 联合验收报告由关联工作流上传，可在对应检查中下载。
 
+当前合同覆盖 OC 339 项、OtterIO 133 项 CLI 调用。批准的 health 用法错误渲染修复，
+将旧版 panic 和退出码 2 改为具体参数错误和退出码 1。非法健康选择器、时长、布尔值
+及未知参数各有独立精确批准差异；范围与保留的原始证据见 [CLI 迁移说明](../cli-migration.md)。
+
 [阶段二](../oc-phase-two.md) 记录核心入口和 CA 验收；[阶段三](../oc-phase-three.md) 及其 [结果](../oc-phase-three-results.json) 记录迁移和高级操作；[阶段四](../oc-phase-four.md) 及其 [结果](../oc-phase-four-results.json) 记录稳定性和后续联合审查，包括二进制哈希及本地平台信息。
 
 这些文档是历史实现与验证记录。其中早期关于发布功能禁用的说明描述的是对应阶段；当前发布流程以 [发行说明](releasing.md) 为准。部分完成的报告和跳过的测试不能算作完整矩阵通过。

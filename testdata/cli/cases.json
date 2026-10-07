@@ -1604,6 +1604,37 @@
         "help",
         "legalhold"
       ]
+    },
+    {
+      "id": "health-deadline-invalid",
+      "argv": [
+        "admin",
+        "subnet",
+        "health",
+        "--deadline",
+        "wrong"
+      ],
+      "comparison": "legacy-panic"
+    },
+    {
+      "id": "health-dev-invalid",
+      "argv": [
+        "admin",
+        "subnet",
+        "health",
+        "--dev=wrong"
+      ],
+      "comparison": "legacy-panic"
+    },
+    {
+      "id": "health-unknown-flag",
+      "argv": [
+        "admin",
+        "subnet",
+        "health",
+        "--unknown"
+      ],
+      "comparison": "legacy-panic"
     }
   ]
 }

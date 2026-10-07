@@ -91,6 +91,12 @@ The current CLI migration and its exact-commit checks are tracked in
 CLI reports, compiled-module inventories and joint acceptance reports are
 uploaded by the workflows linked from those checks.
 
+The current catalogs cover 339 OC and 133 OtterIO CLI invocations. The reviewed
+health usage-error renderer fix replaces the archived panic and exit code 2
+with a specific argument error and exit code 1. Invalid selectors, durations,
+booleans and unknown flags have separate exact approved deltas; see
+[CLI migration](cli-migration.md) for their scope and retained raw evidence.
+
 [Phase two](oc-phase-two.md) describes core endpoint and CA acceptance. [Phase three](oc-phase-three.md) and its [results](oc-phase-three-results.json) describe migration and extended operations. [Phase four](oc-phase-four.md) and its [results](oc-phase-four-results.json) record stability and subsequent joint review, including binary hashes and local platform details.
 
 These are historical implementation and validation records. Their earlier statements about release work being disabled describe that stage; current publication procedures are in [releasing](releasing.md). A partially completed report or a skipped test must not be presented as a complete passing matrix.

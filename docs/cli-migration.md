@@ -26,10 +26,12 @@ Root and grouped help retain the logical `oc` name. Direct leaf help retains the
 executable basename, including `oc.exe` or a renamed executable, following the
 previous `HelpName` rules.
 
-The one reviewed behavior correction is an invalid command-line health
-selector: the old implementation panicked with exit code 2 while rendering
-usage. OC now reports the validation error and exits with code 1. Its exact
-output is recorded in [approved-deltas.json](../testdata/cli/approved-deltas.json).
+The reviewed behavior correction fixes CLI usage errors that reach the health
+command's error renderer: the old implementation panicked with exit code 2
+while displaying its custom flag. OC now reports the specific argument error
+with supported flags and exits with code 1. Invalid `--test`, `--deadline` and
+`--dev` values and an unknown flag each have an exact snapshot in
+[approved-deltas.json](../testdata/cli/approved-deltas.json).
 
 `cmd/cli-support.go` contains only the application-specific scope, lifecycle and
 presentation rules. Commands and flags use native v3 types. There is no vendored
@@ -49,11 +51,13 @@ python3 buildscripts/cli_contract.py check \
   --output /absolute/path/to/cli-contract.json
 ```
 
-The case catalogs cover 336 OC and 133 OtterIO invocations. Reports retain raw
-stdout, stderr, exit codes, configuration effects and binary identity. Only
-completion line ordering is normalized; duplicate candidates remain significant.
-The approved health correction is checked explicitly. Catalog changes require
-an old-binary baseline and cannot silently refresh expected results.
+The case catalogs cover 339 OC and 133 OtterIO invocations. Reports retain raw
+stdout, stderr, exit codes, configuration effects and binary identity.
+Completion line ordering is normalized; duplicate candidates remain significant.
+The four health renderer cases use separate exact approved deltas. Their archived
+panic comparison retains the stable first line, exit code and configuration
+effects; the full raw stack remains in the report. Catalog changes require an
+old-binary baseline and cannot silently refresh expected results.
 
 [CLI CI](../.github/workflows/cli-compat.yml) builds both revisions on Linux,
 macOS and Windows. [Joint CI](../.github/workflows/go.yml) builds the exact remote
@@ -103,10 +107,12 @@ OC 和固定版本的 OtterIO 统一采用 `urfave/cli/v3 v3.14.0`。准确模�
 根级及分组帮助保留逻辑名称 `oc`；顶层叶子帮助保留真实可执行文件名，包括 `oc.exe`
 及重命名的程序，与旧版 `HelpName` 行为一致。
 
-唯一批准的行为修正是非法命令行健康参数：原版渲染帮助时 panic 并退出 2，现改为
-正常参数错误并退出 1。此差异有独立精确快照，其他差异不能借此放行。
+批准的行为修正是 health 命令用法错误渲染中的同一缺陷：进入该流程的 CLI 参数错误，
+原版在显示自定义参数时 panic 并退出 2，现输出具体参数错误及支持的参数，退出 1。
+非法 `--test`、`--deadline`、`--dev` 值和未知参数各有独立精确快照，其他差异不能
+借此放行。旧 panic 比较保留稳定首行、退出码和配置副作用，报告仍保存完整原始堆栈。
 
-冻结基线覆盖 OC 336 项、OtterIO 133 项。CI 在同一平台构建旧、新程序，核对 stdout、
+冻结基线覆盖 OC 339 项、OtterIO 133 项。CI 在同一平台构建旧、新程序，核对 stdout、
 stderr、退出码及配置副作用，再使用可下载的固定 OtterIO 模块进行联合验证。
 历史补丁保留作为旧报告的证据，当前构建无需应用。公共 gateway Go API 的工厂签名
 需要外部插件重新编译。`ilm.GetLifecycleOptions`、`GetHealthDataTypeSlice` 和
