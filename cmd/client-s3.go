@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -2169,7 +2170,7 @@ func (c *S3Client) ShareUpload(ctx context.Context, isRecursive bool, expires ti
 func (c *S3Client) SetObjectLockConfig(ctx context.Context, mode minio.RetentionMode, validity uint64, unit minio.ValidityUnit) *probe.Error {
 	bucket, _ := c.url2BucketAndObject()
 
-	if validity > uint64(^uint(0)) {
+	if validity > uint64(math.MaxInt32) {
 		return errInvalidArgument().Trace(c.GetURL().String())
 	}
 
