@@ -177,11 +177,19 @@ func setRetentionSingle(ctx context.Context, op lockOpType, alias, url, versionI
 }
 
 func parseRetentionValidity(validityStr string) (uint64, minio.ValidityUnit, *probe.Error) {
+	if len(validityStr) < 2 {
+		return 0, "", errInvalidArgument().Trace(validityStr)
+	}
+
 	unitStr := string(validityStr[len(validityStr)-1])
 	validityStr = validityStr[:len(validityStr)-1]
-	validity, e := strconv.ParseUint(validityStr, 10, 64)
+	// 31 unsigned bits fit the positive range of int on 32-bit platforms.
+	validity, e := strconv.ParseUint(validityStr, 10, 31)
 	if e != nil {
 		return 0, "", probe.NewError(e).Trace(validityStr)
+	}
+	if validity == 0 {
+		return 0, "", errInvalidArgument().Trace(validityStr)
 	}
 
 	var unit minio.ValidityUnit
