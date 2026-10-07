@@ -11,26 +11,32 @@ TAG = "RELEASE.2026-10-04T07-00-00Z"
 
 class ImageReferenceTests(unittest.TestCase):
     def probe(self, reference, expected, error=None, exit_code=1):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix="oc image refs ") as directory:
             docker = Path(directory) / "docker"
-            docker.write_text(
-                '#!/bin/sh\n'
-                '[ "$#" -eq 4 ] && [ "$1 $2 $3" = "buildx imagetools inspect" ] || exit 98\n'
-                'printf "%s" "$4" > "$MOCK_CAPTURE"\n'
-                'printf "%s\\n" "$MOCK_ERROR" >&2\n'
-                'exit "$MOCK_EXIT"\n'
+            # Native Windows text writes would put CRLF in the shebang.
+            docker.write_bytes(
+                b'#!/bin/sh\n'
+                b'[ "$#" -eq 4 ] && [ "$1 $2 $3" = "buildx imagetools inspect" ] || exit 98\n'
+                b'printf "%s" "$4" > "$MOCK_CAPTURE"\n'
+                b'printf "%s\\n" "$MOCK_ERROR" >&2\n'
+                b'exit "$MOCK_EXIT"\n'
             )
             docker.chmod(0o755)
             capture = Path(directory) / "reference"
             env = dict(
-                os.environ, MOCK_CAPTURE=str(capture), MOCK_EXIT=str(exit_code),
+                os.environ, MOCK_CAPTURE=capture.name, MOCK_EXIT=str(exit_code),
                 MOCK_ERROR=error if error is not None else "ERROR: " + expected + ": not found",
             )
-            env["PATH"] = directory + os.pathsep + env.get("PATH", "")
             result = subprocess.run(
-                ["bash", str(GUARD), reference], env=env,
+                # Let Bash add its own POSIX working directory to PATH; native
+                # Windows paths are not suitable for shell PATH/redirection.
+                ["bash", "-c", 'export PATH="$PWD:$PATH"; exec bash "$1" "$2"',
+                 "image-reference-test", GUARD.as_posix(), reference],
+                cwd=directory, env=env,
                 text=True, capture_output=True, timeout=10,
             )
+            self.assertTrue(capture.is_file(),
+                            f"mock Docker did not run (exit {result.returncode}): {result.stderr}")
             self.assertEqual(capture.read_text(), expected)
             return result
 
