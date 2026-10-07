@@ -2170,6 +2170,8 @@ func (c *S3Client) ShareUpload(ctx context.Context, isRecursive bool, expires ti
 func (c *S3Client) SetObjectLockConfig(ctx context.Context, mode minio.RetentionMode, validity uint64, unit minio.ValidityUnit) *probe.Error {
 	bucket, _ := c.url2BucketAndObject()
 
+	// S3's DefaultRetention Days and Years fields are signed 32-bit integers.
+	// Use that model's bound before converting to the SDK's platform-sized uint.
 	if validity > uint64(math.MaxInt32) {
 		return errInvalidArgument().Trace(c.GetURL().String())
 	}

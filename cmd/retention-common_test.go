@@ -49,14 +49,15 @@ func TestGetRetainUntilDate(t *testing.T) {
 }
 
 func TestSetObjectLockConfigRejectsOverflow(t *testing.T) {
-	if strconv.IntSize != 32 {
-		t.Skip("all uint64 values fit in uint on 64-bit platforms")
-	}
 	client := &S3Client{targetURL: &ClientURL{Scheme: "http", Host: "localhost", Path: "/bucket"}}
-	for _, validity := range []uint64{uint64(^uint32(0)) + 1, ^uint64(0)} {
-		// The nil SDK client ensures rejection happens before any API call.
-		if err := client.SetObjectLockConfig(context.Background(), minio.Governance, validity, minio.Days); err == nil {
-			t.Fatalf("SetObjectLockConfig accepted overflowing validity %d", validity)
+	for _, unit := range []minio.ValidityUnit{minio.Days, minio.Years} {
+		for _, validity := range []uint64{uint64(1) << 31, uint64(^uint32(0)) + 1, ^uint64(0)} {
+			t.Run(string(unit)+"/"+strconv.FormatUint(validity, 10), func(t *testing.T) {
+				// The nil SDK client ensures rejection happens before any API call.
+				if err := client.SetObjectLockConfig(context.Background(), minio.Governance, validity, unit); err == nil {
+					t.Fatalf("SetObjectLockConfig accepted overflowing validity %d", validity)
+				}
+			})
 		}
 	}
 }
