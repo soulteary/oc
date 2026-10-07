@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags: ['RELEASE.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing RELEASE.YYYY-MM-DDTHH-MM-SSZ tag'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oc-release-publication
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and verify timestamp release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          fetch-depth: 0
+      - name: Validate existing tag and source
+        id: meta
+        run: python3 buildscripts/release-preflight.py --existing "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+      - name: Require successful main checks for the exact source
+        env:
+          RELEASE_SHA: ${{ steps.meta.outputs.sha }}
+        run: |
+          set -euo pipefail
+          for workflow in go.yml codeql.yml; do
+            result="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs?head_sha=${RELEASE_SHA}&branch=main&event=push&per_page=1" --jq '.workflow_runs[0] | [.status, .conclusion] | @tsv')"
+            if [ "$result" != $'completed\tsuccess' ]; then
+              echo "::error::${workflow} must succeed on main at ${RELEASE_SHA}."
+              exit 1
+            fi
+          done
+      - name: Refuse published releases and prerelease drafts
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | select(.draft != true or .prerelease != false) | .tag_name' > "$RUNNER_TEMP/unavailable-tags"
+          if grep -Fxq -- "$RELEASE_TAG" "$RUNNER_TEMP/unavailable-tags"; then
+            echo '::error::Use a new tag; published releases cannot be rebuilt or overwritten.'
+            exit 1
+          fi
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build eleven target archives with source identity and licenses
+        run: python3 buildscripts/build-release.py "$RELEASE_TAG" --output "$RUNNER_TEMP/oc-release"
+      - name: Smoke test the packaged Linux amd64 executable
+        run: |
+          set -euo pipefail
+          smoke_dir="$(mktemp -d)"
+          tar -xzf "$RUNNER_TEMP/oc-release/oc-${RELEASE_TAG}-linux-amd64.tar.gz" -C "$smoke_dir"
+          binary="$smoke_dir/oc-${RELEASE_TAG}-linux-amd64/oc"
+          "$binary" --version | grep -F -- "$RELEASE_TAG"
+          "$binary" --help >/dev/null
+      - name: Recheck the tag and checksums before publication
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          python3 buildscripts/release-preflight.py --existing "$RELEASE_TAG"
+          (cd "$RUNNER_TEMP/oc-release" && sha256sum -c checksums.txt)
+      - name: Upload to a stable draft and verify every downloaded asset
+        env:
+          RELEASE_SHA: ${{ steps.meta.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[]' | jq -s --arg tag "$RELEASE_TAG" '[.[] | select(.tag_name == $tag)]' > "$RUNNER_TEMP/release-state.json"
+          if jq -e 'length == 0' "$RUNNER_TEMP/release-state.json" >/dev/null; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --target "$RELEASE_SHA" --title "OC $RELEASE_TAG" --notes-file RELEASE_NOTES.md --latest=false
+          else
+            jq -e 'length == 1 and .[0].draft == true and .[0].prerelease == false' "$RUNNER_TEMP/release-state.json" >/dev/null
+          fi
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/oc-release/"* --repo "$GITHUB_REPOSITORY" --clobber
+          verify_dir="$(mktemp -d)"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$verify_dir"
+          diff <(find "$RUNNER_TEMP/oc-release" -maxdepth 1 -type f -printf '%f\n' | sort) <(find "$verify_dir" -maxdepth 1 -type f -printf '%f\n' | sort)
+          for asset in "$RUNNER_TEMP/oc-release/"*; do cmp "$asset" "$verify_dir/$(basename "$asset")"; done
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
