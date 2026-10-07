@@ -2,6 +2,8 @@
 
 OC 是 OtterIO 的命令行客户端，提供文件系统与 S3 对象操作，以及 OtterIO 专属管理命令。项目继承 MinIO Client 的 Apache 2.0 代码；原始归属信息保留在 LICENSE、NOTICE 和源文件中。
 
+发布步骤与附件校验见[OC 发布指南](docs/releasing.md)。
+
 ## 构建
 
 使用 `go.mod` 指定的 Go 工具链：

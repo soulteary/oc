@@ -4,6 +4,8 @@ OC provides filesystem and S3 object operations together with OtterIO administra
 
 [中文说明](README_zh_CN.md)
 
+Release instructions and asset verification: [releasing OC](docs/releasing.md).
+
 ## Build and connect
 
 Use the Go toolchain declared in `go.mod`:
