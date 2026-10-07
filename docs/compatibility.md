@@ -63,6 +63,8 @@ The current [budget values](compatibility.json) are:
 
 The harness transfers 65 MiB objects with concurrency 1 and 4, verifies downloaded bytes, checks cancellation and multipart cleanup, and exercises throttled and interrupted connections. CI requests 30 seconds of soak sampling; the recorded local acceptance also contains 60-second sampling.
 
+Console write acceptance uses five fixed CLI/console upload pairs with alternating order. Every object is downloaded and checked for size and SHA256. The median pair ratio must remain at least 50%, and median console throughput at least 5 MiB/s; all observations are retained without extra trials after a failure.
+
 These are regression gates, not production sizing advice or a performance SLA. RSS is sampled every 100 ms for the main OC process on Linux/macOS; it does not include the whole process tree or server, and sampling can miss short peaks. Throughput includes process startup and local filesystem overhead. A 30- or 60-second sample does not prove long-duration stability. Use your own representative workload before adopting a deployment.
 
 ## Features requiring separate acceptance
@@ -82,6 +84,12 @@ Live notifications have no durable replay cursor. Reconnecting cannot guarantee 
 SDK stream fixes, SDK extraction and an independently released SDK remain deferred in the baseline. The CLI migration updates the pinned SDK source; SDK stream delivery behavior remains outside this change. `MC_*` environment compatibility remains throughout OC 0.x; removal requires at least one minor-release notice. See [migration](migration.md).
 
 ## Read the recorded evidence
+
+The current CLI migration and its exact-commit checks are tracked in
+[OC PR #7](https://github.com/soulteary/oc/pull/7) and
+[OtterIO PR #30](https://github.com/soulteary/otterio/pull/30).
+CLI reports, compiled-module inventories and joint acceptance reports are
+uploaded by the workflows linked from those checks.
 
 [Phase two](oc-phase-two.md) describes core endpoint and CA acceptance. [Phase three](oc-phase-three.md) and its [results](oc-phase-three-results.json) describe migration and extended operations. [Phase four](oc-phase-four.md) and its [results](oc-phase-four-results.json) record stability and subsequent joint review, including binary hashes and local platform details.
 

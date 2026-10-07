@@ -46,7 +46,7 @@ python3 buildscripts/cli_contract.py check \
   --output /absolute/path/to/cli-contract.json
 ```
 
-The case catalogs cover 334 OC and 133 OtterIO invocations. Reports retain raw
+The case catalogs cover 336 OC and 133 OtterIO invocations. Reports retain raw
 stdout, stderr, exit codes, configuration effects and binary identity. Only
 completion line ordering is normalized; duplicate candidates remain significant.
 The approved health correction is checked explicitly. Catalog changes require
@@ -80,7 +80,9 @@ receive `context.Context` and `*cli.Command`. The factory must return fresh
 commands and flags on every call. `GlobalFlags()` and `ServerFlags()` return new
 flag sets. The backend action calls
 `StartGateway(context.Context, *cli.Command, Gateway) error`.
-See [OtterIO's API migration guide](https://github.com/soulteary/otterio/blob/be3667100d6bef4146913c6a526e2b4690a6018a/docs/cli-migration.md)
+Old integer-list gateway flags must explicitly set
+`Config: cli.IntegerConfig{Base: 10}` to retain decimal parsing.
+See [OtterIO's API migration guide](https://github.com/soulteary/otterio/blob/af83288d39ef62a44f62f8fff69a5aae93023d99/docs/cli-migration.md)
 before rebuilding an external gateway plugin.
 
 ---
@@ -99,10 +101,11 @@ OC 和固定版本的 OtterIO 统一采用 `urfave/cli/v3 v3.14.0`。准确模�
 唯一批准的行为修正是非法命令行健康参数：原版渲染帮助时 panic 并退出 2，现改为
 正常参数错误并退出 1。此差异有独立精确快照，其他差异不能借此放行。
 
-冻结基线覆盖 OC 334 项、OtterIO 133 项。CI 在同一平台构建旧、新程序，核对 stdout、
+冻结基线覆盖 OC 336 项、OtterIO 133 项。CI 在同一平台构建旧、新程序，核对 stdout、
 stderr、退出码及配置副作用，再使用可下载的固定 OtterIO 模块进行联合验证。
 历史补丁保留作为旧报告的证据，当前构建无需应用。公共 gateway Go API 的工厂签名
 需要外部插件重新编译。`ilm.GetLifecycleOptions`、`GetHealthDataTypeSlice` 和
 `GetGlobalHealthDataTypeSlice` 的参数改为 `*cli.Command`；原 `HealthDataTypeFlag`
 改用 `cli.GenericFlag{Value: &cmd.HealthDataTypeSlice{}}`。普通 CLI 用户无需改写已有命令。完整测试范围及已知验收边界
 见[兼容性说明](zh_CN/compatibility.md)。
+外部 gateway 的旧整数列表参数还需显式设置 `cli.IntegerConfig{Base: 10}`，保留十进制规则。

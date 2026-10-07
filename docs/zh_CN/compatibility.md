@@ -63,6 +63,8 @@ windows/arm64
 
 工具使用 65 MiB 对象和 1、4 两种并发数，核对下载内容，检查取消与分片清理，并测试限速及中断连接。CI 请求 30 秒持续采样，已有本地验收记录还包含 60 秒采样。
 
+Console 写入验收固定测量五组 CLI / console 配对上传，交替先后顺序，并逐个下载核对大小与 SHA256。配对速度比的中位数必须至少为 50%，console 中位吞吐至少为 5 MiB/s；保留全部样本，失败后不追加采样。
+
 这些是严重回归的检查阈值，不是生产容量建议或性能 SLA。Linux / macOS 每 100 ms 采样一次 OC 主进程 RSS，不统计整棵进程树和服务端，也可能错过短暂峰值。吞吐包含程序启动和本机文件系统开销。30 或 60 秒采样不能证明长时间稳定性；部署前仍需使用自己的代表性负载验证。
 
 ## 需要独立验收的功能
@@ -82,6 +84,10 @@ windows/arm64
 SDK 流修复、SDK 拆分和 SDK 独立发布仍列为暂缓事项。CLI 迁移更新了 SDK 固定源码版本，SDK 的流投递行为不在本次变更范围内。`MC_*` 在 OC 0.x 系列内继续兼容，移除前至少提前一个次版本公告，见 [迁移说明](migration.md)。
 
 ## 查看验证记录
+
+当前 CLI 迁移及对应提交的检查见 [OC PR #7](https://github.com/soulteary/oc/pull/7)
+和 [OtterIO PR #30](https://github.com/soulteary/otterio/pull/30)。CLI 快照、程序模块清单和
+联合验收报告由关联工作流上传，可在对应检查中下载。
 
 [阶段二](../oc-phase-two.md) 记录核心入口和 CA 验收；[阶段三](../oc-phase-three.md) 及其 [结果](../oc-phase-three-results.json) 记录迁移和高级操作；[阶段四](../oc-phase-four.md) 及其 [结果](../oc-phase-four-results.json) 记录稳定性和后续联合审查，包括二进制哈希及本地平台信息。
 

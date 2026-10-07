@@ -55,7 +55,7 @@ jobs:
           export OC_TEST_BASH
           go mod download
           python3 buildscripts/test-maintenance.py
-          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p test_console_identity.py -v
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_console_*.py' -v
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_release_*.py' -v
           python3 buildscripts/verify-release-boundaries.py
           go mod verify

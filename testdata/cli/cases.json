@@ -1588,6 +1588,22 @@
         "help",
         "--unknown"
       ]
+    },
+    {
+      "id": "help-command-retention-parent-topic",
+      "argv": [
+        "retention",
+        "help",
+        "retention"
+      ]
+    },
+    {
+      "id": "help-command-legalhold-parent-topic",
+      "argv": [
+        "legalhold",
+        "help",
+        "legalhold"
+      ]
     }
   ]
 }
