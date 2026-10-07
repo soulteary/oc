@@ -647,35 +647,64 @@ func (f *fsClient) List(ctx context.Context, opts ListOptions) <-chan *ClientCon
 	if opts.Incomplete {
 		return f.listLocalPartials(ctx, opts.Recursive)
 	}
+	return f.listIsolated(ctx, opts)
+}
+
+// Run only inside the listing helper: filesystem calls may block independently
+// of context, so the caller owns the helper's process and communication pipes.
+func (f *fsClient) listInProcess(ctx context.Context, opts ListOptions) <-chan *ClientContent {
 	contentCh := make(chan *ClientContent)
 	filteredCh := make(chan *ClientContent)
-
-	if opts.Recursive {
-		if opts.ShowDir == DirNone {
-			go f.listRecursiveInRoutine(contentCh, opts.WithMetadata)
-		} else {
-			go f.listDirOpt(contentCh, opts.Incomplete, opts.WithMetadata, opts.ShowDir)
-		}
-	} else {
-		go f.listInRoutine(contentCh, opts.WithMetadata)
-	}
-
-	// Hide staged and legacy partial files from ordinary listings.
+	ctx, cancel := context.WithCancel(ctx)
+	producerDone := make(chan struct{})
 	go func() {
-		for c := range contentCh {
-			if c.Err == nil && (isPartialDir(c.URL.Path) || isPartialDir(filepath.Dir(c.URL.Path))) {
-				continue
+		defer close(producerDone)
+		if opts.Recursive {
+			if opts.ShowDir == DirNone {
+				f.listRecursiveInRoutine(ctx, contentCh, opts.WithMetadata)
+			} else {
+				f.listDirOpt(ctx, contentCh, opts.Incomplete, opts.WithMetadata, opts.ShowDir)
 			}
-			if c.Err == nil && strings.HasSuffix(c.URL.Path, partSuffix) {
-				continue
-			}
-			// Send to filtered channel
-			filteredCh <- c
+		} else {
+			f.listInRoutine(ctx, contentCh, opts.WithMetadata)
 		}
-		defer close(filteredCh)
 	}()
-
+	// Join the producer before closing the public channel, including cancellation.
+	go func() {
+		defer close(filteredCh)
+		defer func() { cancel(); <-producerDone }()
+		for {
+			var c *ClientContent
+			select {
+			case <-ctx.Done():
+				return
+			case value, ok := <-contentCh:
+				if !ok {
+					return
+				}
+				c = value
+			}
+			if c.Err == nil && (isPartialDir(c.URL.Path) || isPartialDir(filepath.Dir(c.URL.Path)) || strings.HasSuffix(c.URL.Path, partSuffix)) {
+				continue
+			}
+			if !sendFSListContent(ctx, filteredCh, c) {
+				return
+			}
+		}
+	}()
 	return filteredCh
+}
+
+func sendFSListContent(ctx context.Context, ch chan<- *ClientContent, content *ClientContent) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	select {
+	case ch <- content:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // byDirName implements sort.Interface.
@@ -704,27 +733,35 @@ func readDir(dirname string) ([]os.FileInfo, error) {
 	if e != nil {
 		return nil, e
 	}
+	defer f.Close()
 	list, e := f.Readdir(-1)
 	if e != nil {
 		return nil, e
 	}
-	defer f.Close()
 	sort.Sort(byDirName(list))
 	return list, nil
 }
 
 // listPrefixes - list all files for any given prefix.
-func (f *fsClient) listPrefixes(prefix string, contentCh chan<- *ClientContent) {
+func (f *fsClient) listPrefixes(ctx context.Context, prefix string, contentCh chan<- *ClientContent) {
+	if ctx.Err() != nil {
+		return
+	}
 	dirName := filepath.Dir(prefix)
 	files, e := readDir(dirName)
 	if e != nil {
 		err := f.toClientError(e, dirName)
-		contentCh <- &ClientContent{
+		if !sendFSListContent(ctx, contentCh, &ClientContent{
 			Err: err.Trace(dirName),
+		}) {
+			return
 		}
 		return
 	}
 	for _, fi := range files {
+		if ctx.Err() != nil {
+			return
+		}
 		// Skip ignored files.
 		if isIgnoredFile(fi.Name()) {
 			continue
@@ -738,31 +775,38 @@ func (f *fsClient) listPrefixes(prefix string, contentCh chan<- *ClientContent) 
 				continue
 			}
 			if strings.HasPrefix(file, prefix) {
-				contentCh <- &ClientContent{
+				if !sendFSListContent(ctx, contentCh, &ClientContent{
 					URL:  *newClientURL(file),
 					Time: st.ModTime(),
 					Size: st.Size(),
 					Type: st.Mode(),
 					Err:  nil,
+				}) {
+					return
 				}
 				continue
 			}
 		}
 		if strings.HasPrefix(file, prefix) {
-			contentCh <- &ClientContent{
+			if !sendFSListContent(ctx, contentCh, &ClientContent{
 				URL:  *newClientURL(file),
 				Time: fi.ModTime(),
 				Size: fi.Size(),
 				Type: fi.Mode(),
 				Err:  nil,
+			}) {
+				return
 			}
 		}
 	}
 }
 
-func (f *fsClient) listInRoutine(contentCh chan<- *ClientContent, isMetadata bool) {
+func (f *fsClient) listInRoutine(ctx context.Context, contentCh chan<- *ClientContent, isMetadata bool) {
 	// close the channel when the function returns.
 	defer close(contentCh)
+	if ctx.Err() != nil {
+		return
+	}
 
 	// save pathURL and file path for further usage.
 	pathURL := *f.PathURL
@@ -773,18 +817,20 @@ func (f *fsClient) listInRoutine(contentCh chan<- *ClientContent, isMetadata boo
 		if _, ok := err.ToGoError().(PathNotFound); ok {
 			// If file does not exist treat it like a prefix and list all prefixes if any.
 			prefix := fpath
-			f.listPrefixes(prefix, contentCh)
+			f.listPrefixes(ctx, prefix, contentCh)
 			return
 		}
 		// For all other errors we return genuine error back to the caller.
-		contentCh <- &ClientContent{Err: err.Trace(fpath)}
+		if !sendFSListContent(ctx, contentCh, &ClientContent{Err: err.Trace(fpath)}) {
+			return
+		}
 		return
 	}
 
 	// Now if the file exists and doesn't end with a separator ('/') do not traverse it.
 	// If the directory doesn't end with a separator, do not traverse it.
 	if !strings.HasSuffix(fpath, string(pathURL.Separator)) && fst.Mode().IsDir() && fpath != "." {
-		f.listPrefixes(fpath, contentCh)
+		f.listPrefixes(ctx, fpath, contentCh)
 		return
 	}
 
@@ -792,11 +838,16 @@ func (f *fsClient) listInRoutine(contentCh chan<- *ClientContent, isMetadata boo
 	switch fst.Mode().IsDir() {
 	case true:
 		files, e := readDir(fpath)
-		if err != nil {
-			contentCh <- &ClientContent{Err: probe.NewError(e)}
+		if e != nil {
+			if !sendFSListContent(ctx, contentCh, &ClientContent{Err: probe.NewError(e)}) {
+				return
+			}
 			return
 		}
 		for _, file := range files {
+			if ctx.Err() != nil {
+				return
+			}
 			fi := file
 			if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
 				fp := filepath.Join(fpath, fi.Name())
@@ -815,29 +866,36 @@ func (f *fsClient) listInRoutine(contentCh chan<- *ClientContent, isMetadata boo
 					continue
 				}
 
-				contentCh <- &ClientContent{
+				if !sendFSListContent(ctx, contentCh, &ClientContent{
 					URL:  pathURL,
 					Time: fi.ModTime(),
 					Size: fi.Size(),
 					Type: fi.Mode(),
 					Err:  nil,
+				}) {
+					return
 				}
 			}
 		}
 	default:
-		contentCh <- &ClientContent{
+		if !sendFSListContent(ctx, contentCh, &ClientContent{
 			URL:  pathURL,
 			Time: fst.ModTime(),
 			Size: fst.Size(),
 			Type: fst.Mode(),
 			Err:  nil,
+		}) {
+			return
 		}
 	}
 }
 
 // List files recursively using non-recursive mode.
-func (f *fsClient) listDirOpt(contentCh chan *ClientContent, isIncomplete bool, isMetadata bool, dirOpt DirOpt) {
+func (f *fsClient) listDirOpt(ctx context.Context, contentCh chan *ClientContent, isIncomplete bool, isMetadata bool, dirOpt DirOpt) {
 	defer close(contentCh)
+	if ctx.Err() != nil {
+		return
+	}
 
 	// Trim trailing / or \.
 	currentPath := f.PathURL.Path
@@ -849,22 +907,29 @@ func (f *fsClient) listDirOpt(contentCh chan *ClientContent, isIncomplete bool, 
 	// Closure function reads currentPath and sends to contentCh. If a directory is found, it lists the directory content recursively.
 	var listDir func(currentPath string) bool
 	listDir = func(currentPath string) (isStop bool) {
+		if ctx.Err() != nil {
+			return true
+		}
 		files, e := readDir(currentPath)
 		if e != nil {
 			if os.IsPermission(e) {
-				contentCh <- &ClientContent{
+				return !sendFSListContent(ctx, contentCh, &ClientContent{
 					Err: probe.NewError(PathInsufficientPermission{
 						Path: currentPath,
 					}),
-				}
-				return false
+				})
 			}
 
-			contentCh <- &ClientContent{Err: probe.NewError(e)}
+			if !sendFSListContent(ctx, contentCh, &ClientContent{Err: probe.NewError(e)}) {
+				return true
+			}
 			return true
 		}
 
 		for _, file := range files {
+			if ctx.Err() != nil {
+				return true
+			}
 			name := filepath.Join(currentPath, file.Name())
 			content := ClientContent{
 				URL:  *newClientURL(name),
@@ -875,19 +940,25 @@ func (f *fsClient) listDirOpt(contentCh chan *ClientContent, isIncomplete bool, 
 			}
 			if file.Mode().IsDir() {
 				if dirOpt == DirFirst && !isIncomplete {
-					contentCh <- &content
+					if !sendFSListContent(ctx, contentCh, &content) {
+						return true
+					}
 				}
 				if listDir(filepath.Join(name)) {
 					return true
 				}
 				if dirOpt == DirLast && !isIncomplete {
-					contentCh <- &content
+					if !sendFSListContent(ctx, contentCh, &content) {
+						return true
+					}
 				}
 
 				continue
 			}
 
-			contentCh <- &content
+			if !sendFSListContent(ctx, contentCh, &content) {
+				return true
+			}
 		}
 
 		return false
@@ -896,23 +967,33 @@ func (f *fsClient) listDirOpt(contentCh chan *ClientContent, isIncomplete bool, 
 	// listDir() does not send currentPath to contentCh.  We send it here depending on dirOpt.
 
 	if dirOpt == DirFirst && !isIncomplete {
-		contentCh <- &ClientContent{URL: *newClientURL(currentPath), Type: os.ModeDir}
+		if !sendFSListContent(ctx, contentCh, &ClientContent{URL: *newClientURL(currentPath), Type: os.ModeDir}) {
+			return
+		}
 	}
 
 	listDir(currentPath)
 
 	if dirOpt == DirLast && !isIncomplete {
-		contentCh <- &ClientContent{URL: *newClientURL(currentPath), Type: os.ModeDir}
+		if !sendFSListContent(ctx, contentCh, &ClientContent{URL: *newClientURL(currentPath), Type: os.ModeDir}) {
+			return
+		}
 	}
 }
 
-func (f *fsClient) listRecursiveInRoutine(contentCh chan *ClientContent, isMetadata bool) {
+func (f *fsClient) listRecursiveInRoutine(ctx context.Context, contentCh chan *ClientContent, isMetadata bool) {
 	// close channels upon return.
 	defer close(contentCh)
+	if ctx.Err() != nil {
+		return
+	}
 	var dirName string
 	var filePrefix string
 	pathURL := *f.PathURL
 	visitFS := func(fp string, fi os.FileInfo, e error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		// If file path ends with filepath.Separator and equals to root path, skip it.
 		if strings.HasSuffix(fp, string(pathURL.Separator)) {
 			if fp == dirName {
@@ -925,7 +1006,7 @@ func (f *fsClient) listRecursiveInRoutine(contentCh chan *ClientContent, isMetad
 		}
 
 		// Ignore files from ignore list.
-		if isIgnoredFile(fi.Name()) {
+		if e == nil && isIgnoredFile(fi.Name()) {
 			return nil
 		}
 
@@ -954,14 +1035,18 @@ func (f *fsClient) listRecursiveInRoutine(contentCh chan *ClientContent, isMetad
 		if e != nil {
 			// If operation is not permitted, we throw quickly back.
 			if strings.Contains(e.Error(), "operation not permitted") {
-				contentCh <- &ClientContent{
+				if !sendFSListContent(ctx, contentCh, &ClientContent{
 					Err: probe.NewError(e),
+				}) {
+					return ctx.Err()
 				}
 				return nil
 			}
 			if os.IsPermission(e) {
-				contentCh <- &ClientContent{
+				if !sendFSListContent(ctx, contentCh, &ClientContent{
 					Err: probe.NewError(PathInsufficientPermission{Path: fp}),
+				}) {
+					return ctx.Err()
 				}
 				return nil
 			}
@@ -975,12 +1060,14 @@ func (f *fsClient) listRecursiveInRoutine(contentCh chan *ClientContent, isMetad
 			}
 		}
 		if fi.Mode().IsRegular() {
-			contentCh <- &ClientContent{
+			if !sendFSListContent(ctx, contentCh, &ClientContent{
 				URL:  *newClientURL(fp),
 				Time: fi.ModTime(),
 				Size: fi.Size(),
 				Type: fi.Mode(),
 				Err:  nil,
+			}) {
+				return ctx.Err()
 			}
 		}
 		return nil
@@ -1004,8 +1091,10 @@ func (f *fsClient) listRecursiveInRoutine(contentCh chan *ClientContent, isMetad
 	// walks invokes our custom function.
 	e := ioutils.FTW(dirName, visitFS)
 	if e != nil {
-		contentCh <- &ClientContent{
+		if !sendFSListContent(ctx, contentCh, &ClientContent{
 			Err: probe.NewError(e),
+		}) {
+			return
 		}
 	}
 }
