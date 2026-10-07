@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -474,5 +476,40 @@ func TestCLISynthesizedHelpLeaf(t *testing.T) {
 				t.Fatalf("args=%q: expected exact help-topic error and exit 3, got %v", test.arguments, err)
 			}
 		}
+	}
+}
+
+func TestCLIExecutableHelpNameScope(t *testing.T) {
+	installCommandHelpPrinter()
+	for _, program := range []string{"oc", "oc.exe", "renamed-oc"} {
+		for _, test := range []struct {
+			arguments []string
+			prefix    string
+		}{
+			{[]string{"--help"}, "ROOT=oc/oc\n"},
+			{[]string{"leaf", "--help"}, "NAME=" + program + " leaf\nUSAGE=" + program + " leaf\nEXAMPLE=" + program + " leaf\n"},
+			{[]string{"group", "--help"}, "NAME:\n  oc group - group usage\n"},
+			{[]string{"group", "nested", "--help"}, "NAME=oc group nested\nUSAGE=oc group nested\nEXAMPLE=oc group nested\n"},
+			{[]string{"group", "help", "--help"}, "NAME:\n  oc group help - Shows a list of commands or help for one command\n"},
+		} {
+			var output bytes.Buffer
+			template := "NAME={{.FullName}}\nUSAGE={{.FullName}}\nEXAMPLE={{.FullName}}\n"
+			root := cloneCommand(&cli.Command{Name: "oc", HideHelpCommand: true, Writer: &output, ExitErrHandler: ignoreCLIExit,
+				CustomRootCommandHelpTemplate: "ROOT={{.Name}}/{{.FullName}}\n",
+				Commands: []*cli.Command{{Name: "leaf", CustomHelpTemplate: template},
+					{Name: "group", Usage: "group usage", Commands: []*cli.Command{{Name: "nested", CustomHelpTemplate: template}}}}})
+			root.Metadata[commandHelpProgramKey] = program
+			err := runCLICommand(context.Background(), root, append([]string{"oc"}, test.arguments...))
+			if exit, ok := err.(cli.ExitCoder); !ok || exit.ExitCode() != 0 || !strings.HasPrefix(output.String(), test.prefix) {
+				t.Fatalf("program=%q args=%q: output=%q error=%v", program, test.arguments, output.String(), err)
+			}
+		}
+	}
+}
+
+func TestCLIRegistrationCapturesExecutableHelpName(t *testing.T) {
+	root := registerApp("oc")
+	if root.Name != "oc" || root.Metadata[commandHelpProgramKey] != filepath.Base(os.Args[0]) {
+		t.Fatalf("logical name=%q executable help name=%v", root.Name, root.Metadata[commandHelpProgramKey])
 	}
 }

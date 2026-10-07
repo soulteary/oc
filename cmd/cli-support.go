@@ -462,7 +462,21 @@ func commandFlagHelp(flag cli.Flag) (string, string) {
 
 var commandHelpPrinterOnce sync.Once
 
+const commandHelpProgramKey = "oc.cli.help.program.name"
+
 type commandHelpData struct{ *cli.Command }
+
+// Legacy top-level leaves inherited NewApp's executable HelpName. A group
+// created a sub-app whose help names used the logical application name instead.
+func (data commandHelpData) FullName() string {
+	command := data.Command
+	if len(command.Lineage()) == 2 && len(command.Commands) == 0 {
+		if program, ok := command.Root().Metadata[commandHelpProgramKey].(string); ok && program != "" {
+			return program + " " + command.Name
+		}
+	}
+	return command.FullName()
+}
 
 // Keep the original explicit help command visible in these group templates.
 func (data commandHelpData) VisibleCommands() []*cli.Command {

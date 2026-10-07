@@ -496,7 +496,11 @@ func registerApp(name string) *cli.Command {
 	app.DisableSliceFlagSeparator = true
 	installCommandHelpPrinter()
 
-	return cloneCommand(app)
+	command := cloneCommand(app)
+	// NewApp used the executable basename for top-level leaf HelpName even
+	// after the application's logical Name was set to oc.
+	command.Metadata[commandHelpProgramKey] = filepath.Base(os.Args[0])
+	return command
 }
 
 // mustGetProfilePath must get location that the profile will be written to.

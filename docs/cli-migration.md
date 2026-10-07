@@ -22,6 +22,9 @@ decimal parsing. Root and group parsing stops at the first positional argument. 
 help and invalid commands retain the corresponding configuration side effects.
 Completion preserves the previous flag names, aliases, visibility rules and the hidden terminal `--generate-bash-completion` protocol.
 OC retains ownership of signal cancellation, cleanup and structured errors.
+Root and grouped help retain the logical `oc` name. Direct leaf help retains the
+executable basename, including `oc.exe` or a renamed executable, following the
+previous `HelpName` rules.
 
 The one reviewed behavior correction is an invalid command-line health
 selector: the old implementation panicked with exit code 2 while rendering
@@ -97,6 +100,8 @@ OC 和固定版本的 OtterIO 统一采用 `urfave/cli/v3 v3.14.0`。准确模�
 父级初始化时机、帮助格式、输出流、补全候选及信号清理。help/version 按实际布尔值
 处理，先完成本级参数校验；同级使用同一参数的两种别名仍报错。普通列表参数不拆逗号，
 隐藏健康参数继续使用自己的拆分规则。
+根级及分组帮助保留逻辑名称 `oc`；顶层叶子帮助保留真实可执行文件名，包括 `oc.exe`
+及重命名的程序，与旧版 `HelpName` 行为一致。
 
 唯一批准的行为修正是非法命令行健康参数：原版渲染帮助时 panic 并退出 2，现改为
 正常参数错误并退出 1。此差异有独立精确快照，其他差异不能借此放行。
