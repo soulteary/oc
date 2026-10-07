@@ -1,6 +1,7 @@
 """Execute the real tag guard with a fake Buildx; never contact a registry."""
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -10,7 +11,10 @@ TAG = "RELEASE.2026-10-04T07-00-00Z"
 
 
 class ImageReferenceTests(unittest.TestCase):
-    def probe(self, reference, expected, error=None, exit_code=1):
+    def probe(self, reference, expected, error=None, exit_code=1, shadow_bash=False):
+        bash = os.environ.get("OC_TEST_BASH") or shutil.which("bash")
+        self.assertIsNotNone(bash, "Bash is required to test the image tag guard")
+        bash = str(Path(bash).resolve())
         with tempfile.TemporaryDirectory(prefix="oc image refs ") as directory:
             docker = Path(directory) / "docker"
             # Native Windows text writes would put CRLF in the shebang.
@@ -22,23 +26,33 @@ class ImageReferenceTests(unittest.TestCase):
                 b'exit "$MOCK_EXIT"\n'
             )
             docker.chmod(0o755)
+            if shadow_bash:
+                decoy = Path(directory) / "bash"
+                decoy.write_bytes(b'#!/bin/sh\necho "fixture Bash must not run" >&2\nexit 97\n')
+                decoy.chmod(0o755)
+            # A script avoids Windows command-line quoting of a Bash -c string.
+            # Reuse the running interpreter after adding the mock to PATH.
+            runner = Path(directory) / "run-guard.sh"
+            runner.write_bytes(b'export PATH="$PWD:$PATH"\nexec "$BASH" "$@"\n')
             capture = Path(directory) / "reference"
             env = dict(
                 os.environ, MOCK_CAPTURE=capture.name, MOCK_EXIT=str(exit_code),
                 MOCK_ERROR=error if error is not None else "ERROR: " + expected + ": not found",
             )
             result = subprocess.run(
-                # Let Bash add its own POSIX working directory to PATH; native
-                # Windows paths are not suitable for shell PATH/redirection.
-                ["bash", "-c", 'export PATH="$PWD:$PATH"; exec bash "$1" "$2"',
-                 "image-reference-test", GUARD.as_posix(), reference],
+                [bash, runner.as_posix(), GUARD.as_posix(), reference],
                 cwd=directory, env=env,
                 text=True, capture_output=True, timeout=10,
             )
             self.assertTrue(capture.is_file(),
-                            f"mock Docker did not run (exit {result.returncode}): {result.stderr}")
+                            f"mock Docker did not run with {bash!r} (exit {result.returncode}); "
+                            f"stdout={result.stdout!r}; stderr={result.stderr!r}")
             self.assertEqual(capture.read_text(), expected)
             return result
+
+    def test_fixture_cannot_shadow_running_bash(self):
+        ref = "ghcr.io/soulteary/oc:" + TAG
+        self.assertEqual(self.probe(ref, ref, shadow_bash=True).returncode, 0)
 
     def test_dockerhub_short_reference(self):
         ref = "soulteary/oc:" + TAG

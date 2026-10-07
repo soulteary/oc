@@ -45,6 +45,14 @@ jobs:
         env:
           GOTOOLCHAIN: local
         run: |
+          # Native Windows subprocess lookup can select the WSL bash.exe.
+          # Pass the actual Actions shell to the release helper tests.
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            OC_TEST_BASH="$(cygpath -w "$BASH")"
+          else
+            OC_TEST_BASH="$BASH"
+          fi
+          export OC_TEST_BASH
           go mod download
           python3 buildscripts/test-maintenance.py
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_release_*.py' -v
