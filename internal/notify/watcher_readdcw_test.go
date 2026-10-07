@@ -5,6 +5,7 @@ package notify
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -111,5 +112,28 @@ func TestWindowsIdleStopRewatchReleasesHandles(t *testing.T) {
 	}
 	if err := r.Unwatch(path); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWindowsRetiredCompletionKeepsReplacementWatch(t *testing.T) {
+	path, _ := syscall.UTF16FromString(`C:\watched`)
+	old := &watched{filter: stateUnwatch, count: 2, pathw: path}
+	replacement := &watched{count: 1, pathw: path}
+	r := &readdcw{m: map[string]*watched{`C:\watched`: replacement}, retired: map[*watched]struct{}{old: {}}}
+	r.drained = sync.NewCond(&r.Mutex)
+	over := &overlappedEx{parent: &grip{parent: old, pathw: path}}
+	r.Lock()
+	defer r.Unlock()
+	if err := r.loopstateLocked(over, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, retained := r.retired[old]; !retained {
+		t.Fatal("notification memory was released before all cancellations completed")
+	}
+	if err := r.loopstateLocked(over, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.retired) != 0 || r.m[`C:\watched`] != replacement {
+		t.Fatal("retired completion leaked memory or removed a replacement watch")
 	}
 }

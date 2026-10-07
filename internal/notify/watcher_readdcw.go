@@ -80,10 +80,10 @@ func newGrip(cph syscall.Handle, parent *watched, filter uint32) (*grip, error) 
 		parent:    parent,
 		ovlapped:  &overlappedEx{},
 	}
+	g.ovlapped.parent = g
 	if err := g.register(cph); err != nil {
 		return nil, err
 	}
-	g.ovlapped.parent = g
 	return g, nil
 }
 
@@ -255,24 +255,28 @@ func (wd *watched) closeHandle() (err error) {
 }
 
 // watcher implements Watcher interface. It stores a set of watched directories.
-// All operations which remove watched objects from map `m` must be performed in
-// loop goroutine since these structures are used internally by operating system.
+// Retired watches retain their buffers until every cancelled I/O completes.
 type readdcw struct {
 	sync.Mutex
-	m     map[string]*watched
-	cph   syscall.Handle
-	start bool
-	wg    sync.WaitGroup
-	c     chan<- EventInfo
+	m       map[string]*watched
+	retired map[*watched]struct{}
+	drained *sync.Cond
+	cph     syscall.Handle
+	start   bool
+	closing bool
+	wg      sync.WaitGroup
+	c       chan<- EventInfo
 }
 
 // NewWatcher creates new non-recursive watcher backed by ReadDirectoryChangesW.
 func newWatcher(c chan<- EventInfo) watcher {
 	r := &readdcw{
-		m:   make(map[string]*watched),
-		cph: syscall.InvalidHandle,
-		c:   c,
+		m:       make(map[string]*watched),
+		retired: make(map[*watched]struct{}),
+		cph:     syscall.InvalidHandle,
+		c:       c,
 	}
+	r.drained = sync.NewCond(&r.Mutex)
 	runtime.SetFinalizer(r, func(r *readdcw) {
 		if r.cph != syscall.InvalidHandle {
 			syscall.CloseHandle(r.cph)
@@ -301,6 +305,9 @@ func (r *readdcw) watch(path string, event Event, recursive bool) error {
 
 	r.Lock()
 	defer r.Unlock()
+	if r.closing {
+		return errors.New("notify: watcher is closing")
+	}
 
 	if wd, ok := r.m[path]; ok {
 		dbgprint("watch: already exists")
@@ -366,10 +373,16 @@ func (r *readdcw) loop() {
 		} else {
 			r.completion(n, err, overEx)
 		}
-		if err = overEx.parent.readDirChanges(); err != nil {
+		// Rearming and consuming a cancelled grip are atomic with Stop/Rewatch.
+		// Otherwise Stop could see a newly armed read, but the loop would consume
+		// its count for the preceding completion and free the buffer too early.
+		r.Lock()
+		rearmErr := overEx.parent.readDirChanges()
+		stateErr := r.loopstateLocked(overEx, rearmErr != nil)
+		r.Unlock()
+		if rearmErr != nil || stateErr != nil {
 			r.lost(overEx)
 		}
-		r.loopstate(overEx)
 	}
 }
 
@@ -386,30 +399,33 @@ func (r *readdcw) completion(n uint32, err error, overEx *overlappedEx) {
 }
 
 // TODO(pknap) : doc
-func (r *readdcw) loopstate(overEx *overlappedEx) {
-	r.Lock()
-	defer r.Unlock()
-	filter := overEx.parent.parent.filter
-	if filter&onlyMachineStates == 0 {
-		return
+func (r *readdcw) loopstateLocked(overEx *overlappedEx, rearmFailed bool) error {
+	wd := overEx.parent.parent
+	filter := wd.filter
+	if filter&onlyMachineStates == 0 && !rearmFailed {
+		return nil
 	}
-	if overEx.parent.parent.count--; overEx.parent.parent.count == 0 {
+	wd.count--
+	r.drained.Broadcast()
+	if wd.count == 0 {
 		switch filter & onlyMachineStates {
 		case stateRewatch:
 			dbgprint("loopstate rewatch")
-			overEx.parent.parent.recreate(r.cph)
+			return wd.recreate(r.cph)
 		case stateUnwatch:
 			dbgprint("loopstate unwatch")
-			overEx.parent.parent.closeHandle()
+			wd.closeHandle()
+			delete(r.retired, wd)
 			path := syscall.UTF16ToString(overEx.parent.pathw)
-			if r.m[path] == overEx.parent.parent {
+			if r.m[path] == wd {
 				delete(r.m, path)
 			}
-		case stateCPClose:
+		case stateCPClose, 0:
 		default:
 			panic(`notify: windows loopstate logic error`)
 		}
 	}
+	return nil
 }
 
 // TODO(pknap) : doc
@@ -553,6 +569,9 @@ func (r *readdcw) unwatch(path string) (err error) {
 	// Cancellation completions still own wd, but must not delete a new watch
 	// registered at the same path before those completions are drained.
 	delete(r.m, path)
+	if wd.count != 0 {
+		r.retired[wd] = struct{}{}
+	}
 	return wd.closeHandle()
 }
 
@@ -564,6 +583,11 @@ func (r *readdcw) Close() (err error) {
 		r.Unlock()
 		return nil
 	}
+	if r.closing {
+		r.Unlock()
+		return errors.New("notify: watcher is already closing")
+	}
+	r.closing = true
 	for _, wd := range r.m {
 		wd.filter &^= onlyMachineStates
 		wd.filter |= stateCPClose
@@ -571,6 +595,10 @@ func (r *readdcw) Close() (err error) {
 			err = e
 		}
 	}
+	for r.pendingLocked() {
+		r.drained.Wait()
+	}
+	clear(r.m)
 	r.start = false
 	r.Unlock()
 	r.wg.Add(1)
@@ -578,7 +606,19 @@ func (r *readdcw) Close() (err error) {
 		return e
 	}
 	r.wg.Wait()
+	r.Lock()
+	r.closing = false
+	r.Unlock()
 	return
+}
+
+func (r *readdcw) pendingLocked() bool {
+	for _, wd := range r.m {
+		if wd.count != 0 {
+			return true
+		}
+	}
+	return len(r.retired) != 0
 }
 
 // decode creates a notify event from both non-raw filter and action which was

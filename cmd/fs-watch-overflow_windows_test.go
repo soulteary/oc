@@ -11,10 +11,10 @@ import (
 
 func TestFSWatchWindowsLoss(t *testing.T) {
 	wo := &WatchObject{EventInfoChan: make(chan []EventInfo), ErrorChan: make(chan *probe.Error, 1), DoneChan: make(chan struct{})}
-	input := make(chan notify.EventInfo, 1)
-	input <- fsWatchTestEvent{path: "root", event: notify.WindowsEventsLost}
+	input := make(chan notify.EventInfo)
 	done := make(chan struct{})
 	go forwardFSWatchEvents(context.Background(), wo, input, func() { close(done) })
+	input <- fsWatchTestEvent{path: "root", event: notify.WindowsEventsLost}
 	select {
 	case <-done:
 	case <-time.After(time.Second):

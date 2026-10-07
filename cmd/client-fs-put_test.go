@@ -59,6 +59,33 @@ func TestFSPutWithStalePartial(t *testing.T) {
 	}
 }
 
+func TestFSPreserveAttributeRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	source, target := filepath.Join(root, "source"), filepath.Join(root, "target")
+	if err := os.WriteFile(source, []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	client, err := fsNew(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := client.Stat(context.Background(), StatOptions{preserve: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attrs, present := content.Metadata[metadataKey]; present && attrs == "" {
+		t.Fatal("unsupported attributes were serialized as an invalid empty record")
+	}
+	destination, err := fsNew(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := destination.Put(context.Background(), strings.NewReader("data"), 4, nil, PutOptions{isPreserve: true, metadata: content.Metadata}); err != nil {
+		t.Fatal(err)
+	}
+	assertFSFileContents(t, target, "data")
+}
+
 func TestFSPutDoesNotFollowLegacyPartialSymlink(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
