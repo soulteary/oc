@@ -19,6 +19,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -109,13 +110,19 @@ func (m retentionBucketMessage) JSON() string {
 }
 
 func getRetainUntilDate(validity uint64, unit minio.ValidityUnit) (string, *probe.Error) {
-	if validity == 0 || validity > uint64(^uint(0)>>1) {
+	if validity == 0 {
 		return "", probe.NewError(fmt.Errorf("invalid validity '%v'", validity))
 	}
 	t := UTCNow()
 	if unit == minio.Years {
+		if validity > uint64(math.MaxInt32) {
+			return "", probe.NewError(fmt.Errorf("invalid validity '%v'", validity))
+		}
 		t = t.AddDate(int(validity), 0, 0)
 	} else {
+		if validity > uint64(math.MaxInt32) {
+			return "", probe.NewError(fmt.Errorf("invalid validity '%v'", validity))
+		}
 		t = t.AddDate(0, 0, int(validity))
 	}
 	timeStr := t.Format(time.RFC3339)
