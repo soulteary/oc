@@ -55,6 +55,7 @@ func fatalIf(err *probe.Error, msg string, data ...interface{}) {
 }
 
 func fatal(err *probe.Error, msg string, data ...interface{}) {
+	msg = fmt.Sprintf(msg, data...)
 	if globalJSON {
 		code, category := classifyClientError(err.ToGoError())
 		errorMsg := errorMessage{
@@ -84,7 +85,6 @@ func fatal(err *probe.Error, msg string, data ...interface{}) {
 		console.Fatalln()
 	}
 
-	msg = fmt.Sprintf(msg, data...)
 	errmsg := err.String()
 	if !globalDebug {
 		e := err.ToGoError()

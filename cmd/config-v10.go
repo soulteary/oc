@@ -101,8 +101,8 @@ func (c *configV10) loadDefaults() {
 
 // loadConfigV10 - loads a new config.
 func loadConfigV10() (*configV10, *probe.Error) {
-	cfgMutex.RLock()
-	defer cfgMutex.RUnlock()
+	cfgMutex.Lock()
+	defer cfgMutex.Unlock()
 
 	// If already cached, return the cached value.
 	if cacheCfgV10 != nil {

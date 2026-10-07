@@ -22,7 +22,7 @@ import (
 )
 
 func TestAdminEndpointValidation(t *testing.T) {
-	for _, endpoint := range []string{"", "ftp://host", "http://", "http://user:secret@host", "http://host/prefix", "http://host/?token=secret", "http://host/#fragment", "http://host/?", "http://host:invalid"} {
+	for _, endpoint := range []string{"", "ftp://host", "http://", "http://user:secret@host", "http://host/prefix", "http://host/?token=secret", "http://host/#fragment", "http://host/#", "http://host/?", "http://host:invalid", "http://host:", "http://host:0", "http://host:65536", "http://[localhost]", "http://::1"} {
 		if _, err := validateAdminEndpoint(endpoint); err == nil {
 			t.Errorf("accepted invalid admin endpoint %q", endpoint)
 		}

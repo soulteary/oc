@@ -28,14 +28,17 @@ import (
 // EventInfo contains the information of the event that occurred and the source
 // IP:PORT of the client which triggerred the event.
 type EventInfo struct {
-	Time         string
-	Size         int64
-	UserMetadata map[string]string
-	Path         string
-	Host         string
-	Port         string
-	UserAgent    string
-	Type         notification.EventType
+	Time string
+	// SourceModTime is available for filesystem events, whose notification
+	// time can differ from the source file's preserved modification time.
+	SourceModTime time.Time
+	Size          int64
+	UserMetadata  map[string]string
+	Path          string
+	Host          string
+	Port          string
+	UserAgent     string
+	Type          notification.EventType
 }
 
 // fsWatchOverflow means the bounded native queue saturated. notify cannot

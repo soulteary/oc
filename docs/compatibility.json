@@ -4,7 +4,8 @@
   "otterioSDK": "v0.0.0-20261004215341-be8596f0d69d",
   "requiredServerPatches": [
     "buildscripts/otterio-core-compat.patch",
-    "buildscripts/otterio-runtime-compat.patch"
+    "buildscripts/otterio-runtime-compat.patch",
+    "buildscripts/otterio-http-api-compat.patch"
   ],
   "coreDeployments": [
     "single-http",

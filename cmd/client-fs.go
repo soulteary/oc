@@ -280,6 +280,7 @@ func forwardFSWatchEventsWithStat(ctx context.Context, wo *WatchObject, events <
 				continue
 			}
 			info.Size, info.Type = state.Size, notification.ObjectCreatedPut
+			info.SourceModTime = state.ModTime
 		case IsDeleteEvent(event.Event()):
 			info.Type = notification.ObjectRemovedDelete
 		case IsGetEvent(event.Event()):

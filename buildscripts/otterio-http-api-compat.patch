@@ -1,0 +1,1013 @@
+diff --git a/cmd/admin-handlers.go b/cmd/admin-handlers.go
+index 5b83906..5e0d7ca 100644
+--- a/cmd/admin-handlers.go
++++ b/cmd/admin-handlers.go
+@@ -505,7 +505,11 @@ type healInitParams struct {
+ // extractHealInitParams - Validates params for heal init API.
+ func extractHealInitParams(vars map[string]string, qParams url.Values, r io.Reader) (hip healInitParams, err APIErrorCode) {
+ 	hip.bucket = vars[mgmtBucket]
+-	hip.objPrefix = vars[mgmtPrefix]
++	var decodeErr error
++	hip.objPrefix, decodeErr = unescapePath(vars[mgmtPrefix])
++	if decodeErr != nil {
++		return hip, ErrInvalidObjectName
++	}
+ 
+ 	if hip.bucket == "" {
+ 		if hip.objPrefix != "" {
+@@ -708,7 +712,9 @@ func (a adminAPIHandlers) HealHandler(w http.ResponseWriter, r *http.Request) {
+ 		return
+ 	}
+ 
+-	respCh := make(chan healResp)
++	// A client may disconnect while the heal start/stop operation finishes.
++	// Its single result must not leave the producer blocked without a reader.
++	respCh := make(chan healResp, 1)
+ 	switch {
+ 	case hip.forceStop:
+ 		go func() {
+@@ -1212,10 +1218,6 @@ func (a adminAPIHandlers) HealthInfoHandler(w http.ResponseWriter, r *http.Reque
+ 	healthInfoCh := make(chan madmin.HealthInfo)
+ 
+ 	enc := json.NewEncoder(w)
+-	partialWrite := func(oinfo madmin.HealthInfo) {
+-		healthInfoCh <- oinfo
+-	}
+-
+ 	setCommonHeaders(w)
+ 
+ 	setEventStreamHeaders(w)
+@@ -1242,6 +1244,12 @@ func (a adminAPIHandlers) HealthInfoHandler(w http.ResponseWriter, r *http.Reque
+ 
+ 	deadlinedCtx, cancel := context.WithTimeout(ctx, deadline)
+ 	defer cancel()
++	partialWrite := func(oinfo madmin.HealthInfo) {
++		select {
++		case healthInfoCh <- oinfo:
++		case <-deadlinedCtx.Done():
++		}
++	}
+ 
+ 	var err error
+ 	nsLock := objectAPI.NewNSLock(otterioMetaBucket, "health-check-in-progress")
+@@ -1359,7 +1367,10 @@ func (a adminAPIHandlers) HealthInfoHandler(w http.ResponseWriter, r *http.Reque
+ 			if !ok {
+ 				return
+ 			}
+-			logger.LogIf(ctx, enc.Encode(oinfo))
++			if err := enc.Encode(oinfo); err != nil {
++				logger.LogIf(ctx, err)
++				return
++			}
+ 			w.(http.Flusher).Flush()
+ 		case <-ticker.C:
+ 			if _, err := w.Write([]byte(" ")); err != nil {
+diff --git a/cmd/admin_query_bridge_test.go b/cmd/admin_query_bridge_test.go
+index 4918134..b031133 100644
+--- a/cmd/admin_query_bridge_test.go
++++ b/cmd/admin_query_bridge_test.go
+@@ -48,7 +48,7 @@ func TestAdminQueryBridgePreservesPathAndValidation(t *testing.T) {
+ 		w.WriteHeader(http.StatusOK)
+ 	}
+ 	registerAdminRoute(app, "/admin-test/:bucket", []routeRule{adminRule(http.MethodPut, handler, true, map[string]string{"bucket": ".*", "isGroup": "true|false"})})
+-	for _, value := range []string{"false", "invalid"} {
++	for _, value := range []string{"false", "invalid", "trueevil", "evilfalse", "truefalse"} {
+ 		response, err := app.Test(httptest.NewRequest(http.MethodPut, "/admin-test/path-bucket?bucket=query-bucket&isGroup="+value, nil))
+ 		if err != nil {
+ 			t.Fatal(err)
+@@ -57,7 +57,7 @@ func TestAdminQueryBridgePreservesPathAndValidation(t *testing.T) {
+ 		if value == "false" && response.StatusCode != http.StatusOK {
+ 			t.Fatal(response.StatusCode)
+ 		}
+-		if value == "invalid" && response.StatusCode == http.StatusOK {
++		if value != "false" && response.StatusCode == http.StatusOK {
+ 			t.Fatal("invalid query reached handler")
+ 		}
+ 	}
+diff --git a/cmd/fiber_admin_router.go b/cmd/fiber_admin_router.go
+index 74870f5..a863a85 100644
+--- a/cmd/fiber_admin_router.go
++++ b/cmd/fiber_admin_router.go
+@@ -178,7 +178,7 @@ func registerAdminRouterFiber(app *fiber.App, enableConfigOps, enableIAMOps bool
+ 
+ func registerAdminHealRoutes(app *fiber.App, verPrefix string, adminAPI adminAPIHandlers) {
+ 	healRule := []routeRule{
+-		adminRule(http.MethodPost, adminAPI.HealHandler, false, nil),
++		adminStreamRule(http.MethodPost, adminAPI.HealHandler, nil),
+ 	}
+ 	registerAdminRoute(app, verPrefix+"/heal/", healRule)
+ 	app.All(verPrefix+"/heal/:bucket", func(c fiber.Ctx) error {
+diff --git a/cmd/fiber_ctx.go b/cmd/fiber_ctx.go
+index d7cad66..a8d4370 100644
+--- a/cmd/fiber_ctx.go
++++ b/cmd/fiber_ctx.go
+@@ -58,11 +58,10 @@ import (
+ // touching ctx.s, so propagateCancel goroutines that outlive the request
+ // observe a stable, race-free view.
+ //
+-// Value() still delegates to the *fasthttp.RequestCtx for request-scoped
+-// values; callers that read values from a recycled ctx is a separate pre-
+-// existing concern (already mitigated upstream by strings.Clone, etc.).
++// Snapshot values too: subscription cleanup can read context values after
++// the response closes and fasthttp recycles its request context.
+ type fiberRequestCtx struct {
+-	reqCtx *fasthttp.RequestCtx
++	values map[any]any
+ 	// done is a snapshot of reqCtx.Done() captured at construction time.
+ 	// fasthttp closes this channel only on Server.Shutdown, so legacy
+ 	// handlers that loop on r.Context().Done() still unblock on graceful
+@@ -74,7 +73,14 @@ type fiberRequestCtx struct {
+ func newFiberRequestCtx(reqCtx *fasthttp.RequestCtx) *fiberRequestCtx {
+ 	// Capture Done() once, in the request goroutine, while reqCtx.s is
+ 	// stable. After this point we never call reqCtx.Done() again.
+-	return &fiberRequestCtx{reqCtx: reqCtx, done: reqCtx.Done()}
++	values := make(map[any]any)
++	reqCtx.VisitUserValuesAll(func(key, value any) {
++		if name, ok := key.(string); ok {
++			key = strings.Clone(name)
++		}
++		values[key] = value
++	})
++	return &fiberRequestCtx{values: values, done: reqCtx.Done()}
+ }
+ 
+ func (c *fiberRequestCtx) Deadline() (time.Time, bool) { return time.Time{}, false }
+@@ -87,7 +93,12 @@ func (c *fiberRequestCtx) Err() error {
+ 		return nil
+ 	}
+ }
+-func (c *fiberRequestCtx) Value(key any) any { return c.reqCtx.Value(key) }
++func (c *fiberRequestCtx) Value(key any) any {
++	if name, ok := key.([]byte); ok {
++		key = string(name)
++	}
++	return c.values[key]
++}
+ 
+ // OtterioHandler is the standard Fiber handler signature for OtterIO APIs.
+ type OtterioHandler = fiber.Handler
+@@ -126,10 +137,12 @@ func allPathParams(c fiber.Ctx) map[string]string {
+ 	if b := pathParamBucket(c); b != "" {
+ 		m["bucket"] = b
+ 	}
+-	if o := pathParamObject(c); o != "" {
++	// Legacy handlers call unescapePath themselves. Preserve the encoded
++	// capture so literal percent escapes in object names are decoded once.
++	if o := rawPathParamObject(c); o != "" {
+ 		m["object"] = o
+ 	}
+-	if p := pathParamPrefix(c); p != "" {
++	if p := rawPathParamPrefix(c); p != "" {
+ 		m["prefix"] = p
+ 	}
+ 	_ = c.Route()
+@@ -144,13 +157,15 @@ func allPathParams(c fiber.Ctx) map[string]string {
+ 		// backgroundAppend, metacache writers) would otherwise race with the
+ 		// next request's ctx.Reset and read corrupted bytes.
+ 		if v := c.Params(name); v != "" {
+-			m[name] = strings.Clone(v)
++			if _, exists := m[name]; !exists {
++				m[name] = strings.Clone(v)
++			}
+ 		}
+ 	}
+ 	if routeHasPathWildcard(c) {
+ 		if wild := strings.TrimPrefix(c.Params("*"), "/"); wild != "" {
+ 			if _, ok := m["object"]; !ok {
+-				m["object"] = strings.Clone(likelyUnescapeGeneric(wild, url.PathUnescape))
++				m["object"] = strings.Clone(wild)
+ 			}
+ 		}
+ 	}
+@@ -182,6 +197,8 @@ func toOtterioStreamHandler(h func(http.ResponseWriter, *http.Request)) OtterioH
+ 			return err
+ 		}
+ 		r = setURLVarsOnRequest(r, allPathParams(c))
++		ctx, cancel := context.WithCancel(r.Context())
++		r = r.WithContext(ctx)
+ 
+ 		pr, pw := io.Pipe()
+ 		w := &fiberStreamResponseWriter{
+@@ -191,7 +208,10 @@ func toOtterioStreamHandler(h func(http.ResponseWriter, *http.Request)) OtterioH
+ 			ready:  make(chan struct{}),
+ 		}
+ 
+-		go w.run(h, r)
++		go func() {
++			defer cancel()
++			w.run(h, r)
++		}()
+ 		<-w.ready
+ 		result := w.result
+ 
+@@ -228,7 +248,7 @@ func toOtterioStreamHandler(h func(http.ResponseWriter, *http.Request)) OtterioH
+ 		// inline and only returned once the transfer completed.
+ 		sc := &streamCompletion{}
+ 		c.RequestCtx().SetUserValue(streamCompletionKey{}, sc)
+-		body := streamCompletionReader{r: pr, sc: sc}
++		body := streamCompletionReader{r: pr, sc: sc, cancel: cancel}
+ 		if contentLength >= 0 {
+ 			c.Response().SetBodyStream(body, int(contentLength))
+ 		} else {
+@@ -290,13 +310,17 @@ func streamCompletionOf(c fiber.Ctx) *streamCompletion {
+ // streamCompletionReader wraps the pipe reader handed to fasthttp so that the
+ // completion hooks fire when fasthttp closes the stream (end of body or abort).
+ type streamCompletionReader struct {
+-	r  *io.PipeReader
+-	sc *streamCompletion
++	r      *io.PipeReader
++	sc     *streamCompletion
++	cancel context.CancelFunc
+ }
+ 
+ func (r streamCompletionReader) Read(p []byte) (int, error) { return r.r.Read(p) }
+ 
+ func (r streamCompletionReader) Close() error {
++	if r.cancel != nil {
++		r.cancel()
++	}
+ 	err := r.r.Close()
+ 	r.sc.run()
+ 	return err
+@@ -340,14 +364,18 @@ func requestHost(c fiber.Ctx) string {
+ // writers, request contexts, etc.) must be detached to avoid a use-after-reset
+ // data race.
+ func pathParamObject(c fiber.Ctx) string {
++	return likelyUnescapeGeneric(rawPathParamObject(c), url.PathUnescape)
++}
++
++func rawPathParamObject(c fiber.Ctx) string {
+ 	if object, ok := c.Locals(fiberObjectParam).(string); ok && object != "" {
+-		return strings.Clone(likelyUnescapeGeneric(object, url.PathUnescape))
++		return strings.Clone(object)
+ 	}
+ 	obj := c.Params(fiberObjectParam)
+ 	if obj == "" && routeHasPathWildcard(c) {
+ 		obj = strings.TrimPrefix(c.Params("*"), "/")
+ 	}
+-	return strings.Clone(likelyUnescapeGeneric(obj, url.PathUnescape))
++	return strings.Clone(obj)
+ }
+ 
+ // pathParamBucket returns the bucket name from Fiber path params or vhost locals.
+@@ -361,9 +389,12 @@ func pathParamBucket(c fiber.Ctx) string {
+ 	return strings.Clone(c.Params(fiberBucketParam))
+ }
+ 
+-// pathParamPrefix returns the prefix param used by admin heal routes.
+-func pathParamPrefix(c fiber.Ctx) string {
+-	return strings.Clone(likelyUnescapeGeneric(c.Params(fiberPrefixParam), url.QueryUnescape))
++// rawPathParamPrefix returns the encoded prefix captured by admin heal routes.
++func rawPathParamPrefix(c fiber.Ctx) string {
++	if prefix, ok := c.Locals(fiberPrefixParam).(string); ok && prefix != "" {
++		return strings.Clone(prefix)
++	}
++	return strings.Clone(c.Params(fiberPrefixParam))
+ }
+ 
+ // setPathVars stores bucket/object on the context for helpers that read mux-style vars.
+@@ -382,7 +413,7 @@ func setPathVars(c fiber.Ctx, bucket, object string) {
+ func newContextFiber(c fiber.Ctx, api string) context.Context {
+ 	bucket := pathParamBucket(c)
+ 	object := pathParamObject(c)
+-	prefix := pathParamPrefix(c)
++	prefix := likelyUnescapeGeneric(rawPathParamPrefix(c), url.PathUnescape)
+ 	if prefix != "" {
+ 		object = prefix
+ 	}
+diff --git a/cmd/fiber_dispatch.go b/cmd/fiber_dispatch.go
+index 253cb6c..bc40b5c 100644
+--- a/cmd/fiber_dispatch.go
++++ b/cmd/fiber_dispatch.go
+@@ -44,10 +44,10 @@ func compiledQueryRegex(pattern string) *regexp.Regexp {
+ 	if ok {
+ 		return re
+ 	}
+-	// Anchor the full value, matching the previous "^pattern$" semantics. A bad
++	// Group alternatives before anchoring so every branch matches the full value. A bad
+ 	// pattern compiles to nil and is treated as a non-match (mirrors the old
+ 	// behavior where regexp.MatchString returned an error and matched=false).
+-	compiled, err := regexp.Compile("^" + pattern + "$")
++	compiled, err := regexp.Compile("^(?:" + pattern + ")$")
+ 	if err != nil {
+ 		compiled = nil
+ 	}
+diff --git a/cmd/fiber_encoded_path_test.go b/cmd/fiber_encoded_path_test.go
+index 1ff2d10..ecf3338 100644
+--- a/cmd/fiber_encoded_path_test.go
++++ b/cmd/fiber_encoded_path_test.go
+@@ -21,35 +21,68 @@ import (
+ 	"net/http"
+ 	"net/http/httptest"
+ 	"testing"
++
++	"github.com/gofiber/fiber/v3"
+ )
+ 
+ func TestEncodedObjectPathPreserved(t *testing.T) {
+-	app := newFiberApp()
+-
+-	var gotObject string
+-	objectRules := []routeRule{
+-		s3Route([]string{http.MethodGet}, "getobject", true,
+-			func(w http.ResponseWriter, r *http.Request) {
+-				gotObject = urlVar(r, "object")
+-				w.WriteHeader(http.StatusOK)
+-			}, nil, nil),
+-	}
+-	objectDispatch, bucketDispatch := makeBucketObjectDispatchHandlers(objectRules, nil)
+-
+-	group := app.Group("")
+-	group.All("/:bucket/*", objectDispatch)
+-	group.All("/:bucket", bucketDispatch)
+-
+-	handler := fiberHTTPTestHandler(app)
+-	req := httptest.NewRequest(http.MethodGet, "/mybucket/a%2Fb", nil)
+-	rec := httptest.NewRecorder()
+-	handler.ServeHTTP(rec, req)
+-
+-	if rec.Code != http.StatusOK {
+-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+-	}
+-	// urlVar uses likelyUnescapeGeneric -> decoded object key for handlers
+-	if gotObject != "a/b" {
+-		t.Fatalf("expected decoded object key a/b, got %q", gotObject)
++	savedDomains := globalDomainNames
++	globalDomainNames = []string{"s3.example.com"}
++	defer func() { globalDomainNames = savedDomains }()
++	for _, streamed := range []bool{false, true} {
++		app := newFiberApp()
++		var gotObject string
++		capture := func(w http.ResponseWriter, r *http.Request) {
++			var err error
++			// Match all legacy object handlers, which decode the captured path.
++			gotObject, err = unescapePath(urlVar(r, "object"))
++			if err != nil {
++				t.Errorf("object capture could not be decoded: %v", err)
++			}
++			w.WriteHeader(http.StatusOK)
++		}
++		methods := []string{http.MethodGet, http.MethodPut, http.MethodHead, http.MethodPost, http.MethodDelete}
++		rule := s3Route(methods, "objecttest", true, capture, nil, nil)
++		if streamed {
++			rule = s3RouteStream(methods, "objecttest", true, capture, nil, nil)
++		}
++		objectDispatch, bucketDispatch := makeBucketObjectDispatchHandlers([]routeRule{rule}, nil)
++		objectHandler := makeS3DispatchHandler([]routeRule{rule})
++		group := app.Group("", vhostBucketMiddleware)
++		group.Use(func(c fiber.Ctx) error {
++			if handled, err := vhostObjectDispatch(c, objectHandler, bucketDispatch); handled {
++				return err
++			}
++			return c.Next()
++		})
++		group.All("/:bucket/*", objectDispatch)
++		group.All("/:bucket", bucketDispatch)
++		handler := fiberHTTPTestHandler(app)
++		cases := []struct{ encoded, object string }{
++			{"a%2Fb", "a/b"},
++			{"a%252Fb", "a%2Fb"},
++			{"a%2541b", "a%41b"},
++			{"a%2525b", "a%25b"},
++			{"a%25b", "a%b"},
++			{"a+b", "a+b"},
++			{"a%2Bb", "a+b"},
++		}
++		for _, method := range methods {
++			for _, tc := range cases {
++				for _, vhost := range []bool{false, true} {
++					path, host := "/mybucket/"+tc.encoded, "s3.example.com"
++					if vhost {
++						path, host = "/"+tc.encoded, "mybucket.s3.example.com"
++					}
++					req := httptest.NewRequest(method, path, nil)
++					req.Host = host
++					rec := httptest.NewRecorder()
++					handler.ServeHTTP(rec, req)
++					if rec.Code != http.StatusOK || gotObject != tc.object {
++						t.Fatalf("stream=%v vhost=%v %s %s: status %d object %q, want %q", streamed, vhost, method, path, rec.Code, gotObject, tc.object)
++					}
++				}
++			}
++		}
+ 	}
+ }
+diff --git a/cmd/http/listener.go b/cmd/http/listener.go
+index 9690502..ef31e0c 100644
+--- a/cmd/http/listener.go
++++ b/cmd/http/listener.go
+@@ -108,12 +108,26 @@ func (listener *httpListener) start() {
+ 
+ // Accept - reads from httpListener.acceptCh for one of previously accepted TCP connection and returns the same.
+ func (listener *httpListener) Accept() (conn net.Conn, err error) {
+-	result, ok := <-listener.acceptCh
+-	if ok {
+-		return result.conn, result.err
++	listener.mutex.Lock()
++	doneCh := listener.doneCh
++	listener.mutex.Unlock()
++	if doneCh == nil {
++		return nil, net.ErrClosed
++	}
++	select {
++	case result := <-listener.acceptCh:
++		select {
++		case <-doneCh:
++			if result.conn != nil {
++				_ = result.conn.Close()
++			}
++			return nil, net.ErrClosed
++		default:
++			return result.conn, result.err
++		}
++	case <-doneCh:
++		return nil, net.ErrClosed
+ 	}
+-
+-	return nil, syscall.EINVAL
+ }
+ 
+ // Close - closes underneath all TCP listeners.
+@@ -147,12 +161,14 @@ func (listener *httpListener) Addr() (addr net.Addr) {
+ 		return addr
+ 	}
+ 
+-	tcpAddr := addr.(*net.TCPAddr)
++	// TCPListener.Addr returns its stored address. Copy it before constructing
++	// the aggregate address so Addrs keeps reporting each actual listener.
++	tcpAddr := *addr.(*net.TCPAddr)
+ 	if ip := net.ParseIP("0.0.0.0"); ip != nil {
+ 		tcpAddr.IP = ip
+ 	}
+ 
+-	addr = tcpAddr
++	addr = &tcpAddr
+ 	return addr
+ }
+ 
+diff --git a/cmd/http/listener_test.go b/cmd/http/listener_test.go
+index 09fd7b8..cd5a339 100644
+--- a/cmd/http/listener_test.go
++++ b/cmd/http/listener_test.go
+@@ -99,6 +99,7 @@ func getNextPort() string {
+ }
+ 
+ func getNonLoopBackIP(t *testing.T) string {
++	t.Helper()
+ 	localIP4 := set.NewStringSet()
+ 	addrs, err := net.InterfaceAddrs()
+ 	if err != nil {
+@@ -123,11 +124,22 @@ func getNonLoopBackIP(t *testing.T) string {
+ 	nonLoopBackIPs := localIP4.FuncMatch(func(ip string, _ string) bool {
+ 		return !strings.HasPrefix(ip, "127.")
+ 	}, "")
+-	if len(nonLoopBackIPs) == 0 {
+-		t.Fatalf("No non-loop back IP address found for this host")
++	for _, ip := range nonLoopBackIPs.ToSlice() {
++		// VPN and virtual interfaces can be bindable but unreachable from the
++		// same host. Probe each candidate instead of blocking on the first one.
++		listener, err := net.Listen("tcp4", net.JoinHostPort(ip, "0"))
++		if err != nil {
++			continue
++		}
++		conn, err := net.DialTimeout("tcp4", listener.Addr().String(), time.Second)
++		listener.Close()
++		if err == nil {
++			conn.Close()
++			return ip
++		}
+ 	}
+-	nonLoopBackIP := nonLoopBackIPs.ToSlice()[0]
+-	return nonLoopBackIP
++	t.Skip("no locally reachable non-loopback IPv4 interface")
++	return ""
+ }
+ 
+ func TestNewHTTPListener(t *testing.T) {
+@@ -194,7 +206,7 @@ func TestHTTPListenerStartClose(t *testing.T) {
+ 		}
+ 
+ 		for _, serverAddr := range listener.Addrs() {
+-			conn, err := net.Dial("tcp", serverAddr.String())
++			conn, err := net.DialTimeout("tcp", serverAddr.String(), 5*time.Second)
+ 			if err != nil {
+ 				t.Fatalf("Test %d: error: expected = <nil>, got = %v", i+1, err)
+ 			}
+diff --git a/cmd/http/server.go b/cmd/http/server.go
+index 9940ff5..6315d51 100644
+--- a/cmd/http/server.go
++++ b/cmd/http/server.go
+@@ -20,11 +20,8 @@ package http
+ import (
+ 	"context"
+ 	"crypto/tls"
+-	"errors"
+ 	"net"
+ 	"net/http"
+-	"os"
+-	"runtime/pprof"
+ 	"sync"
+ 	"sync/atomic"
+ 	"time"
+@@ -38,11 +35,10 @@ import (
+ 	"github.com/soulteary/otterio/pkg/certs"
+ 	"github.com/soulteary/otterio/pkg/env"
+ 	"github.com/soulteary/otterio/pkg/fips"
++	"github.com/valyala/fasthttp"
+ )
+ 
+ const (
+-	serverShutdownPoll = 500 * time.Millisecond
+-
+ 	// DefaultShutdownTimeout - default shutdown timeout used for graceful http server shutdown.
+ 	DefaultShutdownTimeout = 5 * time.Second
+ 
+@@ -61,6 +57,7 @@ type Server struct {
+ 	listener        *httpListener
+ 	inShutdown      uint32
+ 	requestCount    int32
++	activeConns     sync.Map
+ }
+ 
+ // GetRequestCount - returns number of request in progress.
+@@ -83,15 +80,36 @@ func (srv *Server) Start() (err error) {
+ 		return err
+ 	}
+ 
+-	srv.App.Use(func(c fiber.Ctx) error {
++	// Wrap the transport handler: middleware appended here would follow all
++	// registered routes, whose terminal handlers do not call Next.
++	transport := srv.App.Server()
++	handler := transport.Handler
++	transport.Handler = func(c *fasthttp.RequestCtx) {
+ 		if atomic.LoadUint32(&srv.inShutdown) != 0 {
+-			c.Set("Connection", "close")
+-			return c.Status(fiber.StatusForbidden).SendString(http.ErrServerClosed.Error())
++			c.SetConnectionClose()
++			c.Error(http.ErrServerClosed.Error(), http.StatusForbidden)
++			return
+ 		}
+-		atomic.AddInt32(&srv.requestCount, 1)
+-		defer atomic.AddInt32(&srv.requestCount, -1)
+-		return c.Next()
+-	})
++		handler(c)
++	}
++	previousConnState := transport.ConnState
++	transport.ConnState = func(conn net.Conn, state fasthttp.ConnState) {
++		// StateActive covers the handler and the subsequent streamed response.
++		// Keep-alive idle connections and failed/new connections are not counted.
++		switch state {
++		case fasthttp.StateActive:
++			if _, loaded := srv.activeConns.LoadOrStore(conn, struct{}{}); !loaded {
++				atomic.AddInt32(&srv.requestCount, 1)
++			}
++		case fasthttp.StateIdle, fasthttp.StateClosed, fasthttp.StateHijacked:
++			if _, loaded := srv.activeConns.LoadAndDelete(conn); loaded {
++				atomic.AddInt32(&srv.requestCount, -1)
++			}
++		}
++		if previousConnState != nil {
++			previousConnState(conn, state)
++		}
++	}
+ 
+ 	srv.listenerMutex.Lock()
+ 	srv.listener = listener
+@@ -120,39 +138,10 @@ func (srv *Server) Shutdown() error {
+ 		return http.ErrServerClosed
+ 	}
+ 
+-	// Bound the Fiber drain itself: a stalled stream must not bypass the
+-	// configured shutdown deadline before our request-count check is reached.
+-	if err := srv.App.ShutdownWithTimeout(srv.ShutdownTimeout); err != nil {
+-		return err
+-	}
+-
+-	srv.listenerMutex.Lock()
+-	err := srv.listener.Close()
+-	srv.listenerMutex.Unlock()
+-	if err != nil {
+-		return err
+-	}
+-
+-	shutdownTimeout := srv.ShutdownTimeout
+-	shutdownTimer := time.NewTimer(shutdownTimeout)
+-	ticker := time.NewTicker(serverShutdownPoll)
+-	defer ticker.Stop()
+-	for {
+-		select {
+-		case <-shutdownTimer.C:
+-			tmp, err := os.CreateTemp("", "otterio-goroutines-*.txt")
+-			if err == nil {
+-				_ = pprof.Lookup("goroutine").WriteTo(tmp, 1)
+-				tmp.Close()
+-				return errors.New("timed out. some connections are still active. goroutines written to " + tmp.Name())
+-			}
+-			return errors.New("timed out. some connections are still active")
+-		case <-ticker.C:
+-			if atomic.LoadInt32(&srv.requestCount) <= 0 {
+-				return nil
+-			}
+-		}
+-	}
++	// Fiber already waits for handlers and response streams to finish. Use
++	// one deadline, without a second polling window after a successful drain.
++	defer srv.listener.Close()
++	return srv.App.ShutdownWithTimeout(srv.ShutdownTimeout)
+ }
+ 
+ // NewServer - creates new Fiber server using given arguments.
+@@ -164,8 +153,10 @@ func NewServer(addrs []string, app *fiber.App, getCert certs.GetCertificateFunc)
+ 		tlsConfig = &tls.Config{
+ 			PreferServerCipherSuites: true,
+ 			MinVersion:               tls.VersionTLS12,
+-			NextProtos:               []string{"http/1.1", "h2"},
+-			GetCertificate:           getCert,
++			// fasthttp serves HTTP/1.1; advertising h2 makes capable clients send
++			// HTTP/2 frames to an HTTP/1.1 parser after the TLS handshake.
++			NextProtos:     []string{"http/1.1"},
++			GetCertificate: getCert,
+ 		}
+ 		if secureCiphers || fips.Enabled() {
+ 			tlsConfig.CipherSuites = fips.CipherSuitesTLS()
+diff --git a/cmd/http/server_test.go b/cmd/http/server_test.go
+index 0a1b899..ee20af9 100644
+--- a/cmd/http/server_test.go
++++ b/cmd/http/server_test.go
+@@ -26,7 +26,9 @@ import (
+ )
+ 
+ func TestNewServer(t *testing.T) {
+-	nonLoopBackIP := getNonLoopBackIP(t)
++	// Construction stores addresses without binding them; no host interface
++	// is needed to verify that behavior.
++	nonLoopBackIP := "192.0.2.1"
+ 	app := fiber.New()
+ 	app.Get("/", func(c fiber.Ctx) error {
+ 		return c.SendString("Hello, world")
+diff --git a/cmd/utils.go b/cmd/utils.go
+index 61cc486..7d3d413 100644
+--- a/cmd/utils.go
++++ b/cmd/utils.go
+@@ -772,7 +772,7 @@ func likelyUnescapeGeneric(p string, escapeFn func(string) (string, error)) stri
+ func newContext(r *http.Request, w http.ResponseWriter, api string) context.Context {
+ 	bucket := urlVar(r, "bucket")
+ 	object := likelyUnescapeGeneric(urlVar(r, "object"), url.PathUnescape)
+-	prefix := likelyUnescapeGeneric(urlVar(r, "prefix"), url.QueryUnescape)
++	prefix := likelyUnescapeGeneric(urlVar(r, "prefix"), url.PathUnescape)
+ 	if prefix != "" {
+ 		object = prefix
+ 	}
+diff --git a/cmd/admin_heal_bridge_test.go b/cmd/admin_heal_bridge_test.go
+new file mode 100644
+index 0000000..260c685
+--- /dev/null
++++ b/cmd/admin_heal_bridge_test.go
+@@ -0,0 +1,39 @@
++package cmd
++
++import (
++	"net/http"
++	"net/http/httptest"
++	"net/url"
++	"testing"
++
++	"github.com/gofiber/fiber/v3"
++)
++
++func TestAdminHealWildcardPrefixPreserved(t *testing.T) {
++	for _, tc := range []struct{ encoded, prefix string }{
++		{"dir/object", "dir/object"},
++		{"dir/a+b", "dir/a+b"},
++		{"dir/a%2Bb", "dir/a+b"},
++		{"dir/a%252Fb", "dir/a%2Fb"},
++		{"dir/a%25b", "dir/a%b"},
++	} {
++		app := newFiberApp()
++		captured := false
++		app.Use(func(c fiber.Ctx) error {
++			err := c.Next()
++			vars := allPathParams(c)
++			hi, code := extractHealInitParams(vars, url.Values{mgmtClientToken: {"test"}}, nil)
++			if code != ErrNone || hi.bucket != "mybucket" || hi.objPrefix != tc.prefix {
++				t.Errorf("heal %s: bucket %q prefix %q code %v, want %q", tc.encoded, hi.bucket, hi.objPrefix, code, tc.prefix)
++			}
++			captured = true
++			return err
++		})
++		registerAdminHealRoutes(app, "/admin-test", adminAPIHandlers{})
++		handler := fiberHTTPTestHandler(app)
++		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/admin-test/heal/mybucket/"+tc.encoded, nil))
++		if !captured {
++			t.Fatal("heal route did not dispatch")
++		}
++	}
++}
+diff --git a/cmd/fiber_stream_context_test.go b/cmd/fiber_stream_context_test.go
+new file mode 100644
+index 0000000..dc63465
+--- /dev/null
++++ b/cmd/fiber_stream_context_test.go
+@@ -0,0 +1,67 @@
++package cmd
++
++import (
++	"context"
++	"net/http"
++	"testing"
++	"time"
++
++	"github.com/valyala/fasthttp"
++)
++
++func TestStreamContextCanceledOnCompletionAndConsumerClose(t *testing.T) {
++	for _, disconnect := range []bool{false, true} {
++		t.Run(map[bool]string{false: "completion", true: "consumer-close"}[disconnect], func(t *testing.T) {
++			app := newFiberApp()
++			var request fasthttp.Request
++			request.SetRequestURI("/stream")
++			var reqCtx fasthttp.RequestCtx
++			reqCtx.Init(&request, nil, nil)
++			c := app.AcquireCtx(&reqCtx)
++			defer app.ReleaseCtx(c)
++			defer reqCtx.Response.CloseBodyStream()
++			requestContext := make(chan context.Context, 1)
++			handlerDone := make(chan struct{})
++			err := toOtterioStreamHandler(func(w http.ResponseWriter, r *http.Request) {
++				defer close(handlerDone)
++				requestContext <- r.Context()
++				w.WriteHeader(http.StatusOK)
++				if disconnect {
++					<-r.Context().Done()
++				}
++			})(c)
++			if err != nil {
++				t.Fatal(err)
++			}
++			ctx := <-requestContext
++			if disconnect {
++				if err := reqCtx.Response.CloseBodyStream(); err != nil {
++					t.Fatal(err)
++				}
++			}
++			select {
++			case <-ctx.Done():
++			case <-time.After(time.Second):
++				t.Fatal("stream context was not canceled")
++			}
++			select {
++			case <-handlerDone:
++			case <-time.After(time.Second):
++				t.Fatal("stream handler did not terminate")
++			}
++		})
++	}
++}
++
++func TestFiberRequestContextValuesSurviveReuse(t *testing.T) {
++	var request fasthttp.Request
++	var reqCtx fasthttp.RequestCtx
++	reqCtx.Init(&request, nil, nil)
++	reqCtx.SetUserValue("name", "original")
++	ctx := newFiberRequestCtx(&reqCtx)
++	reqCtx.ResetUserValues()
++	reqCtx.SetUserValue("name", "replacement")
++	if got := ctx.Value("name"); got != "original" {
++		t.Fatalf("request context value changed after reuse: %v", got)
++	}
++}
+diff --git a/cmd/http/server_lifecycle_test.go b/cmd/http/server_lifecycle_test.go
+new file mode 100644
+index 0000000..fdf6de9
+--- /dev/null
++++ b/cmd/http/server_lifecycle_test.go
+@@ -0,0 +1,228 @@
++package http
++
++import (
++	"bufio"
++	"crypto/tls"
++	"errors"
++	"io"
++	"net"
++	"net/http"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/gofiber/fiber/v3"
++)
++
++func startTestServer(t *testing.T, server *Server) string {
++	t.Helper()
++	done := make(chan error, 1)
++	go func() {
++		done <- server.Start()
++		close(done)
++	}()
++	t.Cleanup(func() {
++		_ = server.Shutdown()
++		select {
++		case <-done:
++		case <-time.After(5 * time.Second):
++			t.Error("listener did not stop")
++		}
++	})
++	deadline := time.Now().Add(5 * time.Second)
++	for time.Now().Before(deadline) {
++		server.listenerMutex.Lock()
++		listener := server.listener
++		server.listenerMutex.Unlock()
++		if listener != nil {
++			return listener.Addr().String()
++		}
++		select {
++		case err := <-done:
++			t.Fatalf("server did not start: %v", err)
++		default:
++		}
++		time.Sleep(time.Millisecond)
++	}
++	t.Fatal("listener did not start")
++	return ""
++}
++
++func TestHTTPListenerCloseUnblocksAccept(t *testing.T) {
++	listener := &httpListener{acceptCh: make(chan acceptResult), doneCh: make(chan struct{})}
++	done := make(chan error, 1)
++	go func() {
++		_, err := listener.Accept()
++		done <- err
++	}()
++	if err := listener.Close(); err != nil {
++		t.Fatal(err)
++	}
++	select {
++	case err := <-done:
++		if !errors.Is(err, net.ErrClosed) {
++			t.Fatalf("Accept returned %v, want net.ErrClosed", err)
++		}
++	case <-time.After(time.Second):
++		t.Fatal("Accept remained blocked after Close")
++	}
++	if _, err := listener.Accept(); !errors.Is(err, net.ErrClosed) {
++		t.Fatalf("Accept after Close returned %v", err)
++	}
++}
++
++type blockedResponseStream struct {
++	entered chan struct{}
++	release chan struct{}
++	once    sync.Once
++}
++
++func (s *blockedResponseStream) Read([]byte) (int, error) {
++	s.once.Do(func() { close(s.entered) })
++	<-s.release
++	return 0, io.EOF
++}
++
++func TestServerCountsRegisteredRoutesAndResponseStreams(t *testing.T) {
++	for _, mode := range []string{"handler", "stream", "stream-writer"} {
++		t.Run(mode, func(t *testing.T) {
++			entered := make(chan struct{})
++			release := make(chan struct{})
++			var releaseOnce sync.Once
++			unblock := func() { releaseOnce.Do(func() { close(release) }) }
++			defer unblock()
++			app := fiber.New()
++			app.Get("/blocked", func(c fiber.Ctx) error {
++				if mode == "stream" {
++					return c.SendStream(&blockedResponseStream{entered: entered, release: release})
++				}
++				if mode == "stream-writer" {
++					return c.SendStreamWriter(func(w *bufio.Writer) {
++						close(entered)
++						<-release
++						_, _ = w.WriteString("done")
++					})
++				}
++				close(entered)
++				<-release
++				return c.SendString("done")
++			})
++			server := NewServer([]string{"127.0.0.1:0"}, app, nil)
++			address := startTestServer(t, server)
++			clientDone := make(chan error, 1)
++			go func() {
++				client := &http.Client{Timeout: 5 * time.Second}
++				response, err := client.Get("http://" + address + "/blocked")
++				if err == nil {
++					_, err = io.Copy(io.Discard, response.Body)
++					response.Body.Close()
++				}
++				clientDone <- err
++			}()
++			select {
++			case <-entered:
++			case <-time.After(5 * time.Second):
++				t.Fatal("request did not enter the handler or stream")
++			}
++			if count := server.GetRequestCount(); count != 1 {
++				t.Fatalf("active request count = %d, want 1", count)
++			}
++			unblock()
++			if err := <-clientDone; err != nil {
++				t.Fatal(err)
++			}
++			deadline := time.Now().Add(time.Second)
++			for server.GetRequestCount() != 0 && time.Now().Before(deadline) {
++				time.Sleep(time.Millisecond)
++			}
++			if count := server.GetRequestCount(); count != 0 {
++				t.Fatalf("completed request count = %d, want 0", count)
++			}
++		})
++	}
++}
++
++func TestShutdownClosesEveryListener(t *testing.T) {
++	for _, secure := range []bool{false, true} {
++		t.Run(map[bool]string{false: "http", true: "https"}[secure], func(t *testing.T) {
++			app := fiber.New()
++			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ready") })
++			server := NewServer([]string{"127.0.0.1:0", "localhost:0"}, app, nil)
++			scheme := "http"
++			if secure {
++				server = NewServer(server.Addrs, app, getCert)
++				scheme = "https"
++			}
++			_ = startTestServer(t, server)
++			transport := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
++			defer transport.CloseIdleConnections()
++			client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
++			addresses := server.listener.Addrs()
++			if len(addresses) != 2 {
++				t.Fatalf("listener count = %d, want 2", len(addresses))
++			}
++			for _, address := range addresses {
++				if address.(*net.TCPAddr).IP.IsUnspecified() {
++					t.Fatalf("aggregate Addr replaced a real listener address: %s", address)
++				}
++			}
++			for _, address := range addresses {
++				response, err := client.Get(scheme + "://" + address.String() + "/")
++				if err != nil {
++					t.Fatal(err)
++				}
++				_, _ = io.Copy(io.Discard, response.Body)
++				response.Body.Close()
++			}
++			if err := server.Shutdown(); err != nil {
++				t.Fatal(err)
++			}
++			for _, address := range addresses {
++				conn, err := net.DialTimeout("tcp", address.String(), time.Second)
++				if err == nil {
++					conn.Close()
++					t.Errorf("listener %s still accepts connections after shutdown", address)
++				}
++			}
++		})
++	}
++}
++
++func TestShutdownIdleServerUsesOneDeadline(t *testing.T) {
++	app := fiber.New()
++	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ready") })
++	server := NewServer([]string{"127.0.0.1:0"}, app, nil)
++	server.ShutdownTimeout = 250 * time.Millisecond
++	address := startTestServer(t, server)
++	client := &http.Client{Timeout: 5 * time.Second}
++	response, err := client.Get("http://" + address + "/")
++	if err != nil {
++		t.Fatal(err)
++	}
++	_, _ = io.Copy(io.Discard, response.Body)
++	response.Body.Close()
++	if err := server.Shutdown(); err != nil {
++		t.Fatalf("idle shutdown failed: %v", err)
++	}
++}
++
++func TestTLSServerNegotiatesSupportedHTTPProtocol(t *testing.T) {
++	app := fiber.New()
++	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ready") })
++	server := NewServer([]string{"127.0.0.1:0"}, app, getCert)
++	address := startTestServer(t, server)
++	transport := &http.Transport{
++		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true}, // Test certificate is self-signed.
++		ForceAttemptHTTP2: true,
++	}
++	defer transport.CloseIdleConnections()
++	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
++	response, err := client.Get("https://" + address + "/")
++	if err != nil {
++		t.Fatalf("HTTP/2-capable client could not reach server: %v", err)
++	}
++	defer response.Body.Close()
++	if response.ProtoMajor != 1 || response.StatusCode != http.StatusOK {
++		t.Fatalf("unsupported negotiated response: %s, status %d", response.Proto, response.StatusCode)
++	}
++}

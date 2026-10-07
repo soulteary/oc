@@ -694,5 +694,586 @@
       "failureSummaryRetained": true
     },
     "SDK": "unchanged; no go.mod/go.sum changes"
+  },
+  "jointAudit20261007": {
+    "date": "2026-10-07",
+    "platform": "Darwin arm64",
+    "goVersion": "go1.27.1",
+    "repositories": [
+      "oc",
+      "otterio"
+    ],
+    "ocFixes": [
+      "Unify admin endpoint and imported endpoint validation, including IPv6, empty ports/fragments and port range.",
+      "Format JSON fatal error arguments and serialize configuration cache initialization.",
+      "Release Windows watcher handles on initialization failure and observe same-size file writes.",
+      "Apply initial-scan age and relative exclusion rules to live mirror events."
+    ],
+    "otterioFixes": [
+      "Anchor complete admin query alternatives, decode object/heal paths once and preserve literal plus signs.",
+      "Snapshot request context values and cancel stream producers when handlers or consumers finish.",
+      "Make HealthInfo sends cancellation-aware, stop failed response encoding, and prevent abandoned Heal results from blocking producers.",
+      "Count active handlers and response streams, use one shutdown deadline, unblock listener Accept and preserve bound addresses.",
+      "Advertise only supported HTTP/1.1 over TLS."
+    ],
+    "maintenanceFixes": [
+      "Apply and verify the third compatibility patch against the pinned OtterIO source in OC CI.",
+      "Bypass system proxies for local Python HTTP probes while preserving TLS certificate verification.",
+      "Make repository-name lowercasing portable and normalize macOS temporary-directory paths.",
+      "Bound test network dials and avoid requiring a reachable non-loopback interface for pure server-construction tests."
+    ],
+    "validation": {
+      "ocFullRaceTests": "passed",
+      "otterioAffectedRaceTests": {
+        "status": "passed",
+        "packages": [
+          "cmd",
+          "cmd/http"
+        ]
+      },
+      "golangciLint": {
+        "oc": "passed, 0 issues",
+        "otterio": "passed, 0 issues"
+      },
+      "maintenanceTests": {
+        "oc": {
+          "run": 4,
+          "passed": 4
+        },
+        "otterio": {
+          "run": 150,
+          "passed": 148,
+          "skipped": 2,
+          "skipReason": "Docker-dependent checks"
+        }
+      },
+      "releaseBoundaryChecks": "passed",
+      "compatibilityPatch": {
+        "status": "passed",
+        "changedCmdFilesVerifiedAgainstPinnedSource": 14,
+        "regressionRepeatCount": 3
+      },
+      "crossCompilation": {
+        "status": "passed",
+        "CGO_ENABLED": 0,
+        "targets": [
+          "oc/linux/amd64",
+          "oc/windows/amd64",
+          "otterio/linux/amd64",
+          "otterio/windows/amd64"
+        ],
+        "binaryFormatsVerified": true
+      },
+      "fullIntegration": {
+        "CGO_ENABLED": 0,
+        "checks": 1001,
+        "testContext": {
+          "platform": "Darwin",
+          "architecture": "arm64",
+          "ocSHA256": "c956a3001ec6f797535db6c28a3380c8464d4597500cb80c91855a59b5443fea",
+          "otterioSHA256": "9fcf8af8b3dbcdf8f7179e107a122d49c696e40b02ed6e9cf626a206bf7f1d73",
+          "asyncPreemptionDisabled": false
+        },
+        "results": [
+          {
+            "scenario": "migration",
+            "checks": 22,
+            "status": "passed"
+          },
+          {
+            "scenario": "single-http",
+            "status": "passed",
+            "checks": 83,
+            "lastCommand": [
+              "rb",
+              "test/core-check"
+            ]
+          },
+          {
+            "scenario": "dual-http",
+            "status": "passed",
+            "checks": 84,
+            "lastCommand": [
+              "rb",
+              "test/core-check"
+            ]
+          },
+          {
+            "scenario": "single-tls",
+            "status": "passed",
+            "checks": 86,
+            "lastCommand": [
+              "rb",
+              "test/core-check"
+            ]
+          },
+          {
+            "scenario": "dual-tls",
+            "status": "passed",
+            "checks": 87,
+            "lastCommand": [
+              "rb",
+              "test/core-check"
+            ]
+          },
+          {
+            "scenario": "dual-http-public",
+            "status": "passed",
+            "checks": 83,
+            "lastCommand": [
+              "rb",
+              "test/core-check"
+            ]
+          },
+          {
+            "scenario": "dual-tls",
+            "status": "passed",
+            "checks": 342,
+            "lastCommand": [
+              "rb",
+              "test/core-check"
+            ],
+            "stability": {
+              "checks": 31,
+              "transferMetrics": [
+                {
+                  "operation": "upload",
+                  "concurrency": 1,
+                  "objectBytes": 68157440,
+                  "transferredBytes": 68157440,
+                  "wallSeconds": 0.799,
+                  "aggregateMiBPerSecond": 81.32,
+                  "processSamples": [
+                    {
+                      "elapsedSeconds": 0.793,
+                      "sampledPeakRSSMiB": 32.23
+                    }
+                  ],
+                  "referenceMiBPerSecond": 95.17,
+                  "requiredMiBPerSecond": 47.58
+                },
+                {
+                  "operation": "download",
+                  "concurrency": 1,
+                  "objectBytes": 68157440,
+                  "transferredBytes": 68157440,
+                  "wallSeconds": 0.682,
+                  "aggregateMiBPerSecond": 95.34,
+                  "processSamples": [
+                    {
+                      "elapsedSeconds": 0.679,
+                      "sampledPeakRSSMiB": 31.25
+                    }
+                  ],
+                  "referenceMiBPerSecond": 57.57,
+                  "requiredMiBPerSecond": 28.79
+                },
+                {
+                  "operation": "upload",
+                  "concurrency": 4,
+                  "objectBytes": 68157440,
+                  "transferredBytes": 272629760,
+                  "wallSeconds": 1.814,
+                  "aggregateMiBPerSecond": 143.33,
+                  "processSamples": [
+                    {
+                      "elapsedSeconds": 1.715,
+                      "sampledPeakRSSMiB": 33.83
+                    },
+                    {
+                      "elapsedSeconds": 1.534,
+                      "sampledPeakRSSMiB": 32.34
+                    },
+                    {
+                      "elapsedSeconds": 1.748,
+                      "sampledPeakRSSMiB": 32.61
+                    },
+                    {
+                      "elapsedSeconds": 1.524,
+                      "sampledPeakRSSMiB": 33.72
+                    }
+                  ],
+                  "referenceMiBPerSecond": 88.2,
+                  "requiredMiBPerSecond": 44.1
+                },
+                {
+                  "operation": "download",
+                  "concurrency": 4,
+                  "objectBytes": 68157440,
+                  "transferredBytes": 272629760,
+                  "wallSeconds": 2.02,
+                  "aggregateMiBPerSecond": 128.74,
+                  "processSamples": [
+                    {
+                      "elapsedSeconds": 2.018,
+                      "sampledPeakRSSMiB": 30.19
+                    },
+                    {
+                      "elapsedSeconds": 1.132,
+                      "sampledPeakRSSMiB": 29.98
+                    },
+                    {
+                      "elapsedSeconds": 1.138,
+                      "sampledPeakRSSMiB": 30.31
+                    },
+                    {
+                      "elapsedSeconds": 1.885,
+                      "sampledPeakRSSMiB": 30.28
+                    }
+                  ],
+                  "referenceMiBPerSecond": 69.15,
+                  "requiredMiBPerSecond": 34.57
+                }
+              ],
+              "transferAttempts": [
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/files/large",
+                    "test/core-check/stability-1-0"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 0.793,
+                  "sampledPeakRSSMiB": 32.23
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/files/large",
+                    "test/core-check/stability-1-0"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 0.683,
+                  "sampledPeakRSSMiB": 32.91
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "test/core-check/stability-1-0",
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/stability-1-0.download"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 0.678,
+                  "sampledPeakRSSMiB": 31.25
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "test/core-check/stability-1-0",
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/stability-1-0.download"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 1.129,
+                  "sampledPeakRSSMiB": 31.64
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/files/large",
+                    "test/core-check/stability-4-0"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 1.715,
+                  "sampledPeakRSSMiB": 33.83
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/files/large",
+                    "test/core-check/stability-4-1"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 1.534,
+                  "sampledPeakRSSMiB": 32.34
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/files/large",
+                    "test/core-check/stability-4-2"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 1.748,
+                  "sampledPeakRSSMiB": 32.61
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/files/large",
+                    "test/core-check/stability-4-3"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 1.524,
+                  "sampledPeakRSSMiB": 33.72
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/files/large",
+                    "test/core-check/stability-4-0"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 0.737,
+                  "sampledPeakRSSMiB": 32.5
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "test/core-check/stability-4-0",
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/stability-4-0.download"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 2.018,
+                  "sampledPeakRSSMiB": 30.19
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "test/core-check/stability-4-1",
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/stability-4-1.download"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 1.132,
+                  "sampledPeakRSSMiB": 29.98
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "test/core-check/stability-4-2",
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/stability-4-2.download"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 1.138,
+                  "sampledPeakRSSMiB": 30.31
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "test/core-check/stability-4-3",
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/stability-4-3.download"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 1.885,
+                  "sampledPeakRSSMiB": 30.28
+                },
+                {
+                  "operation": "cp",
+                  "arguments": [
+                    "test/core-check/stability-4-0",
+                    "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-core-fnosaide/stability-4-0.download"
+                  ],
+                  "status": "complete",
+                  "exitCode": 0,
+                  "elapsedSeconds": 0.94,
+                  "sampledPeakRSSMiB": 31.61
+                }
+              ],
+              "cancellation": [
+                {
+                  "command": "watch test/core-check",
+                  "iteration": 1,
+                  "exitCode": 143,
+                  "seconds": 0.01,
+                  "eventReceived": true
+                },
+                {
+                  "command": "watch test/core-check",
+                  "iteration": 2,
+                  "exitCode": 143,
+                  "seconds": 0.003,
+                  "eventReceived": true
+                },
+                {
+                  "command": "watch test/core-check",
+                  "iteration": 3,
+                  "exitCode": 143,
+                  "seconds": 0.005,
+                  "eventReceived": true
+                },
+                {
+                  "command": "admin trace",
+                  "iteration": 1,
+                  "exitCode": 143,
+                  "seconds": 0.005,
+                  "eventReceived": true
+                },
+                {
+                  "command": "admin trace",
+                  "iteration": 2,
+                  "exitCode": 143,
+                  "seconds": 0.004,
+                  "eventReceived": true
+                },
+                {
+                  "command": "admin trace",
+                  "iteration": 3,
+                  "exitCode": 143,
+                  "seconds": 0.004,
+                  "eventReceived": true
+                },
+                {
+                  "command": "admin console",
+                  "iteration": 1,
+                  "exitCode": 143,
+                  "seconds": 0.01,
+                  "eventReceived": true
+                },
+                {
+                  "command": "admin console",
+                  "iteration": 2,
+                  "exitCode": 143,
+                  "seconds": 0.004,
+                  "eventReceived": true
+                },
+                {
+                  "command": "admin console",
+                  "iteration": 3,
+                  "exitCode": 143,
+                  "seconds": 0.003,
+                  "eventReceived": true
+                }
+              ],
+              "interruptions": [
+                {
+                  "command": "cat",
+                  "exitCode": 143,
+                  "seconds": 0.016
+                },
+                {
+                  "command": "multipart-upload",
+                  "sessionObserved": true,
+                  "uploadedPartBytes": 16777216,
+                  "residualSessions": 0,
+                  "exitCode": 143
+                }
+              ],
+              "networkFaults": [
+                {
+                  "fault": "8-MiB/s-TCP-throttle",
+                  "seconds": 11.798,
+                  "hashVerified": true
+                },
+                {
+                  "fault": "one-TCP-disconnect-after-1-MiB",
+                  "firstExitCode": 1,
+                  "hashVerified": true
+                },
+                {
+                  "fault": "upload-TCP-disconnect",
+                  "firstExitCode": 0,
+                  "hashVerified": true,
+                  "residualSessions": 0
+                }
+              ],
+              "soak": {
+                "seconds": 30.27,
+                "samples": 65,
+                "initialRSSMiB": 30.12,
+                "peakRSSMiB": 30.27,
+                "maxGrowthBudgetMiB": 64,
+                "stdoutConsumed": false
+              },
+              "budgets": {
+                "transferSeconds": 120,
+                "sampledProcessRSSMiB": 512,
+                "cancellationSeconds": 5,
+                "soakGrowthMiB": 64,
+                "minimumMiBPerSecond": 5,
+                "maximumThroughputDropFraction": 0.5
+              },
+              "activeUpload": {
+                "sessions": 1,
+                "uploadedPartBytes": 16777216
+              },
+              "methodology": "65 MiB objects; concurrency 1 and 4; local disposable server; wall time includes CLI startup; OC RSS sampled every 100 ms; budgets read from compatibility.json; same-run throughput reference; subscriptions receive an event before pausing output; cancellation drains pending output; no disconnected-event replay claim"
+            }
+          },
+          {
+            "scenario": "dual-tls-erasure-extended",
+            "status": "passed",
+            "checks": 214,
+            "lastCommand": [
+              "admin",
+              "service"
+            ]
+          }
+        ]
+      },
+      "pinnedPatchedIntegration": {
+        "CGO_ENABLED": 1,
+        "checks": 236,
+        "testContext": {
+          "platform": "Darwin",
+          "architecture": "arm64",
+          "ocSHA256": "155edc9edd0c2604b325b142b9f8ca0205f8ba213fe239b7c9156b3ba26d3fc5",
+          "otterioSHA256": "686baed815bdd8f7c4f776c3abb689d2515db0a6525cb1ae135a37c3f26d380c",
+          "asyncPreemptionDisabled": false
+        },
+        "results": [
+          {
+            "scenario": "migration",
+            "checks": 22,
+            "status": "passed"
+          },
+          {
+            "scenario": "dual-tls-erasure-extended",
+            "status": "passed",
+            "checks": 214,
+            "lastCommand": [
+              "admin",
+              "service"
+            ]
+          }
+        ]
+      },
+      "finalReview": {
+        "lastIndependentRoundsWithNoNewActionableFindings": 2,
+        "scope": "Changed implementation, regression tests, pinned patch and build/test integration"
+      },
+      "limits": [
+        "Windows native watcher tests were cross-compiled but not executed on this macOS host.",
+        "Unreachable non-loopback interface tests may skip on this host.",
+        "Remote CI was not executed locally.",
+        "OtterIO full Go suite reported 138 skips under existing test or platform preconditions; skipped checks are not counted as passes."
+      ],
+      "otterioFullTests": {
+        "status": "passed",
+        "CGO_ENABLED": 0,
+        "tags": [
+          "kqueue"
+        ],
+        "testResultsIncludingSubtests": {
+          "pass": 3990,
+          "skip": 138
+        },
+        "packageResults": {
+          "skip": 34,
+          "pass": 62
+        },
+        "cmdElapsedSeconds": 598.859,
+        "skipsByReason": {
+          "No locally reachable non-loopback IPv4 interface": 3,
+          "Existing disabled Parquet column tests": 2,
+          "Existing disabled long namespace-lock test": 1,
+          "FS object-version tests not applicable": 67,
+          "Platform path-length test precondition": 1,
+          "Argon2 vectors for modes other than argon2id": 16,
+          "SIMD JSON backend unsupported on this CPU": 48
+        }
+      }
+    }
   }
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"time"
 )
 
 const fsWatchStatArg = "--oc-internal-watch-stat"
@@ -41,6 +42,7 @@ func init() {
 			result.NotExist = os.IsNotExist(err)
 		} else {
 			result.Size = info.Size()
+			result.ModTime = info.ModTime()
 			result.Directory = info.IsDir()
 		}
 		if err := encoder.Encode(result); err != nil {
@@ -51,6 +53,7 @@ func init() {
 
 type fsWatchFileState struct {
 	Size      int64
+	ModTime   time.Time
 	Directory bool
 	Error     string
 	NotExist  bool

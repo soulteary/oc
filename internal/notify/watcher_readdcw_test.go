@@ -12,6 +12,86 @@ import (
 	"time"
 )
 
+func TestWindowsRegistrationFailureClosesHandle(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "file")
+	if err := os.WriteFile(file, []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	port, err := syscall.CreateIoCompletionPort(syscall.InvalidHandle, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.CloseHandle(port)
+	for _, tc := range []struct {
+		name string
+		path string
+		port syscall.Handle
+	}{
+		{"completion-port", dir, syscall.InvalidHandle},
+		{"first-read", file, port},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path, err := syscall.UTF16FromString(tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g := &grip{handle: syscall.InvalidHandle, filter: uint32(Write), pathw: path, ovlapped: &overlappedEx{}}
+			g.ovlapped.parent = g
+			if err := g.register(tc.port); err == nil {
+				syscall.CloseHandle(g.handle)
+				t.Fatal("invalid watch registration succeeded")
+			}
+			if g.handle != syscall.InvalidHandle {
+				syscall.CloseHandle(g.handle)
+				t.Fatal("failed watch registration retained a directory handle")
+			}
+		})
+	}
+}
+
+func TestWindowsWriteIncludesLastWrite(t *testing.T) {
+	if encode(uint32(Write))&uint32(FileNotifyChangeLastWrite) == 0 {
+		t.Fatal("same-size writes are not included in the Write filter")
+	}
+}
+
+func TestWindowsWatchSameSizeWrite(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "file")
+	if err := os.WriteFile(file, []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out := make(chan EventInfo, 10)
+	r := newWatcher(out).(*readdcw)
+	defer r.Close()
+	if err := r.Watch(dir, Write); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(file, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.Write([]byte("new")); err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	select {
+	case event := <-out:
+		if event.Event() != Write || event.Path() != file {
+			t.Fatalf("unexpected write event: %v", event)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("same-size write was not delivered")
+	}
+}
+
 func TestWindowsCompletionReportsLoss(t *testing.T) {
 	for _, tc := range []struct {
 		name string

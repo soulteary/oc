@@ -2,6 +2,7 @@
 """Run OC against disposable real OtterIO servers; never use a user's aliases."""
 import argparse
 from stability_checks import stability_checks
+from local_http import local_urlopen
 import hashlib
 import hmac
 import datetime
@@ -161,7 +162,7 @@ def scenario(oc, otterio, split, tls, public, extended=False, stability=False, s
                     if server.poll() is not None:
                         raise RuntimeError('server exited: ' + log_path.read_text().replace(secret, 'REDACTED').replace(access, 'REDACTED'))
                     try:
-                        with urllib.request.urlopen(s3 + '/otterio/health/ready', context=context, timeout=1) as response:
+                        with local_urlopen(s3 + '/otterio/health/ready', context=context, timeout=1) as response:
                             if response.status == 200:
                                 break
                     except (OSError, urllib.error.HTTPError):
@@ -220,10 +221,12 @@ def scenario(oc, otterio, split, tls, public, extended=False, stability=False, s
                     headers['Authorization'] = 'AWS4-HMAC-SHA256 Credential=' + access + '/' + scope + ', SignedHeaders=' + signed + ', Signature=' + hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest()
                     request = urllib.request.Request(admin + path + '?' + query, data=payload, headers=headers, method='PUT')
                     try:
-                        urllib.request.urlopen(request, context=ssl.create_default_context(cafile=str(adminca)) if tls else None, timeout=5)
+                        with local_urlopen(request, context=ssl.create_default_context(cafile=str(adminca)) if tls else None, timeout=5) as response:
+                            response.read()
                     except urllib.error.HTTPError as error:
-                        result = json.loads(error.read())
-                        assert error.code == 400 and 'BadJSON' in result['Code'], 'console probe did not reach decryption validation'
+                        with error:
+                            result = json.loads(error.read())
+                            assert error.code == 400 and 'BadJSON' in result['Code'], 'console probe did not reach decryption validation'
                     else:
                         raise AssertionError('malformed admin payload was accepted')
 
@@ -261,7 +264,9 @@ def scenario(oc, otterio, split, tls, public, extended=False, stability=False, s
                     block = bytes(range(256)) * 4096
                     for _ in range(65):
                         large.write(block)
-                for local, object_name in [('empty', 'empty'), ('small', '中文 空格+#?.txt'), ('large', 'multipart')]:
+                for local, object_name in [('empty', 'empty'), ('small', '中文 空格+#?.txt'),
+                                           ('small', 'literal%2F%41%25.txt'), ('small', 'percent%.txt'),
+                                           ('large', 'multipart')]:
                     target = 'test/core-check/' + object_name
                     run('cp', str(files / local), target)
                     downloaded = root / 'download'
@@ -269,6 +274,15 @@ def scenario(oc, otterio, split, tls, public, extended=False, stability=False, s
                         run('cat', target, output=destination)
                     assert digest(files / local) == digest(downloaded), 'object digest mismatch'
                     checks += 1
+                    run('stat', target)
+                for object_name in ('literal%2F%41%25.txt', 'percent%.txt'):
+                    target = 'test/core-check/' + object_name
+                    run('tag', 'set', target, 'encoding=literal-percent')
+                    assert b'literal-percent' in run('tag', 'list', target)
+                    run('tag', 'remove', target)
+                    run('cp', target, target + '.copy')
+                    assert run('cat', target + '.copy') == (files / 'small').read_bytes()
+                    checks += 2
                 run('cp', 'test/core-check/multipart', 'test/core-check/copied')
                 run('stat', 'test/core-check/copied')
                 run('stat', 'test/core-check/missing', failure=True)
@@ -320,19 +334,21 @@ def scenario(oc, otterio, split, tls, public, extended=False, stability=False, s
                         metrics_context = ssl.create_default_context(cafile=generated['tlsConfig']['caFile'])
                     else:
                         assert 'tlsConfig' not in generated
-                    with urllib.request.urlopen(request, context=metrics_context, timeout=10) as response:
+                    with local_urlopen(request, context=metrics_context, timeout=10) as response:
                         assert response.status == 200 and response.read(), 'metrics not scrapeable'
                     checks += 1
                 if not public:
                     try:
-                        urllib.request.urlopen(s3 + '/otterio/v2/metrics/cluster', context=context, timeout=5)
+                        with local_urlopen(s3 + '/otterio/v2/metrics/cluster', context=context, timeout=5) as response:
+                            response.read()
                     except urllib.error.HTTPError as error:
-                        assert error.code == 403
-                        checks += 1
+                        with error:
+                            assert error.code == 403
+                            checks += 1
                     else:
                         raise AssertionError('unauthenticated metrics accepted')
                 shared = json.loads(run('--json', 'share', 'download', 'test/core-check/mirror/keep'))
-                with urllib.request.urlopen(shared['share'], context=context, timeout=10) as response:
+                with local_urlopen(shared['share'], context=context, timeout=10) as response:
                     assert response.read() == b'after'
                 checks += 1
 
@@ -619,7 +635,7 @@ def scenario(oc, otterio, split, tls, public, extended=False, stability=False, s
                     deadline = time.monotonic() + 30
                     while True:
                         try:
-                            with urllib.request.urlopen(s3 + '/otterio/health/ready', context=context, timeout=1) as response:
+                            with local_urlopen(s3 + '/otterio/health/ready', context=context, timeout=1) as response:
                                 if response.status == 200:
                                     break
                         except (OSError, urllib.error.HTTPError):

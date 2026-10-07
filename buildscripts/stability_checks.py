@@ -16,6 +16,7 @@ import json
 import urllib.parse
 from fault_relay import FaultRelay
 from check_budgets import budgets, throughput_gate
+from local_http import local_urlopen
 
 
 def file_hash(path):
@@ -224,7 +225,7 @@ def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence
             headers['Authorization'] = 'AWS4-HMAC-SHA256 Credential='+env['OTTERIO_ROOT_USER']+'/'+scope+', SignedHeaders='+signed+', Signature='+hmac.new(signing,message.encode(),hashlib.sha256).hexdigest()
             request = urllib.request.Request(configured['url']+path+'?'+canonical_query,headers=headers)
             context = ssl.create_default_context(cafile=str(config/'certs/CAs/s3.crt')) if endpoint.scheme=='https' else None
-            with urllib.request.urlopen(request,context=context,timeout=5) as response:
+            with local_urlopen(request,context=context,timeout=5) as response:
                 tree = ET.fromstring(response.read())
             for item in tree.iter(): item.tag = item.tag.split('}')[-1]
             return tree

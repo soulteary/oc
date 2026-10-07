@@ -277,8 +277,16 @@ func TestFSWatchStatWorkerReuse(t *testing.T) {
 	if err := os.WriteFile(path, []byte("data"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	modified := time.Unix(1700000000, 123456000)
+	if err := os.Chtimes(path, modified, modified); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	first, err := worker.stat(ctx, path)
-	if err != nil || first.Size != 4 || first.Directory {
+	if err != nil || first.Size != 4 || first.Directory || !first.ModTime.Equal(actual.ModTime()) {
 		t.Fatalf("stat: %+v %v", first, err)
 	}
 	process := worker.command.Process
@@ -297,6 +305,39 @@ func TestFSWatchStatWorkerReuse(t *testing.T) {
 	if worker.command != nil {
 		t.Fatal("metadata helper not reaped")
 	}
+}
+
+func TestFSWatchForwarderKeepsSourceModificationTime(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wo := &WatchObject{EventInfoChan: make(chan []EventInfo), ErrorChan: make(chan *probe.Error, 1), DoneChan: make(chan struct{})}
+	events := make(chan notify.EventInfo)
+	modified := time.Unix(1700000000, 0)
+	stat := func(context.Context, string) (fsWatchFileState, error) {
+		return fsWatchFileState{Size: 4, ModTime: modified}, nil
+	}
+	stopped := make(chan struct{})
+	go forwardFSWatchEventsWithStat(ctx, wo, events, func() { close(stopped) }, stat)
+	events <- fsWatchTestEvent{"file", EventTypePut[0]}
+	select {
+	case info := <-wo.Events():
+		if len(info) != 1 || !info[0].SourceModTime.Equal(modified) {
+			t.Fatalf("source modification time was lost: %+v", info)
+		}
+		occurred, err := time.Parse(time.RFC3339Nano, info[0].Time)
+		if err != nil || time.Since(occurred) > time.Minute {
+			t.Fatalf("notification time changed: %+v %v", info, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("notification not delivered")
+	}
+	cancel()
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("watcher did not stop")
+	}
+	awaitFSWatchClosed(t, wo)
 }
 
 func TestFSWatchBlockedStatHelper(t *testing.T) {

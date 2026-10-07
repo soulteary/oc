@@ -527,6 +527,7 @@ func (mj *mirrorJob) watchMirrorEvents(ctx context.Context, events []EventInfo) 
 		// build target path, it is the relative of the eventPath with the sourceUrl
 		// joined to the targetURL.
 		sourceSuffix := strings.TrimPrefix(eventPath, sourceURLFull)
+		sourceSuffix = strings.TrimPrefix(sourceSuffix, string(sourceURL.Separator))
 		//Skip the object, if it matches the Exclude options provided
 		if matchExcludeOptions(mj.opts.excludeOptions, sourceSuffix) {
 			continue
@@ -540,7 +541,30 @@ func (mj *mirrorJob) watchMirrorEvents(ctx context.Context, events []EventInfo) 
 		tgtSSE := getSSE(targetPath, mj.opts.encKeyDB[targetAlias])
 
 		if strings.HasPrefix(string(event.Type), "s3:ObjectCreated:") {
-			sourceModTime, _ := time.Parse(time.RFC3339Nano, event.Time)
+			sourceModTime := event.SourceModTime
+			if sourceModTime.IsZero() {
+				sourceModTime, _ = time.Parse(time.RFC3339Nano, event.Time)
+				if mj.opts.olderThan != "" || mj.opts.newerThan != "" {
+					// S3 notifications timestamp the operation, including retention
+					// changes. Use the object's modification time for age filters.
+					sourceClient, err := newClientFromAlias(sourceAlias, sourceURL.String())
+					if err == nil {
+						sourcePath := filepath.ToSlash(filepath.Join(sourceAlias, sourceURL.Path))
+						var content *ClientContent
+						content, err = sourceClient.Stat(ctx, StatOptions{sse: getSSE(sourcePath, mj.opts.encKeyDB[sourceAlias])})
+						if err == nil {
+							sourceModTime = content.Time
+						}
+					}
+					if err != nil {
+						mj.parallel.queueTask(func() URLs { return URLs{Error: err} })
+						continue
+					}
+				}
+			}
+			if isOlder(sourceModTime, mj.opts.olderThan) || isNewer(sourceModTime, mj.opts.newerThan) {
+				continue
+			}
 			mirrorURL := URLs{
 				SourceAlias: sourceAlias,
 				SourceContent: &ClientContent{

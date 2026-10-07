@@ -100,8 +100,15 @@ func (g *grip) register(cph syscall.Handle) (err error) {
 	); err != nil {
 		return
 	}
+	// No completion owns this grip until ReadDirectoryChanges succeeds.
+	// Release the opened handle on either registration or first-read failure.
+	defer func() {
+		if err != nil {
+			syscall.CloseHandle(g.handle)
+			g.handle = syscall.InvalidHandle
+		}
+	}()
 	if _, err = syscall.CreateIoCompletionPort(g.handle, cph, 0, 0); err != nil {
-		syscall.CloseHandle(g.handle)
 		return
 	}
 	return g.readDirChanges()
@@ -144,7 +151,7 @@ func encode(filter uint32) uint32 {
 	}
 	if e&Write != 0 {
 		e = (e ^ Write) | FileNotifyChangeAttributes | FileNotifyChangeSize |
-			FileNotifyChangeCreation | FileNotifyChangeSecurity
+			FileNotifyChangeLastWrite | FileNotifyChangeCreation | FileNotifyChangeSecurity
 	}
 	if e&Rename != 0 {
 		e = (e ^ Rename) | FileNotifyChangeFileName

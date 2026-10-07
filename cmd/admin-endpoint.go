@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -17,15 +19,41 @@ func validateAdminEndpoint(endpoint string) (*url.URL, error) {
 	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Hostname() == "" {
 		return nil, fmt.Errorf("admin endpoint must be an absolute http or https URL")
 	}
-	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(endpoint, "#") || u.Opaque != "" {
 		return nil, fmt.Errorf("admin endpoint must not contain credentials, query parameters or fragments")
 	}
 	if u.Path != "" && u.Path != "/" {
 		return nil, fmt.Errorf("admin endpoint path prefixes are unsupported; expose /otterio/admin on the configured host")
 	}
+	if err := validateEndpointHost(u); err != nil {
+		return nil, err
+	}
 	u.Path = ""
 	u.RawPath = ""
 	return u, nil
+}
+
+// Keep S3 import and management endpoints consistent about host syntax and ports.
+func validateEndpointHost(u *url.URL) error {
+	if u.Hostname() == "" || strings.ContainsAny(u.Host, " \t\r\n") {
+		return fmt.Errorf("endpoint contains an invalid host")
+	}
+	if strings.HasPrefix(u.Host, "[") || strings.Count(u.Host, ":") > 1 {
+		address, err := netip.ParseAddr(u.Hostname())
+		if err != nil || !address.Is6() || !strings.HasPrefix(u.Host, "[") {
+			return fmt.Errorf("endpoint contains an invalid IPv6 host")
+		}
+	}
+	if strings.HasSuffix(u.Host, ":") {
+		return fmt.Errorf("endpoint contains an invalid port")
+	}
+	if port := u.Port(); port != "" {
+		number, err := strconv.Atoi(port)
+		if err != nil || number < 1 || number > 65535 {
+			return fmt.Errorf("endpoint contains an invalid port")
+		}
+	}
+	return nil
 }
 
 func adminSetting(command, envName, alias, configured, fallback string) string {

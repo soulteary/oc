@@ -3,11 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -151,20 +149,5 @@ func validateImportEndpoint(endpoint string) error {
 	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(endpoint, "#") || u.Opaque != "" || (u.Path != "" && u.Path != "/") {
 		return fmt.Errorf("S3 endpoint must not contain credentials, query parameters, fragments or path prefixes")
 	}
-	if strings.HasPrefix(u.Host, "[") || strings.Count(u.Host, ":") > 1 {
-		address, parseErr := netip.ParseAddr(u.Hostname())
-		if parseErr != nil || !address.Is6() || !strings.HasPrefix(u.Host, "[") {
-			return fmt.Errorf("S3 endpoint contains an invalid IPv6 host")
-		}
-	}
-	if strings.HasSuffix(u.Host, ":") {
-		return fmt.Errorf("S3 endpoint contains an invalid port")
-	}
-	if port := u.Port(); port != "" {
-		number, parseErr := strconv.Atoi(port)
-		if parseErr != nil || number < 1 || number > 65535 {
-			return fmt.Errorf("S3 endpoint contains an invalid port")
-		}
-	}
-	return nil
+	return validateEndpointHost(u)
 }

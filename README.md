@@ -47,7 +47,7 @@ python3 buildscripts/test-core-integration.py \
   --report /tmp/oc-compatibility.json
 ```
 
-Tests use disposable local servers and credentials. The pinned server needs the phase-two query bridge and phase-three shutdown/restart patches. See the phase-three guide for the Darwin restart supervisor and platform validation. JSON errors keep existing fields and add `error.code` and `error.category`; each error is one JSON line. Error exit status remains 1, with existing cancellation/signal statuses preserved.
+Tests use disposable local servers and credentials. The pinned server needs the three patches in the [compatibility manifest](docs/compatibility.json), covering query bridging, shutdown/restart, and HTTP/object path fixes. See the phase-three guide for the Darwin restart supervisor and platform validation. JSON errors keep existing fields and add `error.code` and `error.category`; each error is one JSON line. Error exit status remains 1, with existing cancellation/signal statuses preserved.
 
 ## Stability and diagnostics
 

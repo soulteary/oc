@@ -123,8 +123,10 @@ jobs:
           # until a release includes the query bridge and runtime fixes.
           git apply "$GITHUB_WORKSPACE/buildscripts/otterio-core-compat.patch"
           git apply "$GITHUB_WORKSPACE/buildscripts/otterio-runtime-compat.patch"
+          git apply "$GITHUB_WORKSPACE/buildscripts/otterio-http-api-compat.patch"
           go test -mod=readonly ./cmd/http -run TestShutdownBoundsActiveFiberRequest -count=1
-          go test -mod=readonly ./cmd -run 'TestAdminQueryBridge|TestDarwinRestartSupervisor' -count=3
+          go test -mod=readonly ./cmd/http -run 'TestHTTPListenerClose|TestServerCounts|TestShutdown|TestTLSServer' -count=3
+          go test -mod=readonly ./cmd -run 'TestAdminQueryBridge|TestDarwinRestartSupervisor|TestEncodedObjectPath|TestAdminHealWildcard|TestStreamContext|TestFiberRequestContextValues' -count=3
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio" .
       - name: Verify ports, TLS, permissions, streams and performance budgets
         run: |
