@@ -321,6 +321,12 @@ func (r *readdcw) watch(path string, event Event, recursive bool) error {
 
 	wd, err := newWatched(r.cph, uint32(event), recursive, path)
 	if err != nil {
+		// A second grip can fail after the first read has been submitted.
+		// Keep that read's memory alive until its cancellation completes.
+		if wd != nil && wd.count != 0 {
+			wd.filter = wd.filter&^onlyMachineStates | stateUnwatch
+			r.retired[wd] = struct{}{}
+		}
 		return err
 	}
 
