@@ -431,7 +431,7 @@ func uploadSourceToTargetURL(ctx context.Context, urls URLs, progress io.Reader,
 			return urls.WithError(probe.NewError(errors.New("invalid retention mode")).Trace(targetURL.String()))
 		}
 
-		var dur int
+		var dur uint64
 		var unit minio.ValidityUnit
 		dur, unit, err = parseRetentionValidity(urls.TargetContent.RetentionDuration)
 		if err != nil {
