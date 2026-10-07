@@ -6,6 +6,23 @@ OC provides filesystem and S3 object operations together with OtterIO administra
 
 Release instructions and asset verification: [releasing OC](docs/releasing.md).
 
+## Run in a container
+
+Release images are published to `ghcr.io/soulteary/oc` for Linux amd64 and arm64.
+Replace the placeholder with a published release tag:
+
+```sh
+TAG="RELEASE.YYYY-MM-DDTHH-MM-SSZ"
+docker run --rm "ghcr.io/soulteary/oc:$TAG" --version
+docker run --rm -v "$HOME/.oc:/root/.oc" "ghcr.io/soulteary/oc:$TAG" --help
+```
+
+Pass OC arguments directly after the image name. Mount `/root/.oc` to preserve
+configuration between runs. Use a version tag or the digest recorded in the
+release manifest to pin a deployment; `ghcr.io/soulteary/oc:latest` follows the
+newest promoted stable release. Docker Hub publication is optional; setup and
+verification are covered in the [release guide](docs/releasing.md).
+
 ## Build and connect
 
 Use the Go toolchain declared in `go.mod`:

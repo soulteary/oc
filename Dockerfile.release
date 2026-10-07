@@ -1,13 +1,18 @@
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.3
 
-LABEL org.opencontainers.image.title="OC" \
-      org.opencontainers.image.source="https://github.com/soulteary/mc"
+ARG TARGETARCH
+ARG RELEASE
+ARG SOURCE_SHA
+ARG SOURCE_URL=https://github.com/soulteary/oc
 
-COPY oc /usr/bin/oc
-COPY CREDITS /licenses/CREDITS
-COPY LICENSE /licenses/LICENSE
-COPY NOTICE /licenses/NOTICE
-COPY internal/notify/LICENSE /licenses/notify-LICENSE
+LABEL org.opencontainers.image.title="OC" \
+      org.opencontainers.image.source="${SOURCE_URL}" \
+      org.opencontainers.image.version="${RELEASE}" \
+      org.opencontainers.image.revision="${SOURCE_SHA}" \
+      org.opencontainers.image.licenses="Apache-2.0 AND MIT"
+
+COPY dist/oc-linux-${TARGETARCH} /usr/bin/oc
+COPY licenses/ /licenses/
 
 RUN microdnf install ca-certificates --nodocs && microdnf clean all
 

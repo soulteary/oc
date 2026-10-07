@@ -4,6 +4,22 @@ OC 是 OtterIO 的命令行客户端，提供文件系统与 S3 对象操作，�
 
 发布步骤与附件校验见[OC 发布指南](docs/releasing.md)。
 
+## 使用容器
+
+发布镜像位于 `ghcr.io/soulteary/oc`，支持 Linux amd64 和 arm64。
+将下面的占位标签替换为已发布的版本：
+
+```sh
+TAG="RELEASE.YYYY-MM-DDTHH-MM-SSZ"
+docker run --rm "ghcr.io/soulteary/oc:$TAG" --version
+docker run --rm -v "$HOME/.oc:/root/.oc" "ghcr.io/soulteary/oc:$TAG" --help
+```
+
+镜像名称后直接填写 OC 参数。挂载 `/root/.oc` 可以在多次运行之间保留配置。
+固定部署使用版本标签或发布清单记录的摘要；`ghcr.io/soulteary/oc:latest`
+跟随完成提升的最新稳定版本。Docker Hub 发布为可选项，配置与校验步骤见
+[发布指南](docs/releasing.md)。
+
 ## 构建
 
 使用 `go.mod` 指定的 Go 工具链：

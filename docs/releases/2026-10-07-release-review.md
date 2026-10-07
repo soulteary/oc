@@ -2,7 +2,8 @@
 
 Prepare a fresh timestamp release after this PR merges and its resulting main
 commit passes Go and Code scanning. This preparation does not reserve a tag or
-publish artifacts. Its binary-only workflow follows OtterIO's tag convention.
+publish artifacts. Its archive and container workflow follows OtterIO's tag
+convention.
 
 ## Source range
 
@@ -21,7 +22,9 @@ Reviewed implementation cutoff: `63d7d2ad53eeb4c14f5c2e168282340ff93ea842`.
 - #2–#4 and accompanying retention regressions: duration input and calendar bounds,
   representable retention dates, clear operations and validation before copying.
 - This preparation: reviewed bilingual notes, exact-source release preflight,
-  eleven archive targets, checksums/manifest, draft download verification and guide.
+  eleven archive targets, checksums/manifest, draft download verification and guide;
+  Linux amd64/arm64 container publication from the same executables, registry
+  digests and separate stable-release `latest` promotion.
 
 The SDK pin stays at the October 4 server commit with three fixture patches.
 The companion OtterIO preparation includes those server-side fixes but does not
@@ -34,6 +37,12 @@ silently change OC's dependency or broaden compatibility claims.
 - [ ] Create a fresh annotated or signed UTC tag from clean synchronized main.
 - [ ] Confirm Release success, thirteen uploaded assets, correct licenses,
   checksums and manifest/runtime source identity.
+- [ ] Confirm GHCR amd64/arm64 images and any enabled Docker Hub images match the
+  manifest digests and runtime release tag, and contain the required licenses.
+- [ ] Set the new GHCR package to public and confirm an unauthenticated pull.
+- [ ] Confirm Stable release promotion updates `latest` only after publication
+  and only for the newest stable release, then marks that GitHub release as
+  latest; manual releases retain the opt-in.
 - [ ] Verify platform-specific aliases/TLS, copy/mirror filtering, retention,
   cancellation and configuration migration before rollout.
 

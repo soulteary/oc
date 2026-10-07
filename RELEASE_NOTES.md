@@ -25,6 +25,11 @@ were published. The release uses OtterIO's UTC timestamp tag format.
 - Add timestamp-based binary publication with exact-source main CI checks,
   eleven platform archives, SHA-256 checksums, source identity and licenses.
   Upload to a stable draft and verify every downloaded asset before publication.
+- Publish Linux amd64/arm64 container images to GHCR, with optional Docker Hub
+  publication. Package the exact release executables, verify pushed image digests
+  before publishing the GitHub release and record those digests in the manifest.
+  Keep version tags immutable; promote the newest published stable release to
+  `latest` separately by digest, then update GitHub's latest release marker.
 
 ## Compatibility and upgrade
 
@@ -42,6 +47,13 @@ MinIO self-update and SUBNET upload remain disabled. Replace the executable usin
 verified release assets and check `oc --version`; the Windows archive contains
 `oc.exe`. Test aliases, TLS, copy/mirror filters and object-lock operations before
 rollout. Notifications have no durable replay cursor.
+
+Container images use `ghcr.io/soulteary/oc:<release-tag>`. Mount `/root/.oc` for
+persistent configuration. Pin a version tag or manifest digest for deployments;
+`latest` is a moving alias. Docker Hub publication requires both
+`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository Actions secrets. A partially
+pushed version requires a fresh release tag; a failed `latest` update can be
+retried through **Stable release promotion** without rebuilding the release.
 
 Source builds require Go 1.27.1. Cross-compilation is not runtime acceptance for
 every architecture. The Windows notification implementation retains its MIT
@@ -68,6 +80,10 @@ records identity, not a signature or attestation.
 - 更新 Go 漏洞扫描器，分片进度观察采用既有传输期限，继续保留取消、吞吐和残留会话检查。
 - 新增时间戳标签二进制发布：要求同一源码的 main 检查成功，构建 11 个平台归档，
   附带 SHA-256 校验文件、源码身份清单与许可证；草稿附件逐个下载比对后再发布。
+- 发布 Linux amd64/arm64 容器镜像到 GHCR，并可选发布到 Docker Hub。
+  镜像使用发布归档中的同一可执行文件，推送后按摘要验证，再发布 GitHub 版本，
+  并把镜像摘要写入清单。版本标签禁止覆盖，最新已发布稳定版本单独按摘要提升为 `latest`，
+  验证后再更新 GitHub 的最新版本标记。
 
 ## 升级与兼容性
 
@@ -80,6 +96,12 @@ OC 使用独立配置目录。导入 mc 配置前先备份；导入在验证和�
 `OC_*` 优先于继续支持的旧 `MC_*` 设置。MinIO 自更新与 SUBNET 上传保持禁用。
 使用经过校验的发布附件替换可执行文件，并检查 `oc --version`；Windows 使用 `oc.exe`。
 部署前验证别名、TLS、复制与镜像过滤、对象锁操作。通知没有持久化重放游标。
+
+容器镜像使用 `ghcr.io/soulteary/oc:<release-tag>`，挂载 `/root/.oc` 保留配置。
+部署时固定版本标签或清单中的摘要；`latest` 是会移动的别名。Docker Hub 发布需要同时配置
+仓库 Actions secrets `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`。
+版本镜像只推送了一部分时，必须使用新的发布标签；仅 `latest` 更新失败时，
+可以通过 **Stable release promotion** 重试，无需重新构建或发布该版本。
 
 源码构建要求 Go 1.27.1；交叉编译不能代替全部架构的运行验收。
 归档同时保留 OC 的 Apache-2.0 许可证、上游声明和 Windows 通知实现的 MIT 许可证。
