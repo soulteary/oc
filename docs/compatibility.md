@@ -13,6 +13,8 @@ The client consumes the pinned remote module without a local `replace`. Real-ser
 1. [otterio-core-compat.patch](../buildscripts/otterio-core-compat.patch): management query-parameter bridging and regression tests.
 2. [otterio-runtime-compat.patch](../buildscripts/otterio-runtime-compat.patch): bounded HTTP shutdown and Darwin restart supervision.
 3. [otterio-http-api-compat.patch](../buildscripts/otterio-http-api-compat.patch): HTTP, object-path, management stream and resource-lifetime corrections.
+4. [otterio-account-info-compat.patch](../buildscripts/otterio-account-info-compat.patch): authenticated root AccountInfo without an IAM-user lookup; ordinary and temporary identities retain their scoped permissions.
+5. [otterio-conditional-writes-compat.patch](../buildscripts/otterio-conditional-writes-compat.patch): Atomic create-only PUT/multipart completion in FS and single-pool erasure storage. Write-back cache, gateways and multiple pools fail closed.
 
 The SDK version and patched server fixture are different parts of the baseline. A deployment using the unpatched SDK/server commit does not inherit the fixture's passing results. Use a server that includes the required fixes; extending the baseline requires pinning the new version and rerunning the matrix. The [development guide](development.md) describes the reproducible checks.
 

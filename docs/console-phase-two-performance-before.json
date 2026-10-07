@@ -1,0 +1,87 @@
+{
+  "dateUTC": "2026-10-07T18:48:59.318941+00:00",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "serverSource": "be8596f0d69d530586f35366fb2d5c79bdc54399",
+  "sdkPin": "v0.0.0-20261004215341-be8596f0d69d",
+  "binaries": {
+    "oc": {
+      "sha256": "9e6a6378a852925cc66327fd5ab46be3347891d76cd9c76007c129f2046d1a7c"
+    },
+    "oc-console": {
+      "sha256": "9236128fb80734b3e8de3595f7e46452faf7c7e00674c0265630dca867f323eb"
+    },
+    "otterio": {
+      "sha256": "a2b872381842ac364e8a4ace9e54fc9336ff9a7c451c411b5c76b381200be893"
+    }
+  },
+  "scenarios": [
+    {
+      "scenario": "single-http",
+      "status": "passed",
+      "checks": [
+        "real S3 fixture with unusual literal keys",
+        "anonymous denial, login code, Origin and session cookie",
+        "embedded assets, security headers, readonly route surface and Host",
+        "real continuation-token pagination without duplicates",
+        "prefix fidelity, empty/special/1MiB download hashes and pre-header missing object error",
+        "signed AccountInfo whitelist through selected management endpoint/CA",
+        "restricted identity: permitted read succeeds, different object denied",
+        "default readonly, CSRF, upload limits, job ownership and canceled-job replay",
+        "zero/special/multipart uploads, byte fidelity and explicit overwrite",
+        "real server conditional PUT preserves current data with HTTP 412",
+        "flat prefix snapshot, exact confirmation, token secrecy/replay and new-key preservation",
+        "prefix-scoped identity, explicit deny, failed-list zero deletion and batch partial failures",
+        "STS session-policy intersection, selected session token and invalid-token denial",
+        "group policy inheritance/revocation and write-only exact operations without list permission",
+        "versioned deletion creates a marker, preserves old data and permits create after marker",
+        "object-lock bucket current-key deletion retains versions without bypass or version ID",
+        "slow multipart cancellation within 5s, owned cleanup and unrelated-upload preservation",
+        "65MiB byte fidelity, two concurrent uploads, sampled RSS and same-host CLI throughput budget",
+        "active-write process shutdown, interrupted browser socket and owned multipart cleanup before exit",
+        "CSRF logout, revocation and unchanged CLI config",
+        "bounded graceful console process shutdown"
+      ],
+      "writeMetrics": {
+        "singleUploadSeconds": 0.2563380419742316,
+        "singleDownloadSeconds": 0.14221333293244243,
+        "twoConcurrentUploadSeconds": 0.28510712506249547,
+        "cliUploadSeconds": 0.15187183395028114,
+        "consoleMiBPerSecond": 253.57141491520844,
+        "cliMiBPerSecond": 427.9924612043553,
+        "peakConsoleRSSMiB": 52.015625,
+        "rssSampleCount": 9,
+        "rssSampleIntervalSeconds": 0.1,
+        "cancellationSeconds": 0.055487208999693394,
+        "activeWriteShutdownSeconds": 0.008743708953261375,
+        "objectSizeMiB": 65,
+        "maximumWriteConcurrency": 2
+      }
+    }
+  ],
+  "status": "failed",
+  "scope": "read-only-and-writes",
+  "storage": "single-node-four-disk-erasure",
+  "serverPatches": [
+    {
+      "name": "otterio-core-compat.patch",
+      "sha256": "426cba89ca3e34ac9eb1053e7c173298680e636b0cab9832f3c0e0cf234f34a3"
+    },
+    {
+      "name": "otterio-runtime-compat.patch",
+      "sha256": "703e3ca1d54c619eaaa1000f425a2a8d625a4227e1ffa424f234834590669898"
+    },
+    {
+      "name": "otterio-http-api-compat.patch",
+      "sha256": "3418a6f7bc7a88669ccf429f3c0f641a2b2041c98d91ad2c5fa7cd51496b8d78"
+    },
+    {
+      "name": "otterio-account-info-compat.patch",
+      "sha256": "95ba0adb4e827968c028733d4cfab25d2bf00da985810be433cea5889e2ade61"
+    },
+    {
+      "name": "otterio-conditional-writes-compat.patch",
+      "sha256": "85ada85627a58c6eac823e5e14ed80ae0f22c7ecae983a19868f5334e5efce79"
+    }
+  ],
+  "error": "{'consoleMiBPerSecond': 243.03600604431472, 'cliMiBPerSecond': 582.9700975941661}"
+}

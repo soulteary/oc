@@ -15,4 +15,7 @@ mc
 oc
 oc.exe
 
+/oc-console
+/oc-console.exe
+
 __pycache__/

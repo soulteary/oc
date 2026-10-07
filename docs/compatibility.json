@@ -5,7 +5,9 @@
   "requiredServerPatches": [
     "buildscripts/otterio-core-compat.patch",
     "buildscripts/otterio-runtime-compat.patch",
-    "buildscripts/otterio-http-api-compat.patch"
+    "buildscripts/otterio-http-api-compat.patch",
+    "buildscripts/otterio-account-info-compat.patch",
+    "buildscripts/otterio-conditional-writes-compat.patch"
   ],
   "coreDeployments": [
     "single-http",

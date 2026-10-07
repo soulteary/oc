@@ -124,6 +124,7 @@ jobs:
         run: |
           go mod download
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/oc" .
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/oc-console" ./cmd/oc-console
           otterio_source=$(go list -m -f '{{.Dir}}' github.com/soulteary/otterio)
           cp -R "$otterio_source" "$RUNNER_TEMP/otterio-source"
           chmod -R u+w "$RUNNER_TEMP/otterio-source"
@@ -133,13 +134,39 @@ jobs:
           git apply "$GITHUB_WORKSPACE/buildscripts/otterio-core-compat.patch"
           git apply "$GITHUB_WORKSPACE/buildscripts/otterio-runtime-compat.patch"
           git apply "$GITHUB_WORKSPACE/buildscripts/otterio-http-api-compat.patch"
+          git apply "$GITHUB_WORKSPACE/buildscripts/otterio-account-info-compat.patch"
+          git apply "$GITHUB_WORKSPACE/buildscripts/otterio-conditional-writes-compat.patch"
           go test -mod=readonly ./cmd/http -run TestShutdownBoundsActiveFiberRequest -count=1
           go test -mod=readonly ./cmd/http -run 'TestHTTPListenerClose|TestServerCounts|TestShutdown|TestTLSServer' -count=3
-          go test -mod=readonly ./cmd -run 'TestAdminQueryBridge|TestDarwinRestartSupervisor|TestEncodedObjectPath|TestAdminHealWildcard|TestStreamContext|TestFiberRequestContextValues' -count=3
+          go test -mod=readonly ./cmd -run 'TestAdminQueryBridge|TestDarwinRestartSupervisor|TestEncodedObjectPath|TestAdminHealWildcard|TestStreamContext|TestFiberRequestContextValues|TestAccountInfoOwnerAndScopedPrincipals|TestConditional' -count=3
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio" .
       - name: Verify ports, TLS, permissions, streams and performance budgets
         run: |
           python3 buildscripts/test-core-integration.py --oc "$RUNNER_TEMP/oc" --otterio "$RUNNER_TEMP/otterio" --extended --stability --soak-seconds 30 --report "$RUNNER_TEMP/core-integration.json" --artifacts-dir "$RUNNER_TEMP/core-evidence"
+      - name: Verify the local read-only console
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio" \
+            --server-source be8596f0d69d530586f35366fb2d5c79bdc54399 \
+            --server-patch buildscripts/otterio-core-compat.patch \
+            --server-patch buildscripts/otterio-runtime-compat.patch \
+            --server-patch buildscripts/otterio-http-api-compat.patch \
+            --server-patch buildscripts/otterio-account-info-compat.patch \
+            --server-patch buildscripts/otterio-conditional-writes-compat.patch \
+            --output "$RUNNER_TEMP/console-integration.json"
+      - name: Verify opt-in console writes and cancellation
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio" --writes \
+            --server-source be8596f0d69d530586f35366fb2d5c79bdc54399 \
+            --server-patch buildscripts/otterio-core-compat.patch \
+            --server-patch buildscripts/otterio-runtime-compat.patch \
+            --server-patch buildscripts/otterio-http-api-compat.patch \
+            --server-patch buildscripts/otterio-account-info-compat.patch \
+            --server-patch buildscripts/otterio-conditional-writes-compat.patch \
+            --output "$RUNNER_TEMP/console-write-integration.json"
       - name: Upload compatibility results
         if: always()
         uses: actions/upload-artifact@v4
@@ -148,6 +175,8 @@ jobs:
           path: |
             ${{ runner.temp }}/core-integration.json
             ${{ runner.temp }}/core-evidence/
+            ${{ runner.temp }}/console-integration.json
+            ${{ runner.temp }}/console-write-integration.json
 
   inventory:
     name: Binary dependency inventory

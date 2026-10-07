@@ -1,0 +1,110 @@
+{
+  "dateUTC": "2026-10-07T19:11:45.402255+00:00",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "serverSource": "be8596f0d69d530586f35366fb2d5c79bdc54399",
+  "sdkPin": "v0.0.0-20261004215341-be8596f0d69d",
+  "binaries": {
+    "oc": {
+      "sha256": "9e6a6378a852925cc66327fd5ab46be3347891d76cd9c76007c129f2046d1a7c"
+    },
+    "oc-console": {
+      "sha256": "9bc00810a4dd60c982374c23823fe970511bf35b6cb99c499b1246c21ef8c581"
+    },
+    "otterio": {
+      "sha256": "a2b872381842ac364e8a4ace9e54fc9336ff9a7c451c411b5c76b381200be893"
+    }
+  },
+  "scenarios": [
+    {
+      "scenario": "single-http",
+      "status": "failed",
+      "checks": [
+        "real S3 fixture with unusual literal keys",
+        "anonymous denial, login code, Origin and session cookie",
+        "embedded assets, security headers, readonly route surface and Host",
+        "real continuation-token pagination without duplicates",
+        "prefix fidelity, empty/special/1MiB download hashes and pre-header missing object error",
+        "signed AccountInfo whitelist through selected management endpoint/CA",
+        "restricted identity: permitted read succeeds, different object denied",
+        "default readonly, CSRF, upload limits, job ownership and canceled-job replay",
+        "zero/special/multipart uploads, byte fidelity and explicit overwrite",
+        "real server conditional PUT preserves current data with HTTP 412",
+        "flat prefix snapshot, exact confirmation, token secrecy/replay and new-key preservation",
+        "prefix-scoped identity, explicit deny, failed-list zero deletion and batch partial failures",
+        "STS session-policy intersection, selected session token and invalid-token denial",
+        "group policy inheritance/revocation and write-only exact operations without list permission",
+        "versioned deletion creates a marker, preserves old data and permits create after marker",
+        "object-lock bucket current-key deletion retains versions without bypass or version ID",
+        "slow multipart cancellation within 5s, owned cleanup and unrelated-upload preservation"
+      ],
+      "writeMetrics": {
+        "singleUploadSeconds": 0.4646053339820355,
+        "singleDownloadSeconds": 0.14834850002080202,
+        "twoConcurrentUploadSeconds": 0.3571889589074999,
+        "cliUploadSeconds": 0.19841820909641683,
+        "consoleMiBPerSecond": 139.9036886703356,
+        "throughputAggregation": "median-of-three-alternating-trials",
+        "cliUploadTrialsSeconds": [
+          0.1578219160437584,
+          0.19841820909641683,
+          0.2887837910093367
+        ],
+        "consoleUploadTrialsSeconds": [
+          0.3413305829744786,
+          0.4646053339820355,
+          0.5727708749473095
+        ],
+        "downloadTrialsSeconds": [
+          0.14834850002080202,
+          0.1547676669433713,
+          0.1317089160438627
+        ],
+        "minimumConsoleToCLIRatio": 0.5,
+        "minimumUploadMiBPerSecond": 5,
+        "cliMiBPerSecond": 327.590901540769,
+        "peakConsoleRSSMiB": 51.359375,
+        "rssSampleCount": 26,
+        "rssSampleIntervalSeconds": 0.1,
+        "cancellationSeconds": 0.0526031251065433,
+        "objectSizeMiB": 65,
+        "maximumWriteConcurrency": 2
+      }
+    }
+  ],
+  "status": "failed",
+  "scope": "read-only-and-writes",
+  "storage": "single-node-four-disk-erasure",
+  "harnesses": [
+    {
+      "name": "test-console-integration.py",
+      "sha256": "f9266ebba48ff85b8a7e5efda6840071bc42024a5a750fd26d222e41e1048afc"
+    },
+    {
+      "name": "console_write_acceptance.py",
+      "sha256": "02cdf4e905b3b55da4d6c85ae906f4fd3786aa6f4104fd81858059b4fe5a37c0"
+    }
+  ],
+  "serverPatches": [
+    {
+      "name": "otterio-core-compat.patch",
+      "sha256": "426cba89ca3e34ac9eb1053e7c173298680e636b0cab9832f3c0e0cf234f34a3"
+    },
+    {
+      "name": "otterio-runtime-compat.patch",
+      "sha256": "703e3ca1d54c619eaaa1000f425a2a8d625a4227e1ffa424f234834590669898"
+    },
+    {
+      "name": "otterio-http-api-compat.patch",
+      "sha256": "3418a6f7bc7a88669ccf429f3c0f641a2b2041c98d91ad2c5fa7cd51496b8d78"
+    },
+    {
+      "name": "otterio-account-info-compat.patch",
+      "sha256": "95ba0adb4e827968c028733d4cfab25d2bf00da985810be433cea5889e2ade61"
+    },
+    {
+      "name": "otterio-conditional-writes-compat.patch",
+      "sha256": "85ada85627a58c6eac823e5e14ed80ae0f22c7ecae983a19868f5334e5efce79"
+    }
+  ],
+  "error": "{'consoleMiBPerSecond': 139.9036886703356, 'cliMiBPerSecond': 327.590901540769}"
+}

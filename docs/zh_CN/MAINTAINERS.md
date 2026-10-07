@@ -24,7 +24,7 @@ PR 描述和发布说明围绕最终改动组织：触发条件、修改后的�
 
 OtterIO SDK、工具链基线和服务端补丁记录在[兼容清单](../compatibility.json)中，由 `buildscripts/verify-release-boundaries.py` 检查。调整基线时，相关测试、文档和边界检查需要放在同一组已审查改动中。
 
-固定服务端源码需要按兼容清单顺序应用 `otterio-core-compat.patch`、`otterio-runtime-compat.patch`、`otterio-http-api-compat.patch` 三项补丁。这些补丁应用到临时复制的源码，不修改共享模块缓存，也不改变 OC 的 SDK 固定依赖。[开发指南](development.md#复现服务端集成环境)提供具体步骤。
+固定服务端源码需要按兼容清单顺序应用 `otterio-core-compat.patch`、`otterio-runtime-compat.patch`、`otterio-http-api-compat.patch`、`otterio-account-info-compat.patch`、`otterio-conditional-writes-compat.patch` 五项补丁。这些补丁应用到临时复制的源码，不修改共享模块缓存，也不改变 OC 的 SDK 固定依赖。[开发指南](development.md#复现服务端集成环境)提供具体步骤。
 
 保留 [LICENSE](../../LICENSE)、[NOTICE](../../NOTICE)、[CREDITS](../../CREDITS)、源码版权声明和通知组件的 MIT 许可证。归档与镜像打包必须携带适用的许可证文件。保留的上游名称用于说明来源和兼容关系，不表示与 MinIO, Inc. 存在隶属或背书关系。Go module 路径仍为 `github.com/soulteary/mc`，可执行文件名称为 `oc`。
 

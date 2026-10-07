@@ -13,6 +13,8 @@ OC 的兼容承诺限于已有通过记录的版本、部署和操作。API 能�
 1. [otterio-core-compat.patch](../../buildscripts/otterio-core-compat.patch)：管理查询参数桥接及回归测试。
 2. [otterio-runtime-compat.patch](../../buildscripts/otterio-runtime-compat.patch)：HTTP 关闭期限和 Darwin 重启监督。
 3. [otterio-http-api-compat.patch](../../buildscripts/otterio-http-api-compat.patch)：HTTP、对象路径、管理流和资源释放修正。
+4. [otterio-account-info-compat.patch](../../buildscripts/otterio-account-info-compat.patch)：已验签 root 的 AccountInfo 跳过 IAM 用户查找，普通和临时身份仍按各自策略授权。
+5. [otterio-conditional-writes-compat.patch](../../buildscripts/otterio-conditional-writes-compat.patch): FS 与单 pool erasure 的原子仅创建 PUT/分段完成检查；写回缓存、gateway 和多 pool 不宣告能力并明确拒绝。
 
 SDK 固定版本与带补丁的服务端是基线的两个部分。使用原始、未修补的 SDK / 服务端提交，不能直接引用带补丁环境的通过结果。部署需要包含这些修复；扩展基线时，应固定新版本并重新运行矩阵。可重复验证的方法见 [开发说明](development.md)。
 

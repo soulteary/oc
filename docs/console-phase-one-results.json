@@ -1,0 +1,71 @@
+{
+  "dateUTC": "2026-10-07T17:27:34.627986+00:00",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "serverSource": "c8a09caf06c56483e1d21a1c9cdedc3dc3b76381",
+  "sdkPin": "v0.0.0-20261004215341-be8596f0d69d",
+  "binaries": {
+    "oc": {
+      "sha256": "9e6a6378a852925cc66327fd5ab46be3347891d76cd9c76007c129f2046d1a7c"
+    },
+    "oc-console": {
+      "sha256": "e6040a126bcac0ebdabc138179fe4c13c9d0a88225db0cda86a424bc20d35346"
+    },
+    "otterio": {
+      "sha256": "dbfabd76292d580d5f4a3e2bba30eecc20bdf0aa98cb008ac20bdaad9e68a4ed"
+    }
+  },
+  "scenarios": [
+    {
+      "scenario": "single-http",
+      "status": "passed",
+      "checks": [
+        "real S3 fixture with unusual literal keys",
+        "anonymous denial, login code, Origin and session cookie",
+        "embedded assets, security headers, readonly route surface and Host",
+        "real continuation-token pagination without duplicates",
+        "prefix fidelity, empty/special/1MiB download hashes and pre-header missing object error",
+        "signed AccountInfo whitelist through selected management endpoint/CA",
+        "restricted identity: permitted read succeeds, different object denied",
+        "CSRF logout, revocation and unchanged CLI config",
+        "bounded graceful console process shutdown"
+      ]
+    },
+    {
+      "scenario": "dual-http",
+      "status": "passed",
+      "checks": [
+        "real S3 fixture with unusual literal keys",
+        "anonymous denial, login code, Origin and session cookie",
+        "embedded assets, security headers, readonly route surface and Host",
+        "real continuation-token pagination without duplicates",
+        "prefix fidelity, empty/special/1MiB download hashes and pre-header missing object error",
+        "signed AccountInfo whitelist through selected management endpoint/CA",
+        "restricted identity: permitted read succeeds, different object denied",
+        "CSRF logout, revocation and unchanged CLI config",
+        "bounded graceful console process shutdown"
+      ]
+    },
+    {
+      "scenario": "dual-tls",
+      "status": "passed",
+      "checks": [
+        "real S3 fixture with unusual literal keys",
+        "anonymous denial, login code, Origin and session cookie",
+        "embedded assets, security headers, readonly route surface and Host",
+        "real continuation-token pagination without duplicates",
+        "prefix fidelity, empty/special/1MiB download hashes and pre-header missing object error",
+        "signed AccountInfo whitelist through selected management endpoint/CA",
+        "restricted identity: permitted read succeeds, different object denied",
+        "CSRF logout, revocation and unchanged CLI config",
+        "bounded graceful console process shutdown"
+      ]
+    }
+  ],
+  "status": "passed",
+  "serverPatches": [
+    {
+      "name": "otterio-account-info-compat.patch",
+      "sha256": "95ba0adb4e827968c028733d4cfab25d2bf00da985810be433cea5889e2ade61"
+    }
+  ]
+}

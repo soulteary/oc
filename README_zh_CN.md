@@ -51,7 +51,7 @@ oc admin info store
 - 独立的 S3 和管理入口，以及单独配置的管理 CA 信任。
 - 显式导入 mc 配置、JSON 输出和不显示凭据的 `doctor` 诊断。
 
-[兼容范围](docs/zh_CN/compatibility.md) 区分已验证的操作和需要按服务商、部署方式验收的功能。固定 OtterIO 测试基线需要三项已记录的服务端补丁。分布式部署、外部 KMS、外部通知目标及任意第三方 S3 服务不在现有验收矩阵内。
+[兼容范围](docs/zh_CN/compatibility.md) 区分已验证的操作和需要按服务商、部署方式验收的功能。固定 OtterIO 测试基线需要五项已记录的服务端补丁。分布式部署、外部 KMS、外部通知目标及任意第三方 S3 服务不在现有验收矩阵内。
 
 ## 从 mc 迁移
 
@@ -71,6 +71,7 @@ oc --json doctor store
 - [安装与升级](docs/zh_CN/installation.md)，或[使用容器](docs/zh_CN/containers.md)。
 - [配置地址和 TLS](docs/zh_CN/configuration.md)、[传输与同步](docs/zh_CN/usage.md)，或[查询命令](docs/zh_CN/commands.md)。
 - [管理 OtterIO](docs/zh_CN/administration.md)和[检查兼容范围](docs/zh_CN/compatibility.md)。
+- [构建实验性的本机 Web 控制台](docs/zh_CN/console.md)。
 - [排查故障](docs/zh_CN/troubleshooting.md)，或[私下报告安全问题](docs/zh_CN/security.md)。
 - [构建与测试](docs/zh_CN/development.md)、[参与贡献](docs/zh_CN/CONTRIBUTING.md)，或[准备发布](docs/zh_CN/releasing.md)。
 

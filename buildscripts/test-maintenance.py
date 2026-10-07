@@ -10,12 +10,57 @@ from check_budgets import budgets, throughput_gate
 from local_http import local_urlopen
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
+import subprocess
+import traceback
 
 spec = importlib.util.spec_from_file_location('sbom', Path(__file__).with_name('generate-sbom.py'))
 sbom = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sbom)
 
 class MaintenanceTests(unittest.TestCase):
+    def test_console_cli_failure_does_not_disclose_credentials(self):
+        spec = importlib.util.spec_from_file_location('console_integration', Path(__file__).with_name('test-console-integration.py'))
+        integration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(integration)
+        secret = 'synthetic-secret-for-redaction-regression'
+        command = ['oc', 'admin', 'user', 'add', 'store', secret]
+        timeout = subprocess.TimeoutExpired(command, 30, output=secret.encode())
+        with patch.object(integration.subprocess, 'run', side_effect=timeout):
+            try:
+                integration.run_fixture_cli(command, {}, [secret])
+            except RuntimeError as error:
+                self.assertNotIn(secret, str(error))
+                self.assertNotIn(secret, traceback.format_exc())
+                self.assertTrue(error.__suppress_context__)
+            else:
+                self.fail('CLI timeout did not fail the fixture')
+        failed = subprocess.CompletedProcess(command, 1, stdout=secret.encode(), stderr=secret.encode())
+        with patch.object(integration.subprocess, 'run', return_value=failed):
+            with self.assertRaises(RuntimeError) as raised:
+                integration.run_fixture_cli(command, {}, [secret])
+            self.assertNotIn(secret, str(raised.exception))
+            self.assertIn('[redacted]', str(raised.exception))
+
+    def test_console_failure_retains_completed_checks_and_metrics(self):
+        spec = importlib.util.spec_from_file_location('console_integration', Path(__file__).with_name('test-console-integration.py'))
+        integration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(integration)
+        def fail(*args, record, **kwargs):
+            record.update(checks=['completed fixture group'], writeMetrics={'consoleMiBPerSecond': 243})
+            raise RuntimeError('intentional fixture failure')
+        with tempfile.TemporaryDirectory() as temp:
+            report = Path(temp) / 'results.json'
+            argv = ['integration', '--cli', __file__, '--console', __file__, '--server', __file__,
+                    '--server-source', 'fixture', '--output', str(report)]
+            with patch.object(sys, 'argv', argv), patch.object(integration, 'scenario', side_effect=fail):
+                with self.assertRaises(RuntimeError):
+                    integration.main()
+            failed = json.loads(report.read_text())
+            self.assertEqual(failed['status'], 'failed')
+            self.assertEqual(failed['scenarios'][0]['status'], 'failed')
+            self.assertEqual(failed['scenarios'][0]['checks'], ['completed fixture group'])
+            self.assertEqual(failed['scenarios'][0]['writeMetrics']['consoleMiBPerSecond'], 243)
+
     def test_local_requests_ignore_inherited_proxies(self):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):

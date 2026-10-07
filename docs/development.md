@@ -69,7 +69,7 @@ CI uses golangci-lint `v2.14.0` with [.golangci.yml](../.golangci.yml). With tha
 
 The integration test starts disposable local OtterIO processes with random credentials, temporary client configuration, local ports and temporary storage. It writes and deletes test objects and performs administration against those processes. It does not take the address of an existing deployment.
 
-The SDK dependency remains pinned in `go.mod`. The corresponding server source needs the three patches listed in `docs/compatibility.json`. Copy the module source to a writable temporary directory; never apply these patches inside the shared Go module cache or against a production checkout.
+The SDK dependency remains pinned in `go.mod`. The corresponding server source needs the five patches listed in `docs/compatibility.json`. Copy the module source to a writable temporary directory; never apply these patches inside the shared Go module cache or against a production checkout.
 
 The following prepares a `CGO_ENABLED=0` fixture matching the CI setup. Keep the same shell open so the paths remain available:
 
@@ -86,6 +86,8 @@ chmod -R u+w "$OC_INTEGRATION/otterio-source"
 git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-core-compat.patch"
 git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-runtime-compat.patch"
 git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-http-api-compat.patch"
+git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-account-info-compat.patch"
+git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-conditional-writes-compat.patch"
 (
   cd "$OC_INTEGRATION/otterio-source"
   go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio" .

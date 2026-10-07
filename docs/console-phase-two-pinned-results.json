@@ -1,0 +1,237 @@
+{
+  "dateUTC": "2026-10-07T19:29:52.454400+00:00",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "serverSource": "be8596f0d69d530586f35366fb2d5c79bdc54399",
+  "sdkPin": "v0.0.0-20261004215341-be8596f0d69d",
+  "binaries": {
+    "oc": {
+      "sha256": "9e6a6378a852925cc66327fd5ab46be3347891d76cd9c76007c129f2046d1a7c"
+    },
+    "oc-console": {
+      "sha256": "e92d0719dfeca34686348e30f6ca0b2e865775a1920ec74406d4773b00639961"
+    },
+    "otterio": {
+      "sha256": "a2b872381842ac364e8a4ace9e54fc9336ff9a7c451c411b5c76b381200be893"
+    }
+  },
+  "scenarios": [
+    {
+      "scenario": "single-http",
+      "status": "passed",
+      "checks": [
+        "real S3 fixture with unusual literal keys",
+        "anonymous denial, login code, Origin and session cookie",
+        "embedded assets, security headers, readonly route surface and Host",
+        "real continuation-token pagination without duplicates",
+        "prefix fidelity, empty/special/1MiB download hashes and pre-header missing object error",
+        "signed AccountInfo whitelist through selected management endpoint/CA",
+        "restricted identity: permitted read succeeds, different object denied",
+        "default readonly, CSRF, upload limits, job ownership and canceled-job replay",
+        "zero/special/multipart uploads, byte fidelity and explicit overwrite",
+        "real server conditional PUT preserves current data with HTTP 412",
+        "flat prefix snapshot, exact confirmation, token secrecy/replay and new-key preservation",
+        "prefix-scoped identity, explicit deny, failed-list zero deletion and batch partial failures",
+        "STS session-policy intersection, selected session token and invalid-token denial",
+        "group policy inheritance/revocation and write-only exact operations without list permission",
+        "versioned deletion creates a marker, preserves old data and permits create after marker",
+        "object-lock bucket current-key deletion retains versions without bypass or version ID",
+        "slow multipart cancellation within 5s, owned cleanup and unrelated-upload preservation",
+        "65MiB byte fidelity, two concurrent uploads, sampled RSS and three-trial median same-host CLI throughput budget",
+        "active-write process shutdown, interrupted browser socket and owned multipart cleanup before exit",
+        "CSRF logout, revocation and unchanged CLI config",
+        "bounded graceful console process shutdown"
+      ],
+      "writeMetrics": {
+        "singleUploadSeconds": 0.18184600002132356,
+        "singleDownloadSeconds": 0.14403295912779868,
+        "twoConcurrentUploadSeconds": 0.1961542498320341,
+        "throughputAggregation": "median-of-three-alternating-trials",
+        "cliUploadTrialsSeconds": [
+          0.13195479102432728,
+          0.1451250419486314,
+          0.15659945807419717
+        ],
+        "consoleUploadTrialsSeconds": [
+          0.18242216715589166,
+          0.18184600002132356,
+          0.17824137513525784
+        ],
+        "downloadTrialsSeconds": [
+          0.14622970786876976,
+          0.1436016671359539,
+          0.14403295912779868
+        ],
+        "samplerErrors": [],
+        "rssSampleCount": 17,
+        "rssSampleIntervalSeconds": 0.1,
+        "cancellationSeconds": 0.05624916683882475,
+        "objectSizeMiB": 65,
+        "maximumWriteConcurrency": 2,
+        "minimumConsoleToCLIRatio": 0.5,
+        "minimumUploadMiBPerSecond": 5,
+        "peakConsoleRSSMiB": 84.0,
+        "cliUploadSeconds": 0.1451250419486314,
+        "cliMiBPerSecond": 447.8896207520647,
+        "consoleMiBPerSecond": 357.44531082552265,
+        "activeWriteShutdownSeconds": 0.008461707970127463
+      }
+    },
+    {
+      "scenario": "dual-http",
+      "status": "passed",
+      "checks": [
+        "real S3 fixture with unusual literal keys",
+        "anonymous denial, login code, Origin and session cookie",
+        "embedded assets, security headers, readonly route surface and Host",
+        "real continuation-token pagination without duplicates",
+        "prefix fidelity, empty/special/1MiB download hashes and pre-header missing object error",
+        "signed AccountInfo whitelist through selected management endpoint/CA",
+        "restricted identity: permitted read succeeds, different object denied",
+        "default readonly, CSRF, upload limits, job ownership and canceled-job replay",
+        "zero/special/multipart uploads, byte fidelity and explicit overwrite",
+        "real server conditional PUT preserves current data with HTTP 412",
+        "flat prefix snapshot, exact confirmation, token secrecy/replay and new-key preservation",
+        "prefix-scoped identity, explicit deny, failed-list zero deletion and batch partial failures",
+        "STS session-policy intersection, selected session token and invalid-token denial",
+        "group policy inheritance/revocation and write-only exact operations without list permission",
+        "versioned deletion creates a marker, preserves old data and permits create after marker",
+        "object-lock bucket current-key deletion retains versions without bypass or version ID",
+        "slow multipart cancellation within 5s, owned cleanup and unrelated-upload preservation",
+        "65MiB byte fidelity, two concurrent uploads, sampled RSS and three-trial median same-host CLI throughput budget",
+        "active-write process shutdown, interrupted browser socket and owned multipart cleanup before exit",
+        "CSRF logout, revocation and unchanged CLI config",
+        "bounded graceful console process shutdown"
+      ],
+      "writeMetrics": {
+        "singleUploadSeconds": 0.1670277500525117,
+        "singleDownloadSeconds": 0.11885287496261299,
+        "twoConcurrentUploadSeconds": 0.18956349999643862,
+        "throughputAggregation": "median-of-three-alternating-trials",
+        "cliUploadTrialsSeconds": [
+          0.1184389169793576,
+          0.08840862498618662,
+          0.12539399997331202
+        ],
+        "consoleUploadTrialsSeconds": [
+          0.16675095818936825,
+          0.1670277500525117,
+          0.17554908408783376
+        ],
+        "downloadTrialsSeconds": [
+          0.1174471671693027,
+          0.11885287496261299,
+          0.1405681250616908
+        ],
+        "samplerErrors": [],
+        "rssSampleCount": 15,
+        "rssSampleIntervalSeconds": 0.1,
+        "cancellationSeconds": 0.05165412509813905,
+        "objectSizeMiB": 65,
+        "maximumWriteConcurrency": 2,
+        "minimumConsoleToCLIRatio": 0.5,
+        "minimumUploadMiBPerSecond": 5,
+        "peakConsoleRSSMiB": 84.765625,
+        "cliUploadSeconds": 0.1184389169793576,
+        "cliMiBPerSecond": 548.8060990234204,
+        "consoleMiBPerSecond": 389.15689147201414,
+        "activeWriteShutdownSeconds": 0.008591833058744669
+      }
+    },
+    {
+      "scenario": "dual-tls",
+      "status": "passed",
+      "checks": [
+        "real S3 fixture with unusual literal keys",
+        "anonymous denial, login code, Origin and session cookie",
+        "embedded assets, security headers, readonly route surface and Host",
+        "real continuation-token pagination without duplicates",
+        "prefix fidelity, empty/special/1MiB download hashes and pre-header missing object error",
+        "signed AccountInfo whitelist through selected management endpoint/CA",
+        "restricted identity: permitted read succeeds, different object denied",
+        "default readonly, CSRF, upload limits, job ownership and canceled-job replay",
+        "zero/special/multipart uploads, byte fidelity and explicit overwrite",
+        "real server conditional PUT preserves current data with HTTP 412",
+        "flat prefix snapshot, exact confirmation, token secrecy/replay and new-key preservation",
+        "prefix-scoped identity, explicit deny, failed-list zero deletion and batch partial failures",
+        "STS session-policy intersection, selected session token and invalid-token denial",
+        "group policy inheritance/revocation and write-only exact operations without list permission",
+        "versioned deletion creates a marker, preserves old data and permits create after marker",
+        "object-lock bucket current-key deletion retains versions without bypass or version ID",
+        "slow multipart cancellation within 5s, owned cleanup and unrelated-upload preservation",
+        "65MiB byte fidelity, two concurrent uploads, sampled RSS and three-trial median same-host CLI throughput budget",
+        "active-write process shutdown, interrupted browser socket and owned multipart cleanup before exit",
+        "CSRF logout, revocation and unchanged CLI config",
+        "bounded graceful console process shutdown"
+      ],
+      "writeMetrics": {
+        "singleUploadSeconds": 0.17791325016878545,
+        "singleDownloadSeconds": 0.140281124971807,
+        "twoConcurrentUploadSeconds": 0.1959433329757303,
+        "throughputAggregation": "median-of-three-alternating-trials",
+        "cliUploadTrialsSeconds": [
+          0.12861929112114012,
+          0.11212445795536041,
+          0.11842554085887969
+        ],
+        "consoleUploadTrialsSeconds": [
+          0.19604470790363848,
+          0.17791325016878545,
+          0.17608320782892406
+        ],
+        "downloadTrialsSeconds": [
+          0.13463308406062424,
+          0.14825933380052447,
+          0.140281124971807
+        ],
+        "samplerErrors": [],
+        "rssSampleCount": 17,
+        "rssSampleIntervalSeconds": 0.1,
+        "cancellationSeconds": 0.056226667016744614,
+        "objectSizeMiB": 65,
+        "maximumWriteConcurrency": 2,
+        "minimumConsoleToCLIRatio": 0.5,
+        "minimumUploadMiBPerSecond": 5,
+        "peakConsoleRSSMiB": 108.4375,
+        "cliUploadSeconds": 0.11842554085887969,
+        "cliMiBPerSecond": 548.8680864667228,
+        "consoleMiBPerSecond": 365.3465941313242,
+        "activeWriteShutdownSeconds": 0.00856266706250608
+      }
+    }
+  ],
+  "status": "passed",
+  "scope": "read-only-and-writes",
+  "storage": "single-node-four-disk-erasure",
+  "harnesses": [
+    {
+      "name": "test-console-integration.py",
+      "sha256": "f9266ebba48ff85b8a7e5efda6840071bc42024a5a750fd26d222e41e1048afc"
+    },
+    {
+      "name": "console_write_acceptance.py",
+      "sha256": "7122581ef6cdfb163e0a0e7cd1b5aa6b2ac0126b6df3a983b547d9d30b1541b1"
+    }
+  ],
+  "serverPatches": [
+    {
+      "name": "otterio-core-compat.patch",
+      "sha256": "426cba89ca3e34ac9eb1053e7c173298680e636b0cab9832f3c0e0cf234f34a3"
+    },
+    {
+      "name": "otterio-runtime-compat.patch",
+      "sha256": "703e3ca1d54c619eaaa1000f425a2a8d625a4227e1ffa424f234834590669898"
+    },
+    {
+      "name": "otterio-http-api-compat.patch",
+      "sha256": "3418a6f7bc7a88669ccf429f3c0f641a2b2041c98d91ad2c5fa7cd51496b8d78"
+    },
+    {
+      "name": "otterio-account-info-compat.patch",
+      "sha256": "95ba0adb4e827968c028733d4cfab25d2bf00da985810be433cea5889e2ade61"
+    },
+    {
+      "name": "otterio-conditional-writes-compat.patch",
+      "sha256": "85ada85627a58c6eac823e5e14ed80ae0f22c7ecae983a19868f5334e5efce79"
+    }
+  ]
+}

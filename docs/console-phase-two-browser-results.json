@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-08",
+  "scope": "disposable local fixture; real in-app browser; no deletion executed",
+  "checks": [
+    "opt-in write login",
+    "57-byte synthetic file upload with Unicode/space/plus/percent key",
+    "stored file visible and task succeeded",
+    "exact-key deletion plan includes one intended key and current-version warning",
+    "closing review cancels plan with zero attempted objects",
+    "browser reload restores upload/deletion states",
+    "logout returns to login"
+  ],
+  "assets": {
+    "index.html": "5d0d2ce93d950f93eba597f115d86f186f8acc308007d11bfb1f0342cee79f94",
+    "assets.go": "db1b78fbeed2e436e0327773e7874e46a8dcbc47e3e4a11dfbc2d18f8afc3e6d",
+    "style.css": "bd702b45dd0884da2eb35c948a7b57a83fc791be289cdc9bc656a6b1bc9d721a",
+    "app.js": "8501a0435416b2f17676ea07b4f200081d87d697b1d9ed1aa22bbd2f61933a2d"
+  },
+  "screenshot": {
+    "name": "oc-console-phase-two.jpg",
+    "sha256": "eab4b0b065ada775d3fe5dea388121537b75f4b730748fdaa2cb129f5925a326"
+  },
+  "notCheckedInThisBrowserRun": [
+    "actual deletion (covered by real HTTP acceptance)",
+    "large upload cancellation (covered by real HTTP acceptance)",
+    "download bytes (P1 browser evidence and P2 real HTTP acceptance)"
+  ]
+}

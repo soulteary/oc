@@ -69,7 +69,7 @@ CI 使用 golangci-lint `v2.14.0` 和 [.golangci.yml](../../.golangci.yml)。安
 
 集成脚本启动临时 OtterIO 进程，使用随机凭据、独立客户端配置、本地端口和临时存储。测试会写入和删除测试对象，并对这些临时进程执行管理操作；脚本不接收已有部署的服务地址。
 
-OC 的 SDK 依赖仍固定在 `go.mod` 中。对应服务端源码需要按顺序应用 `docs/compatibility.json` 列出的三项补丁。先把模块源码复制到可写的临时目录，不要修改共享 Go module 缓存或生产源码目录。
+OC 的 SDK 依赖仍固定在 `go.mod` 中。对应服务端源码需要按顺序应用 `docs/compatibility.json` 列出的五项补丁。先把模块源码复制到可写的临时目录，不要修改共享 Go module 缓存或生产源码目录。
 
 下面准备与 CI 相同的 `CGO_ENABLED=0` 测试环境。保持在同一个 shell 中执行，以便后续使用这些目录变量：
 
@@ -86,6 +86,8 @@ chmod -R u+w "$OC_INTEGRATION/otterio-source"
 git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-core-compat.patch"
 git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-runtime-compat.patch"
 git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-http-api-compat.patch"
+git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-account-info-compat.patch"
+git -C "$OC_INTEGRATION/otterio-source" apply "$OC_SOURCE/buildscripts/otterio-conditional-writes-compat.patch"
 (
   cd "$OC_INTEGRATION/otterio-source"
   go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio" .

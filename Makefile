@@ -39,6 +39,7 @@ fmt:
 	@echo "Running $@"
 	@GO111MODULE=on gofmt -d cmd/
 	@GO111MODULE=on gofmt -d pkg/
+	@GO111MODULE=on gofmt -d internal/ cmd/oc-console/
 
 lint:
 	@echo "Running $@ check"
@@ -68,6 +69,13 @@ build: checks
 	@echo "Building OC binary to './oc'"
 	@GO111MODULE=on CGO_ENABLED=0 go build -trimpath -tags kqueue --ldflags $(BUILD_LDFLAGS) -o $(PWD)/oc
 
+# Opt-in local console (read-only by default). Default CLI build/release targets are unchanged.
+build-console:
+	@GO111MODULE=on CGO_ENABLED=0 go build -mod=readonly -trimpath -o $(PWD)/oc-console ./cmd/oc-console
+
+test-console:
+	@GO111MODULE=on go test -mod=readonly ./internal/clienttransport ./internal/storageclient ./internal/console/... ./cmd/oc-console
+
 # Builds OC and installs it to $GOPATH/bin.
 install: build
 	@echo "Installing OC binary to '$(GOPATH)/bin/oc'"
@@ -79,5 +87,6 @@ clean:
 	@find . -name '*.test' | xargs rm -fv
 	@find . -name '*~' | xargs rm -fv
 	@rm -rvf oc
+	@rm -f oc-console oc-console.exe
 	@rm -rvf build
 	@rm -rvf release

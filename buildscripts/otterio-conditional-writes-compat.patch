@@ -1,0 +1,426 @@
+diff --git a/cmd/api-errors.go b/cmd/api-errors.go
+index 2239fb1..94c4393 100644
+--- a/cmd/api-errors.go
++++ b/cmd/api-errors.go
+@@ -1935,6 +1935,8 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
+ 		apiErr = ErrBucketAlreadyOwnedByYou
+ 	case ObjectNotFound:
+ 		apiErr = ErrNoSuchKey
++	case PreConditionFailed:
++		apiErr = ErrPreconditionFailed
+ 	case MethodNotAllowed:
+ 		apiErr = ErrMethodNotAllowed
+ 	case InvalidVersionID:
+diff --git a/cmd/api-headers.go b/cmd/api-headers.go
+index 0edb1b3..bca09d1 100644
+--- a/cmd/api-headers.go
++++ b/cmd/api-headers.go
+@@ -49,6 +49,9 @@ func setEventStreamHeaders(w http.ResponseWriter) {
+ func setCommonHeaders(w http.ResponseWriter) {
+ 	// Set the "Server" http header.
+ 	w.Header().Set(xhttp.ServerInfo, "OtterIO")
++	if conditionalWritesSupported() {
++		w.Header().Set(conditionalWritesHeader, "v1")
++	}
+ 
+ 	// Set `x-amz-bucket-region` only if region is set on the server
+ 	// by default otterio uses an empty region.
+diff --git a/cmd/disk-cache.go b/cmd/disk-cache.go
+index 40df267..0f53b9d 100644
+--- a/cmd/disk-cache.go
++++ b/cmd/disk-cache.go
+@@ -622,6 +622,10 @@ func (c *cacheObjects) migrateCacheFromV1toV2(ctx context.Context) {
+ // PutObject - caches the uploaded object for single Put operations
+ func (c *cacheObjects) PutObject(ctx context.Context, bucket, object string, r *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, err error) {
+ 	putObjectFn := c.InnerPutObjectFn
++	// Write-back cache cannot acknowledge an atomic destination precondition.
++	if opts.RequireNewObject {
++		return putObjectFn(ctx, bucket, object, r, opts)
++	}
+ 	dcache, err := c.getCacheToLoc(ctx, bucket, object)
+ 	if err != nil {
+ 		// disk cache could not be located,execute backend call.
+diff --git a/cmd/erasure-multipart.go b/cmd/erasure-multipart.go
+index 16ef37c..9a834f5 100644
+--- a/cmd/erasure-multipart.go
++++ b/cmd/erasure-multipart.go
+@@ -900,6 +900,11 @@ func (er erasureObjects) CompleteMultipartUpload(ctx context.Context, bucket str
+ 	defer lk.Unlock()
+ 
+ 	// Rename the multipart object to final location.
++	if opts.RequireNewObject {
++		if err = requireNewErasureObject(ctx, bucket, object, opts, er.getObjectInfo); err != nil {
++			return oi, err
++		}
++	}
+ 	if onlineDisks, err = renameData(ctx, onlineDisks, otterioMetaMultipartBucket, uploadIDPath,
+ 		partsMetadata, bucket, object, writeQuorum); err != nil {
+ 		return oi, toObjectErr(err, bucket, object)
+diff --git a/cmd/erasure-object.go b/cmd/erasure-object.go
+index 17720c9..82d5cc2 100644
+--- a/cmd/erasure-object.go
++++ b/cmd/erasure-object.go
+@@ -747,6 +747,11 @@ func (er erasureObjects) putObject(ctx context.Context, bucket string, object st
+ 		}
+ 		defer lk.Unlock()
+ 	}
++	if opts.RequireNewObject {
++		if err := requireNewErasureObject(ctx, bucket, object, opts, er.getObjectInfo); err != nil {
++			return ObjectInfo{}, err
++		}
++	}
+ 
+ 	for i, w := range writers {
+ 		if w == nil {
+diff --git a/cmd/fiber_response.go b/cmd/fiber_response.go
+index a0f4dd1..9f9d0f8 100644
+--- a/cmd/fiber_response.go
++++ b/cmd/fiber_response.go
+@@ -104,6 +104,9 @@ func writeErrorResponseJSONFiber(ctx context.Context, c fiber.Ctx, err APIError)
+ 
+ func setCommonHeadersFiber(c fiber.Ctx) {
+ 	c.Set(xhttp.ServerInfo, "OtterIO")
++	if conditionalWritesSupported() {
++		c.Set(conditionalWritesHeader, "v1")
++	}
+ 	if region := globalServerRegion; region != "" {
+ 		c.Set(xhttp.AmzBucketRegion, region)
+ 	}
+diff --git a/cmd/fs-v1-multipart.go b/cmd/fs-v1-multipart.go
+index 7c569e1..9151068 100644
+--- a/cmd/fs-v1-multipart.go
++++ b/cmd/fs-v1-multipart.go
+@@ -541,7 +541,7 @@ func (fs *FSObjects) ListObjectParts(ctx context.Context, bucket, object, upload
+ // md5sums of all the parts.
+ //
+ // Implements S3 compatible Complete multipart API.
+-func (fs *FSObjects) CompleteMultipartUpload(ctx context.Context, bucket string, object string, uploadID string, parts []CompletePart, _ ObjectOptions) (oi ObjectInfo, e error) {
++func (fs *FSObjects) CompleteMultipartUpload(ctx context.Context, bucket string, object string, uploadID string, parts []CompletePart, opts ObjectOptions) (oi ObjectInfo, e error) {
+ 
+ 	var actualSize int64
+ 
+@@ -714,6 +714,11 @@ func (fs *FSObjects) CompleteMultipartUpload(ctx context.Context, bucket string,
+ 		return oi, err
+ 	}
+ 	defer destLock.Unlock()
++	if opts.RequireNewObject {
++		if err = requireNewObject(ctx, bucket, object, fs.getObjectInfo); err != nil {
++			return oi, toObjectErr(err, bucket, object)
++		}
++	}
+ 
+ 	bucketMetaDir := pathJoin(fs.fsPath, otterioMetaBucket, bucketMetaPrefix)
+ 	fsMetaPath := pathJoin(bucketMetaDir, bucket, object, fs.metaJSONFile)
+diff --git a/cmd/fs-v1.go b/cmd/fs-v1.go
+index 85c7b1e..65f15bb 100644
+--- a/cmd/fs-v1.go
++++ b/cmd/fs-v1.go
+@@ -1108,6 +1108,11 @@ func (fs *FSObjects) PutObject(ctx context.Context, bucket string, object string
+ 	}
+ 	defer lk.Unlock()
+ 	defer ObjectPathUpdated(path.Join(bucket, object))
++	if opts.RequireNewObject {
++		if err = requireNewObject(ctx, bucket, object, fs.getObjectInfo); err != nil {
++			return objInfo, toObjectErr(err, bucket, object)
++		}
++	}
+ 
+ 	atomic.AddInt64(&fs.activeIOCount, 1)
+ 	defer func() {
+diff --git a/cmd/object-api-interface.go b/cmd/object-api-interface.go
+index 1d1a11c..e5269bb 100644
+--- a/cmd/object-api-interface.go
++++ b/cmd/object-api-interface.go
+@@ -52,6 +52,7 @@ type ObjectOptions struct {
+ 	VersionPurgeStatus            VersionPurgeStatusType                                // Is only set in DELETE operations for delete marker version to be permanently deleted.
+ 	TransitionStatus              string                                                // status of the transition
+ 	NoLock                        bool                                                  // indicates to lower layers if the caller is expecting to hold locks.
++	RequireNewObject              bool                                                  // If-None-Match: *; evaluated while holding the destination write lock.
+ 	ProxyRequest                  bool                                                  // only set for GET/HEAD in active-active replication scenario
+ 	ProxyHeaderSet                bool                                                  // only set for GET/HEAD in active-active replication scenario
+ 	ParentIsObject                func(ctx context.Context, bucket, parent string) bool // Used to verify if parent is an object.
+diff --git a/cmd/object-handlers.go b/cmd/object-handlers.go
+index 7026a8c..4a02ac5 100644
+--- a/cmd/object-handlers.go
++++ b/cmd/object-handlers.go
+@@ -1614,6 +1614,12 @@ func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Req
+ 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+ 		return
+ 	}
++	var conditionalError APIErrorCode
++	opts.RequireNewObject, conditionalError = conditionalWriteOptions(r)
++	if conditionalError != ErrNone {
++		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(conditionalError), r.URL, guessIsBrowserReq(r))
++		return
++	}
+ 
+ 	if api.CacheAPI() != nil {
+ 		putObject = api.CacheAPI().PutObject
+@@ -3074,6 +3080,11 @@ func (api objectAPIHandlers) CompleteMultipartUploadHandler(w http.ResponseWrite
+ 	}
+ 
+ 	completeMultiPartUpload := objectAPI.CompleteMultipartUpload
++	requireNew, conditionalError := conditionalWriteOptions(r)
++	if conditionalError != ErrNone {
++		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(conditionalError), r.URL, guessIsBrowserReq(r))
++		return
++	}
+ 
+ 	// This code is specifically to handle the requirements for slow
+ 	// complete multipart upload operations on FS mode.
+@@ -3099,7 +3110,11 @@ func (api objectAPIHandlers) CompleteMultipartUploadHandler(w http.ResponseWrite
+ 
+ 	w = &whiteSpaceWriter{ResponseWriter: w, Flusher: w.(http.Flusher)}
+ 	completeDoneCh := sendWhiteSpace(w)
+-	objInfo, err := completeMultiPartUpload(ctx, bucket, object, uploadID, completeParts, ObjectOptions{})
++	objInfo, err := completeMultiPartUpload(ctx, bucket, object, uploadID, completeParts, ObjectOptions{
++		RequireNewObject: requireNew,
++		Versioned:        globalBucketVersioningSys.Enabled(bucket),
++		VersionSuspended: globalBucketVersioningSys.Suspended(bucket),
++	})
+ 	// Stop writing white spaces to the client. Note that close(doneCh) style is not used as it
+ 	// can cause white space to be written after we send XML response in a race condition.
+ 	headerWritten := <-completeDoneCh
+diff --git a/cmd/object-conditional-write.go b/cmd/object-conditional-write.go
+new file mode 100644
+index 0000000..7039cd9
+--- /dev/null
++++ b/cmd/object-conditional-write.go
+@@ -0,0 +1,66 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"context"
++	"net/http"
++)
++
++const conditionalWritesHeader = "X-Otterio-Conditional-Writes"
++
++// V1 promises only atomic If-None-Match: * for PUT and multipart completion.
++// Multi-pool placement and gateway implementations need a separate lock design.
++func conditionalWritesSupported() bool {
++	if globalIsGateway {
++		return false
++	}
++	// An acknowledged write-back entry may not exist in origin storage yet;
++	// its later unconditional flush could replace a conditional create.
++	if cache := newCachedObjectLayerFn(); cache != nil {
++		objects, ok := cache.(*cacheObjects)
++		if !ok || objects.commitWriteback {
++			return false
++		}
++	}
++	switch obj := newObjectLayerFn().(type) {
++	case *FSObjects:
++		return true
++	case *erasureServerPools:
++		return obj.SinglePool()
++	default:
++		return false
++	}
++}
++
++func conditionalWriteOptions(r *http.Request) (bool, APIErrorCode) {
++	if len(r.Header.Values("If-Match")) != 0 {
++		return false, ErrNotImplemented
++	}
++	values := r.Header.Values("If-None-Match")
++	if len(values) == 0 {
++		return false, ErrNone
++	}
++	if len(values) != 1 || values[0] != "*" || !conditionalWritesSupported() {
++		return false, ErrNotImplemented
++	}
++	return true, ErrNone
++}
++
++// Called only with the destination namespace write lock already held.
++func requireNewObject(ctx context.Context, bucket, object string, get func(context.Context, string, string) (ObjectInfo, error)) error {
++	_, err := get(ctx, bucket, object)
++	if err == nil {
++		return PreConditionFailed{}
++	}
++	if isErrObjectNotFound(toObjectErr(err, bucket, object)) {
++		return nil
++	}
++	return err
++}
++
++func requireNewErasureObject(ctx context.Context, bucket, object string, opts ObjectOptions, get GetObjectInfoFn) error {
++	return requireNewObject(ctx, bucket, object, func(ctx context.Context, bucket, object string) (ObjectInfo, error) {
++		return get(ctx, bucket, object, ObjectOptions{NoLock: true, Versioned: opts.Versioned, VersionSuspended: opts.VersionSuspended})
++	})
++}
+diff --git a/cmd/object-conditional-write_test.go b/cmd/object-conditional-write_test.go
+new file mode 100644
+index 0000000..c61353e
+--- /dev/null
++++ b/cmd/object-conditional-write_test.go
+@@ -0,0 +1,165 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"sync"
++	"testing"
++
++	"github.com/soulteary/otterio/pkg/hash"
++)
++
++func TestConditionalCreateDestinationLock(t *testing.T) {
++	ExecObjectLayerTest(t, testConditionalCreateDestinationLock)
++}
++
++func TestConditionalWriteCapabilitiesFailClosed(t *testing.T) {
++	savedObject, savedCache, savedGateway := newObjectLayerFn(), newCachedObjectLayerFn(), globalIsGateway
++	t.Cleanup(func() {
++		setObjectLayer(savedObject)
++		setCacheObjectLayer(savedCache)
++		globalIsGateway = savedGateway
++	})
++	setObjectLayer(&FSObjects{})
++	setCacheObjectLayer(nil)
++	globalIsGateway = false
++	if !conditionalWritesSupported() {
++		t.Fatal("filesystem capability is missing")
++	}
++	setCacheObjectLayer(&cacheObjects{commitWriteback: true})
++	if conditionalWritesSupported() {
++		t.Fatal("write-back cache must not promise atomic origin checks")
++	}
++	r := httptest.NewRequest(http.MethodPut, "/", nil)
++	r.Header.Set("If-None-Match", "*")
++	if _, code := conditionalWriteOptions(r); code != ErrNotImplemented {
++		t.Fatal("write-back conditional request must be rejected")
++	}
++	setCacheObjectLayer(&cacheObjects{})
++	if !conditionalWritesSupported() {
++		t.Fatal("write-through capability is missing")
++	}
++	setCacheObjectLayer(nil)
++	globalIsGateway = true
++	if conditionalWritesSupported() {
++		t.Fatal("gateway capability must be rejected")
++	}
++	globalIsGateway = false
++	setObjectLayer(&erasureServerPools{serverPools: []*erasureSets{{}, {}}})
++	if conditionalWritesSupported() {
++		t.Fatal("multi-pool placement must not promise atomic existence checks")
++	}
++	setObjectLayer(nil)
++	if conditionalWritesSupported() {
++		t.Fatal("uninitialized storage must not advertise a capability")
++	}
++}
++
++func testConditionalCreateDestinationLock(obj ObjectLayer, instance string, t TestErrHandler) {
++	ctx := context.Background()
++	const bucket = "conditional-create"
++	if err := obj.MakeBucketWithLocation(ctx, bucket, BucketOptions{}); err != nil {
++		t.Fatal(err)
++	}
++	reader := func(data []byte) *PutObjReader {
++		r, err := hash.NewReader(bytes.NewReader(data), int64(len(data)), "", "", int64(len(data)))
++		if err != nil {
++			t.Fatal(err)
++		}
++		return NewPutObjReader(r)
++	}
++	checkContents := func(key string, want []byte) {
++		r, err := obj.GetObjectNInfo(ctx, bucket, key, nil, http.Header{}, readLock, ObjectOptions{})
++		if err != nil {
++			t.Fatal(err)
++		}
++		got, err := io.ReadAll(r)
++		r.Close()
++		if err != nil || !bytes.Equal(got, want) {
++			t.Fatalf("%s: %q content changed: %q / %v", instance, key, got, err)
++		}
++	}
++	// All contenders must serialize their existence check with final commit.
++	const writers = 8
++	var wg sync.WaitGroup
++	errs := make([]error, writers)
++	for i := range writers {
++		wg.Add(1)
++		go func(i int) {
++			defer wg.Done()
++			_, errs[i] = obj.PutObject(ctx, bucket, "race", reader([]byte("winner")), ObjectOptions{RequireNewObject: true})
++		}(i)
++	}
++	wg.Wait()
++	succeeded := 0
++	for _, err := range errs {
++		if err == nil {
++			succeeded++
++		} else if !isErrPreconditionFailed(err) {
++			t.Fatalf("%s: unexpected contender error: %v", instance, err)
++		}
++	}
++	if succeeded != 1 {
++		t.Fatalf("%s: %d conditional writes succeeded, want 1", instance, succeeded)
++	}
++	checkContents("race", []byte("winner"))
++	// A zero-byte current object also counts as existing.
++	if _, err := obj.PutObject(ctx, bucket, "empty", reader(nil), ObjectOptions{RequireNewObject: true}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := obj.PutObject(ctx, bucket, "empty", reader([]byte("replacement")), ObjectOptions{RequireNewObject: true}); !isErrPreconditionFailed(err) {
++		t.Fatalf("%s: empty-object replacement: %v", instance, err)
++	}
++	checkContents("empty", nil)
++	// A key created after the parts were uploaded must survive completion.
++	for _, key := range []string{"multipart-conflict", "multipart-created"} {
++		id, err := obj.NewMultipartUpload(ctx, bucket, key, ObjectOptions{})
++		if err != nil {
++			t.Fatal(err)
++		}
++		part, err := obj.PutObjectPart(ctx, bucket, key, id, 1, reader([]byte("multipart")), ObjectOptions{})
++		if err != nil {
++			t.Fatal(err)
++		}
++		if key == "multipart-conflict" {
++			if _, err := obj.PutObject(ctx, bucket, key, reader([]byte("new-current")), ObjectOptions{}); err != nil {
++				t.Fatal(err)
++			}
++		}
++		_, err = obj.CompleteMultipartUpload(ctx, bucket, key, id, []CompletePart{{PartNumber: 1, ETag: part.ETag}}, ObjectOptions{RequireNewObject: true})
++		if key == "multipart-conflict" {
++			if !isErrPreconditionFailed(err) {
++				t.Fatalf("%s: multipart conflict: %v", instance, err)
++			}
++			checkContents(key, []byte("new-current"))
++			if err := obj.AbortMultipartUpload(ctx, bucket, key, id, ObjectOptions{}); err != nil {
++				t.Fatal(err)
++			}
++		} else {
++			if err != nil {
++				t.Fatal(err)
++			}
++			checkContents(key, []byte("multipart"))
++		}
++	}
++	if !conditionalWritesSupported() {
++		t.Fatalf("%s: supported backend not advertised", instance)
++	}
++	r := httptest.NewRequest(http.MethodPut, "/", nil)
++	r.Header.Set("If-None-Match", "*")
++	if required, code := conditionalWriteOptions(r); !required || code != ErrNone {
++		t.Fatalf("%s: conditional options: required=%v code=%v", instance, required, code)
++	}
++	r.Header.Add("If-None-Match", "*")
++	if _, code := conditionalWriteOptions(r); code != ErrNotImplemented {
++		t.Fatalf("%s: duplicate conditions not rejected", instance)
++	}
++	if toAPIErrorCode(ctx, PreConditionFailed{}) != ErrPreconditionFailed {
++		t.Fatal("precondition errors must map to HTTP 412")
++	}
++}

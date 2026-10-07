@@ -51,7 +51,7 @@ For a single-port OtterIO deployment, omit `--admin-url`. For another S3 provide
 - Separate S3 and management endpoints, including independently configured management CA trust.
 - Explicit configuration import from mc, JSON output and credential-free `doctor` diagnostics.
 
-[Compatibility and validation scope](docs/compatibility.md) distinguish tested operations from features that need provider or deployment acceptance. The pinned OtterIO fixture requires three recorded server patches. Distributed deployments, external KMS/notification targets and arbitrary third-party S3 services are not covered by the recorded acceptance matrix.
+[Compatibility and validation scope](docs/compatibility.md) distinguish tested operations from features that need provider or deployment acceptance. The pinned OtterIO fixture requires five recorded server patches. Distributed deployments, external KMS/notification targets and arbitrary third-party S3 services are not covered by the recorded acceptance matrix.
 
 ## Migrate from mc
 
@@ -71,6 +71,7 @@ Import accepts configuration version 10, replaces destination aliases after vali
 - [Install and upgrade](docs/installation.md), or [run in a container](docs/containers.md).
 - [Configure endpoints and TLS](docs/configuration.md), [transfer and synchronize](docs/usage.md), or [look up commands](docs/commands.md).
 - [Administer OtterIO](docs/administration.md) and [check compatibility](docs/compatibility.md).
+- [Build the experimental local Web console](docs/console.md).
 - [Troubleshoot problems](docs/troubleshooting.md) and [report vulnerabilities privately](SECURITY.md).
 - [Build and test](docs/development.md), [contribute](CONTRIBUTING.md), or [prepare a release](docs/releasing.md).
 
