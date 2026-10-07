@@ -19,6 +19,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -109,18 +110,45 @@ func (m retentionBucketMessage) JSON() string {
 }
 
 func getRetainUntilDate(validity uint64, unit minio.ValidityUnit) (string, *probe.Error) {
-	if validity == 0 || validity > uint64(^uint(0)>>1) {
+	return getRetainUntilDateFrom(UTCNow(), validity, unit)
+}
+
+func getRetainUntilDateFrom(now time.Time, validity uint64, unit minio.ValidityUnit) (string, *probe.Error) {
+	if validity == 0 || validity > uint64(math.MaxInt32) {
 		return "", probe.NewError(fmt.Errorf("invalid validity '%v'", validity))
 	}
-	t := UTCNow()
-	if unit == minio.Years {
-		t = t.AddDate(int(validity), 0, 0)
-	} else {
-		t = t.AddDate(0, 0, int(validity))
-	}
-	timeStr := t.Format(time.RFC3339)
 
-	return timeStr, nil
+	now = now.UTC()
+	const maxYear = 9999 // RFC3339 requires a four-digit year.
+	if now.Year() < 0 || now.Year() > maxYear {
+		return "", probe.NewError(fmt.Errorf("invalid retain-until base date '%v'", now))
+	}
+
+	var t time.Time
+	switch unit {
+	case minio.Years:
+		if validity > uint64(maxYear-now.Year()) {
+			return "", probe.NewError(fmt.Errorf("invalid validity '%v'", validity))
+		}
+		t = now.AddDate(int(validity), 0, 0)
+	case minio.Days:
+		year, month, day := now.Date()
+		midnight := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+		lastDay := time.Date(maxYear, time.December, 31, 0, 0, 0, 0, time.UTC)
+		// Unix seconds can represent this span; time.Duration cannot.
+		maxDays := (lastDay.Unix() - midnight.Unix()) / (24 * 60 * 60)
+		if validity > uint64(maxDays) {
+			return "", probe.NewError(fmt.Errorf("invalid validity '%v'", validity))
+		}
+		t = now.AddDate(0, 0, int(validity))
+	default:
+		return "", probe.NewError(fmt.Errorf("invalid validity unit '%v'", unit))
+	}
+
+	if !t.After(now) || t.Year() < 0 || t.Year() > maxYear {
+		return "", probe.NewError(fmt.Errorf("invalid validity '%v'", validity))
+	}
+	return t.Format(time.RFC3339), nil
 }
 
 func setRetentionSingle(ctx context.Context, op lockOpType, alias, url, versionID string, mode minio.RetentionMode, retainUntil time.Time, bypassGovernance bool) *probe.Error {
