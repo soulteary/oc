@@ -393,6 +393,11 @@ func (r *readdcw) loop() {
 }
 
 func (r *readdcw) completion(n uint32, err error, overEx *overlappedEx) {
+	// Closing a directory can complete with zero bytes and no error, rather
+	// than ERROR_OPERATION_ABORTED. Its stream was intentionally retired.
+	if syscall.Handle(atomic.LoadUintptr((*uintptr)(&overEx.parent.handle))) == syscall.InvalidHandle {
+		return
+	}
 	if err == syscall.ERROR_OPERATION_ABORTED {
 		return // Stop/Rewatch closes handles to cancel their pending reads.
 	}

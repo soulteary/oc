@@ -44,6 +44,10 @@ func TestWindowsCompletionReportsLoss(t *testing.T) {
 	if len(out) != 0 {
 		t.Fatal("intentional cancellation reported event loss")
 	}
+	r.completion(0, nil, &overlappedEx{parent: &grip{handle: syscall.InvalidHandle}})
+	if len(out) != 0 {
+		t.Fatal("successful completion of a closed handle reported event loss")
+	}
 }
 
 func TestWindowsLostDispatchIncludesRelatedSubscriptions(t *testing.T) {
