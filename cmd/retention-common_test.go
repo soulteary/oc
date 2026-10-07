@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -12,7 +13,7 @@ import (
 func TestGetRetainUntilDateRejectsOverflow(t *testing.T) {
 	maxInt := uint64(^uint(0) >> 1)
 	for _, unit := range []minio.ValidityUnit{minio.Days, minio.Years} {
-		for _, validity := range []uint64{0, maxInt + 1, ^uint64(0)} {
+		for _, validity := range []uint64{0, math.MaxInt32, math.MaxInt32 + 1, maxInt + 1, ^uint64(0)} {
 			t.Run(string(unit)+"/"+strconv.FormatUint(validity, 10), func(t *testing.T) {
 				date, err := getRetainUntilDate(validity, unit)
 				if err == nil || date != "" {
