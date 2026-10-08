@@ -59,7 +59,7 @@ A configured workflow is not a passing run. Check the results for the exact sour
 The current [budget values](compatibility.json) are:
 
 - At most 120 seconds per measured transfer.
-- At most 512 MiB sampled OC process RSS.
+- At most 512 MiB OC process peak RSS during transfers.
 - At most 5 seconds for measured cancellation.
 - At most 64 MiB sampled memory growth during the short soak.
 - At least 5 MiB/s measured transfer throughput.
@@ -67,11 +67,11 @@ The current [budget values](compatibility.json) are:
 
 The harness transfers 65 MiB objects with concurrency 1 and 4, verifies downloaded bytes, checks cancellation and multipart cleanup, and exercises throttled and interrupted connections. CI requests 30 seconds of soak sampling; the recorded local acceptance also contains 60-second sampling.
 
-Core throughput checks use one recorded warmup and three fixed measured/reference pairs for each upload/download operation and concurrency. Both roles create fresh remote objects or local files through the same warmed executor; the reference remains a single transfer even for the four-transfer group. The median of the three paired speed ratios must be at least 50%, and the median of the real measured group throughput at least 5 MiB/s. Timing spans CLI startup through observed process exit and excludes RSS sampler cleanup, which is recorded separately. Every warmup, measured transfer and reference still enforces the 120-second timeout and 512 MiB sampled RSS budget; every uploaded object is downloaded and SHA256-checked. All samples remain in the report, with no extra attempts after failure.
+Core throughput checks use one recorded warmup and three fixed measured/reference pairs for each upload/download operation and concurrency. Both roles create fresh remote objects or local files through the same warmed executor; the reference remains a single transfer even for the four-transfer group. The median of the three paired speed ratios must be at least 50%, and the median of the real measured group throughput at least 5 MiB/s. Timing spans CLI startup through observed process exit and excludes RSS sampler cleanup, which is recorded separately. Every warmup, measured transfer and reference still enforces the 120-second timeout and 512 MiB process RSS budget; every uploaded object is downloaded and SHA256-checked. All samples remain in the report, with no extra attempts after failure.
 
 Console write acceptance uses five fixed CLI/console upload pairs with alternating order. Every object is downloaded and checked for size and SHA256. The median pair ratio must remain at least 50%, and median console throughput at least 5 MiB/s; all observations are retained without extra trials after a failure.
 
-These are regression gates, not production sizing advice or a performance SLA. RSS is sampled every 100 ms for the main OC process on Linux/macOS; it does not include the whole process tree or server, and sampling can miss short peaks. Throughput includes process startup and local filesystem overhead. A 30- or 60-second sample does not prove long-duration stability. Use your own representative workload before adopting a deployment.
+These are regression gates, not production sizing advice or a performance SLA. RSS is sampled every 100 ms for the main OC process on Linux/macOS. Transfer checks also retain the kernel peak RSS from that child's exit accounting and enforce the budget against the larger measurement, so even transfers shorter than the first sample remain checked. Reports record sampled, exit-accounted and combined process peaks separately. These measurements do not include the server or whole process tree; console and soak sampling can still miss short peaks. Throughput includes process startup and local filesystem overhead. A 30- or 60-second sample does not prove long-duration stability. Use your own representative workload before adopting a deployment.
 
 ## Features requiring separate acceptance
 
