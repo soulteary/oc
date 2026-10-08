@@ -7,6 +7,7 @@ import sys
 import unittest
 from unittest.mock import patch
 from check_budgets import budgets, throughput_gate
+import stability_checks as stability
 from local_http import local_urlopen
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
@@ -138,5 +139,154 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(throughput_gate(100,100,limits),floor)
         for speed in (floor-1, 1):
             with self.assertRaises(AssertionError): throughput_gate(speed,100,limits)
+
+    def test_transfer_medians_keep_majority_slowdowns_and_absolute_floor(self):
+        limits = budgets()
+        for actual, reference in (([40, 40, 100], [100, 100, 100]),
+                                  ([40, 4, 100], [100, 10, 10]),
+                                  ([4, 4, 20], [4, 4, 4])):
+            metric = {'samplePairs': [
+                {'measured': {'aggregateMiBPerSecond': speed},
+                 'reference': {'aggregateMiBPerSecond': baseline}}
+                for speed, baseline in zip(actual, reference)]}
+            with self.subTest(actual=actual), self.assertRaises(AssertionError):
+                stability.check_transfer_samples(metric, limits)
+            self.assertEqual(metric['aggregateMiBPerSecond'], actual[0])
+            self.assertEqual(len(metric['samplePairs']), 3)
+
+    def test_transfer_medians_keep_fixed_outlier_sample(self):
+        metric = {'samplePairs': [
+            {'measured': {'aggregateMiBPerSecond': speed},
+             'reference': {'aggregateMiBPerSecond': 100}}
+            for speed in (10, 80, 90)]}
+        stability.check_transfer_samples(metric, budgets())
+        self.assertEqual(metric['aggregateMiBPerSecond'], 80)
+        self.assertEqual(metric['requiredMiBPerSecond'], 5)
+        self.assertEqual(metric['pairedMedianRatio'], 0.8)
+        self.assertEqual(metric['requiredPairedRatio'], 0.5)
+        self.assertEqual(metric['samplePairs'][0]['measured']['aggregateMiBPerSecond'], 10)
+
+    def transfer_fixture(self, corrupt=None, fail=None):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'source'
+            source.write_bytes(b'payload' * 40000)
+            expected = stability.file_hash(source)
+            objects = {}
+            destinations = set()
+            lock = threading.Lock()
+            def transfer(args):
+                _, src, dest = args
+                if fail and fail in ' '.join(args):
+                    raise RuntimeError('fixture transfer failure')
+                with lock:
+                    if src == str(source):
+                        if dest in objects:
+                            raise AssertionError('reference overwrote a measured upload')
+                        objects[dest] = source.read_bytes()
+                    else:
+                        path = Path(dest)
+                        if path.exists() or dest in destinations:
+                            raise AssertionError('reference reused a measured download')
+                        destinations.add(dest)
+                        path.write_bytes(b'corrupt' if corrupt and corrupt in dest else objects[src])
+                return {'startedAt': 10, 'finishedAt': 10.001, 'elapsedSeconds': 0.001,
+                        'sampledPeakRSSMiB': 1, 'samplerCleanupSeconds': 9}
+            def run(*args):
+                self.assertEqual(args[0], 'rm')
+                for target in args[1:]:
+                    del objects[target]
+            evidence = {'checks': 0, 'transferMetrics': []}
+            with patch.object(stability, 'file_hash', wraps=stability.file_hash) as hashes:
+                checks = stability.transfer_performance_checks(
+                    transfer, run, source, root, expected, budgets(), evidence)
+                hash_count = hashes.call_count
+            self.assertEqual(objects, {})
+            self.assertFalse(list(root.glob('*.download')))
+            return evidence, checks, hash_count
+
+    def test_transfer_workloads_use_fresh_targets_and_hash_every_download(self):
+        evidence, checks, hash_count = self.transfer_fixture()
+        self.assertEqual(checks, 84)
+        self.assertEqual(hash_count, 28)
+        self.assertEqual(len(evidence['transferMetrics']), 4)
+        for metric in evidence['transferMetrics']:
+            self.assertEqual(len(metric['samplePairs']), 3)
+            for pair in [metric['warmup'], *metric['samplePairs']]:
+                self.assertEqual(len(pair['reference']['processSamples']), 1)
+                self.assertEqual(len(pair['measured']['processSamples']), metric['concurrency'])
+                self.assertAlmostEqual(pair['measured']['wallSeconds'], 0.001)
+            self.assertEqual(metric['samplePairs'][0]['order'], ['measured', 'reference'])
+            self.assertEqual(metric['samplePairs'][1]['order'], ['reference', 'measured'])
+
+    def test_transfer_warmup_reference_and_measured_corruption_fail(self):
+        for target in ('warmup', 'sample-1-reference', 'sample-2-measured'):
+            with self.subTest(target=target), self.assertRaisesRegex(AssertionError, 'checksum mismatch'):
+                self.transfer_fixture(corrupt=target)
+
+    def test_transfer_warmup_failure_is_not_retried(self):
+        with self.assertRaisesRegex(RuntimeError, 'fixture transfer failure'):
+            self.transfer_fixture(fail='warmup-reference')
+
+    def invoke_sampled_transfer(self, rss_kib=1024, timeout=False):
+        class FixtureDone(Exception):
+            pass
+        class SampleEvent:
+            calls = 0
+            def is_set(self):
+                self.calls += 1
+                return self.calls > 1
+            def set(self):
+                self.calls = 2
+            def wait(self, _):
+                pass
+        class Sampler:
+            def __init__(self, target):
+                self.target = target
+            def start(self):
+                self.target()
+            def join(self, timeout):
+                pass
+            def is_alive(self):
+                return False
+        child = unittest.mock.Mock()
+        child.returncode = None if timeout else 0
+        child.poll.side_effect = lambda: child.returncode
+        child.kill.side_effect = lambda: setattr(child, 'returncode', -9)
+        child.communicate.side_effect = ([subprocess.TimeoutExpired('fixture', 120), (b'', b'')]
+                                         if timeout else [(b'', b'')])
+        outcome = {}
+        def one_transfer(transfer, *args):
+            outcome.update(transfer(['cp', 'source', 'destination']))
+            raise FixtureDone()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'large').write_bytes(b'payload')
+            self.transfer_evidence = {}
+            with patch.object(stability, 'transfer_performance_checks', side_effect=one_transfer), \
+                    patch.object(stability.subprocess, 'Popen', return_value=child), \
+                    patch.object(stability.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, stdout=str(rss_kib).encode())), \
+                    patch.object(stability.threading, 'Thread', Sampler), \
+                    patch.object(stability.threading, 'Event', SampleEvent), \
+                    patch.object(stability.time, 'monotonic', side_effect=[10, 10.25, 17.25]):
+                try:
+                    stability.stability_checks('fixture', root, {}, root, None, root, evidence=self.transfer_evidence)
+                except FixtureDone:
+                    pass
+        child.communicate.assert_any_call(timeout=budgets()['transferSeconds'])
+        return outcome
+
+    def test_transfer_timer_excludes_sampler_cleanup(self):
+        outcome = self.invoke_sampled_transfer()
+        self.assertEqual(outcome['elapsedSeconds'], 0.25)
+        self.assertEqual(outcome['samplerCleanupSeconds'], 7)
+        self.assertEqual(outcome['finishedAt'] - outcome['startedAt'], 0.25)
+
+    def test_transfer_rss_and_timeout_remain_fatal(self):
+        with self.assertRaisesRegex(AssertionError, 'RSS budget'):
+            self.invoke_sampled_transfer(rss_kib=600*1024)
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.invoke_sampled_transfer(timeout=True)
+        self.assertEqual(self.transfer_evidence['transferAttempts'][0]['status'], 'failed')
 
 if __name__ == '__main__': unittest.main()

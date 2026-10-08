@@ -9,13 +9,14 @@ import xml.etree.ElementTree as ET
 import os
 from pathlib import Path
 import signal
+import statistics
 import subprocess
 import threading
 import time
 import json
 import urllib.parse
 from fault_relay import FaultRelay
-from check_budgets import budgets, throughput_gate
+from check_budgets import budgets, paired_throughput_gate
 from local_http import local_urlopen
 
 
@@ -24,12 +25,85 @@ def file_hash(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def check_transfer_samples(metric, limits):
+    """Gate fixed samples, retaining the real measured speed's absolute floor."""
+    pairs = metric['samplePairs']
+    for pair in pairs:
+        pair['throughputRatio'] = pair['measured']['aggregateMiBPerSecond'] / pair['reference']['aggregateMiBPerSecond']
+    measured = statistics.median(pair['measured']['aggregateMiBPerSecond'] for pair in pairs)
+    reference = statistics.median(pair['reference']['aggregateMiBPerSecond'] for pair in pairs)
+    paired_ratio = statistics.median(pair['throughputRatio'] for pair in pairs)
+    metric.update(aggregateMiBPerSecond=measured, referenceMiBPerSecond=reference,
+                  requiredMiBPerSecond=limits['minimumMiBPerSecond'],
+                  pairedMedianRatio=paired_ratio,
+                  requiredPairedRatio=1-limits['maximumThroughputDropFraction'])
+    paired_throughput_gate(measured, paired_ratio, limits)
+
+
+def transfer_performance_checks(transfer, run, source, root, expected, limits, evidence):
+    """Compare three fixed fresh-target samples with single-transfer references."""
+    size = source.stat().st_size
+    checks = 0
+    for concurrency in (1, 4):
+        metrics = {}
+        for operation in ('upload', 'download'):
+            metric = {'operation': operation, 'concurrency': concurrency,
+                      'objectBytes': size, 'transferredBytes': size * concurrency,
+                      'warmup': {}, 'samplePairs': []}
+            evidence['transferMetrics'].append(metric)
+            metrics[operation] = metric
+        # Reuse the same pool for both roles. Warmup primes its workers and the
+        # CLI/server paths; every measured destination is still newly created.
+        with ThreadPoolExecutor(max_workers=concurrency) as workers:
+            for iteration in range(-1, 3):
+                phase = 'warmup' if iteration == -1 else f'sample-{iteration}'
+                order = ('reference', 'measured') if iteration == 1 else ('measured', 'reference')
+                targets = {
+                    role: [f'test/core-check/stability-{concurrency}-{phase}-{role}-{i}'
+                           for i in range(concurrency if role == 'measured' else 1)]
+                    for role in order
+                }
+                for operation in ('upload', 'download'):
+                    pair = {'order': list(order)}
+                    if iteration == -1:
+                        metrics[operation]['warmup'] = pair
+                    else:
+                        metrics[operation]['samplePairs'].append(pair)
+                    for role in order:
+                        destinations = [root / (target.rsplit('/', 1)[-1] + '.download')
+                                        for target in targets[role]]
+                        commands = [(['cp', str(source), target] if operation == 'upload'
+                                     else ['cp', target, str(destination)])
+                                    for target, destination in zip(targets[role], destinations)]
+                        samples = list(workers.map(transfer, commands))
+                        elapsed = max(sample['finishedAt'] for sample in samples) - min(sample['startedAt'] for sample in samples)
+                        if elapsed <= 0:
+                            raise AssertionError('transfer timing must be positive')
+                        pair[role] = {'transferredBytes': size * len(commands), 'wallSeconds': elapsed,
+                                      'aggregateMiBPerSecond': size * len(commands) / elapsed / (1024 ** 2),
+                                      'processSamples': samples}
+                        checks += len(commands)
+                        evidence['checks'] = checks
+                        if operation == 'download':
+                            for destination in destinations:
+                                if file_hash(destination) != expected:
+                                    raise AssertionError('concurrent transfer checksum mismatch')
+                                destination.unlink()
+                                checks += 1
+                                evidence['checks'] = checks
+                # Each upload has now been downloaded and hash-checked. Keep
+                # the disposable fixture's disk use bounded between samples.
+                run('rm', *(target for role in order for target in targets[role]))
+        for metric in metrics.values():
+            check_transfer_samples(metric, limits)
+    return checks
+
+
 def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence=None, emit_console_error=None):
     limits = budgets()
     evidence = evidence if evidence is not None else {}
     evidence.update(checks=0, transferMetrics=[], transferAttempts=[], cancellation=[], interruptions=[], networkFaults=[], soak=None, budgets=limits)
     checks = 0
-    metrics = evidence['transferMetrics']
     source = files / 'large'
     expected = file_hash(source)
     size = source.stat().st_size
@@ -60,59 +134,36 @@ def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence
                 stopped.wait(0.1)
         sampler = threading.Thread(target=sample)
         sampler.start()
+        finished = None
         try:
             child.communicate(timeout=limits["transferSeconds"])
+            finished = time.monotonic()
             if child.returncode:
                 raise RuntimeError(f'stability transfer returned {child.returncode}')
         finally:
             if child.poll() is None:
                 child.kill()
                 child.communicate()
+            # Capture process-observed completion before waiting for ps/RSS
+            # sampling to stop. Cleanup latency is evidence, not transfer time.
+            if finished is None:
+                finished = time.monotonic()
             stopped.set()
             sampler.join(timeout=3)
-            attempt.update(exitCode=child.returncode, elapsedSeconds=round(time.monotonic()-started,3), sampledPeakRSSMiB=round(peak/1024,2), status="complete" if child.returncode==0 else "failed")
-        elapsed = time.monotonic() - started
+            attempt.update(exitCode=child.returncode, elapsedSeconds=round(finished-started,3),
+                           samplerCleanupSeconds=round(time.monotonic()-finished,3),
+                           sampledPeakRSSMiB=round(peak/1024,2), status="complete" if child.returncode==0 else "failed")
         if sample_errors or sampler.is_alive():
             raise AssertionError('RSS sampler failed or did not terminate')
         if peak == 0:
             raise AssertionError('RSS sampler captured no transfer memory sample')
         if peak > limits["sampledProcessRSSMiB"] * 1024:
             raise AssertionError('transfer exceeded compatibility RSS budget')
-        return {'elapsedSeconds': round(elapsed, 3), 'sampledPeakRSSMiB': round(peak / 1024, 2)}
+        return {'startedAt': started, 'finishedAt': finished, 'elapsedSeconds': finished-started,
+                'sampledPeakRSSMiB': round(peak / 1024, 2),
+                'samplerCleanupSeconds': attempt['samplerCleanupSeconds']}
 
-    for concurrency in (1, 4):
-        targets = [f'test/core-check/stability-{concurrency}-{i}' for i in range(concurrency)]
-        downloads = [root / f'stability-{concurrency}-{i}.download' for i in range(concurrency)]
-        for operation in ('upload', 'download'):
-            commands = [(['cp', str(source), target] if operation == 'upload'
-                         else ['cp', target, str(destination)])
-                        for target, destination in zip(targets, downloads)]
-            started = time.monotonic()
-            with ThreadPoolExecutor(max_workers=concurrency) as workers:
-                samples = list(workers.map(transfer, commands))
-            elapsed = time.monotonic() - started
-            metrics.append({'operation': operation, 'concurrency': concurrency,
-                            'objectBytes': size, 'transferredBytes': size * concurrency,
-                            'wallSeconds': round(elapsed, 3),
-                            'aggregateMiBPerSecond': round(size * concurrency / elapsed / (1024 ** 2), 2),
-                            'processSamples': samples})
-            measured = size * concurrency / elapsed / (1024 ** 2)
-            # Compare each group against a fresh same-host reference transfer,
-            # rather than against unrelated hardware's historical numbers.
-            reference_args = commands[0]
-            reference = transfer(reference_args)
-            baseline = size / reference['elapsedSeconds'] / (1024 ** 2)
-            metrics[-1]['referenceMiBPerSecond'] = round(baseline, 2)
-            metrics[-1]['requiredMiBPerSecond'] = round(max(limits['minimumMiBPerSecond'], baseline*(1-limits['maximumThroughputDropFraction'])),2)
-            throughput_gate(measured, baseline, limits)
-            checks += concurrency
-            evidence["checks"] = checks
-        for destination in downloads:
-            if file_hash(destination) != expected:
-                raise AssertionError('concurrent transfer checksum mismatch')
-            destination.unlink()
-            checks += 1
-            evidence["checks"] = checks
+    checks = transfer_performance_checks(transfer, run, source, root, expected, limits, evidence)
 
     # Read the first event, then pause consumption until cancellation. Drain
     # pending output during graceful shutdown so blocked writes can return.
@@ -357,8 +408,11 @@ def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence
             child.stdout.close()
             child.stderr.close()
     evidence.update(checks=checks, soak=soak)
-    evidence['methodology'] = ('65 MiB objects; concurrency 1 and 4; local disposable server; '
-                               'wall time includes CLI startup; OC RSS sampled every 100 ms; '
-                               'budgets read from compatibility.json; same-run throughput reference; '
+    evidence['methodology'] = ('65 MiB objects; concurrency 1 and 4 against single-transfer references; '
+                               'one paired warmup and three fixed alternating sample pairs per operation; '
+                               'fresh remote keys and local files; every download hash-checked; '
+                               'median paired ratios plus the real measured throughput median floor; local disposable server; '
+                               'process-observed wall time includes CLI startup, excludes sampler cleanup; '
+                               'OC RSS sampled every 100 ms; budgets read from compatibility.json; '
                                'subscriptions receive an event before pausing output; cancellation drains pending output; no disconnected-event replay claim')
     return evidence
