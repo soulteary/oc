@@ -18,3 +18,13 @@ def throughput_gate(actual, baseline, limits):
     if actual < floor:
         raise AssertionError(f'throughput {actual:.2f} MiB/s below {floor:.2f} MiB/s gate')
     return floor
+
+
+def paired_throughput_gate(actual, paired_ratio, limits):
+    """Keep the absolute floor separate from same-host paired degradation."""
+    floor = limits['minimumMiBPerSecond']
+    if actual < floor:
+        raise AssertionError(f'throughput {actual:.2f} MiB/s below {floor:.2f} MiB/s gate')
+    minimum_ratio = 1-limits['maximumThroughputDropFraction']
+    if paired_ratio < minimum_ratio:
+        raise AssertionError(f'paired throughput ratio {paired_ratio:.2f} below {minimum_ratio:.2f} gate')
