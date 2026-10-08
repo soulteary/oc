@@ -6,11 +6,14 @@ OC 使用 UTC 的 `RELEASE.YYYY-MM-DDTHH-MM-SSZ` 标签，与 OtterIO 一致。
 
 先合并源码和文档改动，等待 **Go** 和 **Code scanning - action** 在同一个 main 提交上通过，再创建新的标签。PR 检查通过不能代替该提交的 main 检查。
 
+发布前还应检查该提交的 **CLI compatibility**，修复或明确审阅批准合同变化。
+发布任务只自动检查 `go.yml` 和 `codeql.yml`，没有强制执行独立的 CLI 合同工作流。
+
 根目录 `RELEASE_NOTES.md` 提供 GitHub Release 正文。带日期的发布准备记录保存在 `docs/releases/`；[2026-10-08 准备记录](../releases/2026-10-08-release-review.md)记录本次源码范围，[2026-10-07 准备记录](../releases/2026-10-07-release-review.md)继续作为历史保存。两份记录都不会为后续发布预留标签。
 
 ## 准备标签
 
-在干净的工作区中，准备 Git 和 Python 3：
+在干净的工作区中，准备 Git 和 Python 3.11 或更新版本：
 
 ```sh
 git switch main &&
@@ -39,12 +42,13 @@ git push origin "refs/tags/$TAG"
 新增的 `storage_sdk` 与 `otterio_kits` 分别记录独立 S3 客户端及已发布的 kits；旧字段 `otterio_sdk` 继续记录服务端 / 管理模块身份。
 
 `.goreleaser.yml` 仍可用于本地快照或软件包构建，但发布功能关闭；这个工作流不会调用它。
+这份本地配置包含 10 个编译目标，没有 `linux/386`，并使用自己的归档布局与软件包元数据；其输出不能替代正式的 11 平台构建及 `release-manifest.json`。正式归档与镜像只包含 `oc`；`oc-console` 仍是从源码构建的可选程序，不属于这个发布渠道。
 
 ## 容器镜像
 
 启用容器发布的工作流会生成 `ghcr.io/soulteary/oc:RELEASE.YYYY-MM-DDTHH-MM-SSZ`，支持 `linux/amd64` 和 `linux/arm64`。镜像包含对应归档中的原始可执行文件、CA 证书，以及 LICENSE、NOTICE、CREDITS 和通知组件的 MIT 许可证。
 
-镜像入口是 `oc`，客户端参数直接放在镜像名后。工作流按摘要验证已推送镜像，再正式发布 GitHub Release。较早的纯归档版本，包括 `RELEASE.2026-10-07T14-10-00Z`，清单没有 `images` 字段，不能据此推断镜像存在。按[容器指南](containers.md)选择清单中记录了镜像身份的版本。
+镜像入口是 `oc`，客户端参数直接放在镜像名后。工作流按摘要验证已推送镜像，再正式发布 GitHub Release。它检查索引恰好包含 Linux amd64/arm64，然后只在 Linux amd64 上运行 `--version`、`--help` 和本地复制冒烟测试，并将该程序与许可证逐字节比对准备好的归档目录。arm64 归档在准备镜像目录时会核对哈希，但工作流不运行 arm64 镜像；两个平台均已发布不代表两个平台均已完成运行验收。较早的纯归档版本，包括 `RELEASE.2026-10-07T14-10-00Z`，清单没有 `images` 字段，不能据此推断镜像存在。按[容器指南](containers.md)选择清单中记录了镜像身份的版本。
 
 如需同时推送 Docker Hub，在仓库 Actions secrets 中同时设置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`。镜像名为 `DOCKERHUB_USERNAME/oc`，使用相同的时间戳标签和平台。两项都未设置时跳过 Docker Hub；只设置一项会因凭据配置错误导致发布失败。GHCR 使用工作流的 GitHub token，不需要这两项凭据。
 

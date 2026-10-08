@@ -44,6 +44,15 @@ DNS 形式还需要相应的域名解析和 TLS 证书。按部署能力选择�
 
 不再使用的别名可以通过 `oc alias remove store` 删除。该命令只修改客户端配置，不删除远程桶或对象。
 
+`alias set` 会整体替换已有的同名别名。轮换凭据或修改 S3 地址时，应再次填写需要保留的
+`--api`、`--path`、`--admin-url`、`--admin-ca`。省略管理设置会清空原值，
+省略路径设置会恢复为 `auto`。管理环境变量在请求时生效，`alias set` 不会把它们写入别名。
+
+`alias list` 只展示文件中的配置，不展示当前进程的环境别名或管理覆盖；仅通过环境变量提供的别名
+不会出现在列表中。删除文件别名也不会取消 `OC_HOST_<alias>` 或 `MC_HOST_<alias>`，
+环境别名仍可使用，直到取消对应变量。可以用 `doctor ALIAS` 检查解析后的协议与管理设置，
+无需输出凭据或主机。
+
 ## 临时覆盖别名
 
 可以通过环境变量提供包含凭据的 URL：
@@ -127,3 +136,7 @@ oc --json doctor --online store
 
 在线命令只在 15 秒期限内读取管理 ServerInfo，不检查全部 S3 操作和权限。
 后续步骤见[排查问题](troubleshooting.md)和[管理指南](administration.md)。
+
+Doctor 的 `adminSDK` 字段表示嵌入的 OtterIO 服务端/管理模块版本，不是独立 S3 SDK 版本。
+本源码基线的 S3 SDK 版本见[兼容清单](../compatibility.json)的 `storageSDK`；
+核对其他可执行文件时，应查看其所属发行版本的清单。

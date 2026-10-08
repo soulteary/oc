@@ -60,12 +60,16 @@ effects; the full raw stack remains in the report. Catalog changes require an
 old-binary baseline and cannot silently refresh expected results.
 
 [CLI CI](../.github/workflows/cli-compat.yml) builds both revisions on Linux,
-macOS and Windows. [Joint CI](../.github/workflows/go.yml) builds the exact remote
-OtterIO module with no replacement or extra patches. It exercises startup
+macOS and Windows. [Joint CI](../.github/workflows/go.yml) first builds the exact remote
+OtterIO module with no replacement or extra patches for the core baseline. It exercises startup
 validation, server and NAS/S3 gateway file operations, explicit management
 routing, TLS directories, signal shutdown, core/advanced operations and the
-local console. OtterIO separately checks both standalone xl.meta tools and an
-external Go gateway consumer.
+local console. A separate optional fixture then applies
+`buildscripts/console-server-p3.patch` to a writable source copy for protected
+settings, own IAM rotation and lifecycle execution/restore checks; this does not
+update the dependency pin or certify a released protocol. See the
+[development guide](development.md). OtterIO separately checks both standalone
+xl.meta tools and an external Go gateway consumer.
 
 Native Windows signals and runtime service acceptance retain their separate
 platform checks. A cross-build or configured workflow is not evidence of a
@@ -114,7 +118,10 @@ OC 和固定版本的 OtterIO 统一采用 `urfave/cli/v3 v3.14.0`。准确模�
 
 冻结基线覆盖 OC 339 项、OtterIO 133 项。CI 在同一平台构建旧、新程序，核对 stdout、
 stderr、退出码及配置副作用，再使用可下载的固定 OtterIO 模块进行联合验证。
-历史补丁保留作为旧报告的证据，当前构建无需应用。公共 gateway Go API 的工厂签名
+旧 `otterio-*-compat.patch` 保留作为历史报告的证据，当前核心基线无需应用。
+独立的可选测试实例会在源码副本应用 `console-server-p3.patch`，验证受保护桶设置、
+自身 IAM 改密及生命周期执行和恢复；这不更新依赖 pin，也不表示协议已经发布，
+重现步骤见[开发指南](zh_CN/development.md)。公共 gateway Go API 的工厂签名
 需要外部插件重新编译。`ilm.GetLifecycleOptions`、`GetHealthDataTypeSlice` 和
 `GetGlobalHealthDataTypeSlice` 的参数改为 `*cli.Command`；原 `HealthDataTypeFlag`
 改用 `cli.GenericFlag{Value: &cmd.HealthDataTypeSlice{}}`。普通 CLI 用户无需改写已有命令。完整测试范围及已知验收边界

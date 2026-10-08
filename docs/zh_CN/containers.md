@@ -8,10 +8,10 @@
 
 从[已发布版本](https://github.com/soulteary/oc/releases)中选择 `release-manifest.json` 包含 `images` 的版本。每一项给出仓库名和已校验的镜像索引摘要。没有镜像条目时，安装该版本的[本机归档](installation.md)，或从源码构建本地镜像，不根据二进制标签猜测镜像地址。
 
-下面的占位标签需要替换成包含镜像的发布版本：
+已发布的 [`RELEASE.2026-10-07T17-07-26Z`](https://github.com/soulteary/oc/releases/tag/RELEASE.2026-10-07T17-07-26Z) 清单记录了 GHCR 镜像，下面用该版本演示 CLI 的容器运行。换用其他版本前先检查其清单。这些镜像不包含实验性的 `oc-console` 或 main 上后续新增的功能。
 
 ```sh
-TAG=RELEASE.YYYY-MM-DDTHH-MM-SSZ
+TAG=RELEASE.2026-10-07T17-07-26Z
 IMAGE="ghcr.io/soulteary/oc:$TAG"
 docker run --rm "$IMAGE" --version
 docker run --rm "$IMAGE" --help

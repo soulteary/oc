@@ -19,6 +19,11 @@ oc alias set --api s3v4 --path on \
 
 Object commands such as `ls`, `cp` and `mirror` use the S3 endpoint. Management commands such as `admin info` use `--admin-url`. Without a management override, OC falls back to the S3 endpoint; that works only when the server exposes management there too. The credentials belong to the alias and must be authorized for the requested management operation.
 
+Updating the same alias with `alias set` replaces its whole saved entry. Repeat
+the management URL and CA, signature and bucket addressing settings when rotating
+credentials; omitted management settings are cleared. `alias list` shows the
+saved entry, while command and environment overrides affect the current request.
+
 The management URL must be an HTTP or HTTPS root URL. Embedded credentials, query parameters, fragments and path prefixes are rejected. Configure a reverse proxy to expose OtterIO's management routes directly on that host. OC refuses management redirects rather than forwarding signed requests or encrypted configuration/IAM bodies.
 
 Without an explicit management CA, management uses the shared trust pool loaded from system roots and the configuration directory's `certs/CAs/`. Specifying `--admin-ca` replaces that pool for management with system roots plus the given PEM file, excluding the extra certificates in `certs/CAs/`. It does not change S3 trust. When the object listener also uses a private certificate, place its CA in `certs/CAs/`. Keep certificate verification enabled; see [security](../SECURITY.md).
@@ -51,7 +56,14 @@ oc admin info store
 oc --json admin info store
 ```
 
-`doctor` is offline by default. It reports the client, Go and SDK versions, protocols, whether management is separate, custom management CA presence and whether certificate verification is enabled. It omits endpoint hosts, credentials and configuration paths. `--online` makes a read-only management `ServerInfo` request with a 15-second deadline. Neither mode tests the alias's S3 read/write permissions.
+`doctor` is offline by default. It reports the client and Go versions, platform
+and certificate verification setting. With an alias, it also reports endpoint
+protocols, whether management is separate and custom management CA presence.
+Its `adminSDK` field is the embedded OtterIO server/admin module version; it
+does not report the independent S3 SDK version. It omits endpoint hosts,
+credentials and configuration paths. `--online` makes a read-only management
+`ServerInfo` request with a 15-second deadline. Neither mode tests the alias's
+S3 read/write permissions.
 
 `admin info` displays server information. Its JSON error path returns a nonzero exit status and includes an error category, with an error code when available. When scripting, check the exit status before parsing successful output; do not assume all administrative commands have identical result schemas.
 
@@ -117,6 +129,13 @@ oc admin policy set store archive-reader group=readers
 
 `policy set` replaces the entity's assigned policies. `policy update` adds a policy to an existing assignment; `policy unset` removes a named assignment. `policy remove` deletes the policy definition. This version uses `add`, `set`, `update` and `unset`; use its own `--help` rather than assuming another client's `create`/`attach`/`detach` syntax.
 
+**Current limitation:** `policy update` does not stop when its requested policy
+is already assigned or its policy argument is empty. It can submit an empty
+replacement and clear the user's or group's assigned policies. Avoid it in
+repeatable setup scripts. Read the current assignment with `user info` or
+`group info`, then use `policy set` with the complete desired comma-separated
+policy list and verify the result. Include every assignment you intend to keep.
+
 Other available operations are `user disable`, `user enable`, `user remove` and `user policy`; and `group disable`, `group enable` and `group remove`. Removing a group member takes `ALIAS GROUP MEMBER...`; omitting members requests deletion of an empty group. Server-side permissions and state still determine whether an operation is allowed. Verify the resulting access with a restricted test identity before rolling out changes.
 
 ## Manage service accounts
@@ -164,6 +183,27 @@ oc admin service restart --timeout 2m store
 ```
 
 The default readiness timeout is one minute. OC sends one restart request and waits for all original nodes to return with changed startup times. A timeout means recovery was not confirmed; it does not send another restart. `oc admin service stop store` stops the service; bring it back using the server's process manager.
+
+## Lifecycle transition targets
+
+Bucket lifecycle rules use `oc ilm`; remote transition destinations use
+`oc admin bucket remote`. Adding an `--service ilm` target requires a nonempty
+`--label`, which is used as the rule's storage class. ILM target `add`, `edit`
+and `rm` first require a signed management response advertising exactly
+`X-Otterio-Lifecycle-Transition: v1`. This read-only check needs
+`admin:GetBucketTarget`; changes require `admin:SetBucketTarget`. Replication
+targets retain their separate behavior. The local console's `--allow-writes`
+switch does not apply to CLI commands.
+
+The currently pinned OtterIO server does not include this transition runtime.
+Use the matching server implementation or reviewed
+[paired patch and validation record](lifecycle-transition.md); a successful
+ordinary lifecycle configuration round trip does not establish transition or
+restore support. The new protocol is limited to single-node, single-pool erasure
+storage. FS, gateways, multiple pools, distributed deployments and external S3
+providers are outside that guarantee. Missing capability headers, redirects or
+incomplete responses prevent ILM target changes. OC has no dedicated CLI object
+restore command; the recorded restore operation uses the native S3 API.
 
 ## Check capability and deployment requirements
 

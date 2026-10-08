@@ -8,6 +8,8 @@
 
 [English](README.md) · [文档目录](docs/zh_CN/README.md) · [版本下载](https://github.com/soulteary/oc/releases) · [参与贡献](docs/zh_CN/CONTRIBUTING.md)
 
+[2026-10-08 项目现状复查](docs/reviews/2026-10-08-project-status.md)记录源码、发行、验证与剩余工作的边界。
+
 OC 提供对象上传、下载、查询和目录同步，也可以管理 OtterIO 服务端。项目继承 MinIO Client 的 Apache-2.0 代码，保留原始版权与归属说明。OC 是独立的社区项目，与 MinIO, Inc. 没有隶属或背书关系。
 
 [OtterIO](https://github.com/soulteary/otterio) 运行存储服务，OC 提供命令行客户端。Go 应用需要集成 S3 操作时，使用 [OtterIO SDK](https://github.com/soulteary/otterio-sdk)。服务端、客户端和 SDK 各自发布版本。
@@ -16,11 +18,10 @@ OC 提供对象上传、下载、查询和目录同步，也可以管理 OtterIO
 
 从 [GitHub Releases](https://github.com/soulteary/oc/releases) 下载对应平台的归档，验证 SHA-256 后，将 `oc`（Windows 为 `oc.exe`）放入 `PATH`。[安装指南](docs/zh_CN/installation.md) 包含 Linux、macOS、Windows 和源码构建步骤。
 
-发布工作流构建 Linux amd64 和 arm64 镜像，使用前选择清单中包含 `images` 的版本：
+发布工作流构建 Linux amd64 和 arm64 镜像。以下使用已发布且清单中记录了镜像的版本；选择其他版本前先确认发布清单的 `images` 字段：
 
 ```sh
-# 选择发布清单中记录了镜像的版本，并替换下方占位标签。
-TAG=RELEASE.YYYY-MM-DDTHH-MM-SSZ
+TAG=RELEASE.2026-10-07T17-07-26Z
 docker run --rm "ghcr.io/soulteary/oc:$TAG" --version
 ```
 
@@ -52,8 +53,9 @@ OtterIO 设置 `--console-address ":9001"` 时，9000 提供 S3，9001 提供 We
 - OtterIO 管理：服务信息、用户、组、策略、服务账号、监控配置与诊断。
 - 独立的 S3 和管理入口，以及单独配置的管理 CA 信任。
 - 显式导入 mc 配置、JSON 输出和不显示凭据的 `doctor` 诊断。
+- 可选的本机 Web 控制台，提供浏览、下载和显式开启的对象写入；受保护桶配置及自身 IAM 改密还需要配套服务端协议。
 
-[兼容范围](docs/zh_CN/compatibility.md) 区分已验证的操作和需要按服务商、部署方式验收的功能。固定 OtterIO 源码已包含兼容修复，当前测试实例不需要另外应用服务端补丁。分布式部署、外部 KMS、外部通知目标及任意第三方 S3 服务不在现有验收矩阵内。
+[兼容范围](docs/zh_CN/compatibility.md) 区分已验证的操作和需要按服务商、部署方式验收的功能。固定 OtterIO 源码已包含核心 CLI 兼容修复，核心测试实例无需另外应用服务端补丁。控制台的受保护配置、自身 IAM 改密及新的 ILM 目标与转换协议需要单独的[可选服务端补丁](docs/lifecycle-transition.md)，当前服务端 pin 尚未包含这些协议。分布式部署、外部 KMS、外部通知目标及任意第三方 S3 服务不在现有验收矩阵内。
 
 ## 从 mc 迁移
 
@@ -74,7 +76,8 @@ oc --json doctor store
 - [在本机试用 OC 与 OtterIO](docs/zh_CN/quickstart.md)：启动服务、配置两个入口，并核对上传与下载结果。
 - [配置地址和 TLS](docs/zh_CN/configuration.md)、[传输与同步](docs/zh_CN/usage.md)，或[查询命令](docs/zh_CN/commands.md)。
 - [管理 OtterIO](docs/zh_CN/administration.md)和[检查兼容范围](docs/zh_CN/compatibility.md)。
-- [构建实验性的本机 Web 控制台](docs/zh_CN/console.md)。
+- [构建实验性的本机 Web 控制台](docs/zh_CN/console.md)：单别名、本机会话、对象写入及受保护配置。该程序单独从源码构建，当前 CLI 归档和容器不包含它。
+- [配置生命周期目标并了解转换边界](docs/lifecycle-transition.md)。
 - [排查故障](docs/zh_CN/troubleshooting.md)，或[私下报告安全问题](docs/zh_CN/security.md)。
 - [构建与测试](docs/zh_CN/development.md)、[参与贡献](docs/zh_CN/CONTRIBUTING.md)，或[准备发布](docs/zh_CN/releasing.md)。
 

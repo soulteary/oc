@@ -15,9 +15,12 @@ oc --json doctor store
 ```
 
 Doctor defaults to offline mode and sends no server request. Successful reports
-include client/Go/SDK versions, platform, endpoint schemes, separate-management
-and custom-CA settings, and whether certificate verification is enabled. They
-omit endpoint hosts, private paths, credentials and the configuration directory.
+include client/Go versions, platform and whether certificate verification is
+enabled. `adminSDK` identifies the embedded OtterIO server/admin module; it
+does not identify the independent S3 SDK. Endpoint schemes, separate-management
+and custom-CA settings describe a supplied alias; running doctor without one
+does not check an endpoint. Reports omit endpoint hosts, private paths,
+credentials and the configuration directory.
 Review failure diagnostics too: general error records can contain local paths,
 host information and underlying error messages.
 
@@ -37,10 +40,19 @@ non-default configuration, include the same `--config-dir` on every command.
 
 Run `oc alias list store` locally and check directory selection:
 `--config-dir` > `OC_CONFIG_DIR` > `MC_CONFIG_DIR` > platform default.
+The list only shows the saved entry, including its saved management settings;
+it does not show command or environment overrides. An environment-only alias
+can work even when `alias list` reports no saved alias. Removing a saved alias
+does not disable its environment override.
 An `OC_HOST_store` or `MC_HOST_store` value overrides saved S3 settings. Check
 whether an override is set without printing its secret value. A set OC value
 can suppress its MC counterpart even when empty. Unset unintended overrides,
 then run offline doctor again.
+
+If management stopped working after an `alias set`, check whether the new
+command repeated `--admin-url` and `--admin-ca`. `alias set` replaces the whole
+entry; omitted management settings are cleared, and an omitted `--path`
+returns to `auto`. Reapply the intended complete configuration.
 
 OC does not discover `.mc` automatically. Use [migration](migration.md) to
 import version 10 data explicitly. If initialization fails with permission
@@ -89,6 +101,28 @@ Ordinary command failures return `1`. SIGINT and SIGTERM normally return `130`
 and `143`; cleanup failure or forced termination can produce another nonzero
 status. Treat all nonzero statuses as incomplete work unless your job explicitly
 handles cancellation.
+
+## Lifecycle target support is not confirmed
+
+ILM remote target mutations can fail with `server does not confirm lifecycle
+transition v1 support`. The pinned server lacks the new runtime; check the
+matching [server implementation and protocol scope](lifecycle-transition.md).
+The signed capability request uses the resolved management endpoint and requires
+`admin:GetBucketTarget`; modifying the target requires `admin:SetBucketTarget`.
+Check those permissions, the management route and certificate trust. Missing or
+unexpected capability headers, redirects and incomplete responses are rejected.
+Changing `--allow-writes` on the local console does not enable CLI access or
+upgrade the server. Ordinary `oc ilm` rule operations do not perform this target
+capability check and do not prove transition or restore support.
+
+## An IAM policy assignment disappeared
+
+The current `admin policy update` implementation can clear assigned policies
+when given an already assigned policy or an empty argument. Check `admin user
+info` or `admin group info`, then use `admin policy set` to restore the complete
+intended comma-separated policy list and verify access. Avoid repeating
+`policy update` as an initialization step. See the
+[administration guide](administration.md#manage-policies-users-and-groups).
 
 ## Transfers, mirrors and notifications
 

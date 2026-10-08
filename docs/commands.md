@@ -16,9 +16,9 @@ OC accepts flags before a command, and many commands also expose common flags lo
 
 ## Configuration and diagnostics
 
-- `alias`: `set`, `list`, `remove`; manages endpoint aliases. There is no separate `alias export` command.
+- `alias`: `set`, `list`, `remove`; manages saved endpoint aliases. `set` replaces the complete saved entry; `list` does not show environment overrides, and `remove` does not unset them. There is no separate `alias export` command.
 - `config import`: imports a version 10 mc/OC configuration with a destination backup; see [migration](migration.md).
-- `doctor`: reports client/platform/configuration facts without printing credentials. `--online` also queries the management endpoint and requires an alias.
+- `doctor`: reports client/platform facts without printing credentials; add an alias for its resolved protocol and management settings. `adminSDK` identifies the OtterIO server/admin module, not the independent S3 SDK. `--online` also queries the management endpoint and requires an alias.
 - `update`: retained to explain that self-update is disabled; it does not download or replace OC.
 
 [Configuration](configuration.md) explains alias settings, environment precedence and TLS. [Troubleshooting](troubleshooting.md) explains interpreting diagnostics.
@@ -40,7 +40,7 @@ Examples and mirror filter/deletion behavior are in [everyday usage](usage.md).
 
 - `version`, `undo`: manage bucket versioning or undo supported PUT/DELETE operations.
 - `retention`, `legalhold`: control object-lock retention and legal holds where supported; locked/versioned buckets need appropriate setup and permissions.
-- `ilm`: manage lifecycle rules.
+- `ilm`: manage lifecycle rules with `add`, `edit`, `rm`, `ls`, `export` and `import`. CLI export/import uses JSON; the console's full lifecycle editor uses XML.
 - `encrypt`: manage server-side bucket encryption configuration; external KMS support is deployment-dependent.
 - `tag`: manage bucket/object tags.
 - `policy`: manage anonymous object access. This is different from `admin policy`, which manages identity policies.
@@ -57,7 +57,7 @@ The presence of a command does not establish support for a provider or topology.
 - `admin user`, `admin group`, `admin policy`: manage identities, groups and policies; service accounts are under `admin user svcacct`.
 - `admin config`: read, set, export or import server configuration. Exported configuration can contain secrets.
 - `admin service`: restart or stop servers. These operations affect the deployment.
-- `admin bucket`: manage bucket administrative settings, including quotas and remote targets.
+- `admin bucket`: manage bucket administrative settings, including quotas and remote targets. ILM target mutations require the matching server's transition protocol and management permissions; see [administration](administration.md#lifecycle-transition-targets).
 - `admin prometheus`: generate metrics scraping configuration.
 - `admin trace`, `admin console`: inspect live request/log streams.
 - `admin profile`, `admin subnet health`: collect diagnostic artifacts. The historical `subnet` command name remains, but SUBNET uploads are disabled.
@@ -65,6 +65,12 @@ The presence of a command does not establish support for a provider or topology.
 - `admin heal`: a deprecated entry point; inspect its help and deployment requirements before use.
 
 The current `admin` group does not include an `admin update` command. [Administration](administration.md) covers workflows, metric endpoints, privileges and diagnostic artifact handling.
+
+Review the [current `admin policy update` limitation](administration.md#manage-policies-users-and-groups)
+before changing IAM assignments: a repeated or empty policy can clear existing
+bindings. Use a verified complete assignment with `admin policy set` instead.
+There is no dedicated CLI object restore command; the lifecycle transition
+record describes native S3 restore requests separately.
 
 ## Common flags
 
@@ -74,7 +80,7 @@ The current `admin` group does not include an `admin update` command. [Administr
 - `--quiet`, `-q`, `--no-color`: control progress/color output.
 - `--debug`: include debug diagnostics; review them for sensitive context before sharing.
 - `--insecure`: disable certificate verification. Configure the appropriate CA instead of using this as a normal deployment setting.
-- `--help`, `-h`, `--version`, `-v`: inspect command help or the client release tag.
+- `--help`, `-h`: inspect command help. Use `oc --version` or `oc -v` at the root to print the client release tag.
 - `--autocompletion`: install shell completion; this can change shell configuration. It is an explicit setup step, not a read-only diagnostic.
 
 Command-specific flags such as `mirror --fake`, `cp --recursive`, `watch --events` and retention options belong to their respective help pages. Read them in the installed version before scripting.

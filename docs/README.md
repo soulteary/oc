@@ -17,7 +17,8 @@ Start with installation, then configure an alias and transfer a file. Guides des
 
 - [Command reference](commands.md): the available command families and how to inspect flags.
 - [OtterIO administration](administration.md): server information, identities, policies and diagnostics.
-- [Local Web console](console.md): opt-in source build, one alias, loopback sessions and current limits.
+- [Local Web console](console.md): opt-in source build, one alias, object writes, protected settings and own IAM rotation.
+- [Lifecycle transitions and restore](lifecycle-transition.md): CLI destination setup, required server protocol and runtime/rollback limits.
 - [Compatibility and validation](compatibility.md): SDK pin, deployment coverage and known limits.
 - [Troubleshooting](troubleshooting.md): authentication, TLS, endpoints, streaming and import failures.
 - [Security](../SECURITY.md): credentials, trust and private vulnerability reporting.
@@ -40,10 +41,13 @@ Start with installation, then configure an alias and transfer a file. Guides des
 
 These records retain their original source ranges, limitations and test results. Consult the current guides above for installation and operation; an earlier stage's “not yet implemented” or “not verified” statement is not a current project status.
 
+- [Current project review — 2026-10-08 (中文)](reviews/2026-10-08-project-status.md): current source/release boundaries, documentation findings and remaining work.
 - [Phase one: build and release boundaries](oc-phase-one.md).
 - [Web console migration plan](console-migration.md): staged implementation, permission differences and retirement gates.
 - [Console phase one](console-phase-one.md): implementation, server fix, exact validation and remaining limits.
 - [Console phase two](console-phase-two.md): object writes, independent review and validation.
+- [Console phase three](console-phase-three.md): bucket settings, own IAM rotation and historical validation; later transition evidence is tracked separately.
+- [Lifecycle transition verification](lifecycle-transition-verification.json): current optional server patch, runtime acceptance and P2/P3 regressions.
 - [Phase two: core connectivity](oc-phase-two.md).
 - [Phase three: operations and migration](oc-phase-three.md), with [recorded results](oc-phase-three-results.json).
 - [Phase four: stability and support policy](oc-phase-four.md), with [recorded results](oc-phase-four-results.json) and [development-build inventory](oc-phase-four.cdx.json).

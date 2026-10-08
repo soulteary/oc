@@ -12,7 +12,7 @@ S3 operations use `github.com/soulteary/otterio-sdk/v7 v7.3.1`, released from `c
 
 The release-boundary check compares the SDK version and full source SHA with a reviewed tag-to-source mapping fixed independently in `buildscripts/verify-release-boundaries.py`. A full-length SHA alone does not establish release identity. An SDK upgrade must verify the published tag's source and update that mapping together with the dependency and compatibility manifest; the check runs without network access.
 
-Server/admin packages and the integration server use the same pinned remote OtterIO source, `6f6d0835ddff68020f1491c403b958fade22841f`, without local replacements or compatibility patches. Its tree matches the former `fed9cc3` pin; the update records the merged main source. The management query bridge, runtime/shutdown, HTTP API, account information and conditional-write fixes are included in that source. The old patch files and earlier reports are retained as historical evidence, not current setup instructions. Upgrading either dependency requires rerunning the recorded matrix. See [development](development.md) and [CLI migration](cli-migration.md).
+Server/admin packages and the core integration server use the same pinned remote OtterIO source, `6f6d0835ddff68020f1491c403b958fade22841f`, without local replacements or compatibility patches. Its tree matches the former `fed9cc3` pin; the update records the merged main source. The management query bridge, runtime/shutdown, HTTP API, account information and conditional-write fixes are included in that source. The `otterio-*-compat.patch` files and earlier core reports are retained as historical evidence, not current setup instructions. The separate optional console protocol fixture is described below. Upgrading either dependency requires rerunning the recorded matrix. See [development](development.md) and [CLI migration](cli-migration.md).
 
 ## Deployments exercised by the test harness
 
@@ -28,11 +28,19 @@ Stability tests use `dual-tls`. The extended acceptance uses single-node, four-d
 
 Object acceptance covers bucket operations, empty and small objects, unusual and non-ASCII names, 65 MiB multipart transfers with download hash checks, server-side copy, stat, mirror, sharing and permission failures. The extended checks cover selected IAM and service-account operations, configuration round trips, quotas, object versions and tags, object lock and retention, lifecycle configuration, CSV Select, SSE-C, live event subscriptions, administrative streams, profile/health output, heal status and service control.
 
-Those checks have specific limits: lifecycle configuration is not timed-expiration acceptance; heal status is not a failed-disk recovery test; a KMS rejection is not successful KMS encryption; live subscriptions are not external-target delivery acceptance. [Administration](administration.md) explains endpoint and permission requirements.
+Those core checks have specific limits: lifecycle configuration is not timed-expiration acceptance; heal status is not a failed-disk recovery test; a KMS rejection is not successful KMS encryption; live subscriptions are not external-target delivery acceptance. [Administration](administration.md) explains endpoint and permission requirements.
+
+## Optional console protocol and lifecycle fixture
+
+The console has two distinct server baselines. The unpatched pinned server is used for browsing, object uploads/deletes and safe read-only settings fallback. Protected policy/versioning/lifecycle edits and own IAM secret rotation require `buildscripts/console-server-p3.patch` applied to a writable copy of that source. `requiredServerPatches: []` refers to the core baseline; `consoleSettingsProtocol` records this separate optional protocol and its topology restrictions. The patch is not yet included in the pinned server dependency or a published release.
+
+The patched fixture also tests current and noncurrent version transitions, persistent destination references, source restart, version-specific restore, exact remote-version cleanup and target protection. Its process acceptance uses separate temporary four-drive source and destination servers on `single-http` and `dual-tls`; it does not establish external-provider, distributed, gateway or filesystem-transition acceptance. See [lifecycle scope](lifecycle-transition.md) and the [current verification record](lifecycle-transition-verification.json). Older phase-three reports identify an earlier patch and retain their historical status.
+
+Reproduction commands for both server baselines are in [development](development.md#reproduce-the-optional-console-protocol-fixture). Keep the server source, patch hash, binary identities and actual passing scenarios together when interpreting evidence. The local console remains a source-built optional program; current CLI release archives and container images do not include it.
 
 ## Runtime CI and cross-compilation
 
-[Go CI](../.github/workflows/go.yml) configures native unit/race tests on Linux, macOS and Windows. Real OtterIO integration runs are configured on Linux and macOS with `CGO_ENABLED=0` and `1`, building the exact pinned server before testing. The workflow archives reports and diagnostic evidence even on failure.
+[Go CI](../.github/workflows/go.yml) configures native unit/race tests and console frontend/helper regressions on Linux, macOS and Windows. Real OtterIO integration runs are configured on Linux and macOS with `CGO_ENABLED=0` and `1`: first the exact unpatched pinned server, then a separate server built with the optional P3 patch for settings, object-write regression and lifecycle acceptance. The workflow archives reports and diagnostic evidence even on failure. The separate [CLI compatibility workflow](../.github/workflows/cli-compat.yml) compares a fixed baseline and candidate on each native CI platform.
 
 Cross-compilation covers eleven targets:
 
@@ -50,7 +58,7 @@ windows/amd64
 windows/arm64
 ```
 
-A successful cross-build proves that an executable can be produced for that target. It does not replace native execution, filesystem/ACL tests or real-service integration. In particular, Windows and FreeBSD do not have the same recorded service integration coverage as Linux/macOS. The current release workflow targets Linux amd64 and arm64 containers for subsequent timestamp releases. Older releases can be archive-only; use a release whose manifest records `images` before expecting an image tag or digest. See [installation](installation.md).
+A successful cross-build proves that an executable can be produced for that target. It does not replace native execution, filesystem/ACL tests or real-service integration. In particular, Windows and FreeBSD do not have the same recorded service integration coverage as Linux/macOS. The current release workflow targets Linux amd64 and arm64 containers for subsequent timestamp releases; it validates both index entries but executes container smoke tests only on Linux amd64. Older releases can be archive-only; use a release whose manifest records `images` before expecting an image tag or digest. See [installation](installation.md).
 
 A configured workflow is not a passing run. Check the results for the exact source commit in [GitHub Actions](https://github.com/soulteary/oc/actions). Local reports identify the tested binary hashes and platform; they are evidence for those runs rather than a promise for every later release.
 

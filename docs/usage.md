@@ -175,6 +175,24 @@ different server-enforced rules. Check [compatibility](compatibility.md) for the
 deployment and operations before relying on them. This guide does not use bypass
 or destructive cleanup commands.
 
+## Lifecycle configuration and remote tiers
+
+`oc ilm` manages lifecycle rules where the server supports them. Saving or
+listing a rule is separate from verifying that the server later expires or
+transitions the matching objects. The experimental console can review complete
+lifecycle XML with revision protection on a server implementing its
+[settings protocol](console.md#bucket-settings-and-own-account); ordinary CLI
+`ilm` commands do not provide that console's revision confirmation workflow.
+
+Remote tier registration uses `oc admin bucket remote`, not a Web target editor.
+Current `main` adds `--service ilm` and storage-class labels. ILM target changes
+require the optional lifecycle protocol, which is absent from the pinned
+unpatched server and the CLI release used in the installation examples. See
+[administration](administration.md) for target permissions and
+[lifecycle execution and restore](lifecycle-transition.md) for the recorded
+single-node erasure scope, durable references and server downgrade limits.
+The console has no historical-version selector or restore button.
+
 ## Use output in scripts
 
 ```sh

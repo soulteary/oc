@@ -8,10 +8,10 @@ The release workflow builds Linux amd64 and arm64 images from the same executabl
 
 Choose a [published release](https://github.com/soulteary/oc/releases) whose `release-manifest.json` contains `images`. Each entry gives the repository and verified index digest. If the release has no image entries, install its [native archive](installation.md) or build a local image from source; do not infer an image from the archive tag.
 
-The following commands use a placeholder that must be replaced with an image-enabled release:
+The published [`RELEASE.2026-10-07T17-07-26Z`](https://github.com/soulteary/oc/releases/tag/RELEASE.2026-10-07T17-07-26Z) manifest records a GHCR image. Use it for this reproducible CLI example; for another version, check that version's manifest first. These images do not include the experimental `oc-console` or newer `main` features.
 
 ```sh
-TAG=RELEASE.YYYY-MM-DDTHH-MM-SSZ
+TAG=RELEASE.2026-10-07T17-07-26Z
 IMAGE="ghcr.io/soulteary/oc:$TAG"
 docker run --rm "$IMAGE" --version
 docker run --rm "$IMAGE" --help

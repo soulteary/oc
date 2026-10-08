@@ -12,7 +12,7 @@ S3 操作使用独立发布的 `github.com/soulteary/otterio-sdk/v7 v7.3.1`，�
 
 发布边界检查将 SDK 版本和完整源码 SHA，与 `buildscripts/verify-release-boundaries.py` 中独立固定、已经审查的标签与源码映射比较。SHA 长度正确并不能证明发布身份。升级 SDK 时，必须先核实已发布标签的源码，再与依赖及兼容清单一起更新该映射；检查本身不访问网络。
 
-服务端 / 管理包与集成服务端使用同一固定远程 OtterIO 源码 `6f6d0835ddff68020f1491c403b958fade22841f`，不使用本地替换或兼容补丁。其源码树与原先的 `fed9cc3` pin 一致；此次更新记录正式合并的 main 来源。管理查询桥接、运行时关闭、HTTP API、账户信息和条件写修复已包含在该源码中。旧补丁与旧报告保留为历史证据，不再作为当前环境搭建步骤。任一依赖更新后都必须重跑验收矩阵，见[开发指南](development.md)和 [CLI 迁移说明](../cli-migration.md)。
+服务端 / 管理包与核心集成服务端使用同一固定远程 OtterIO 源码 `6f6d0835ddff68020f1491c403b958fade22841f`，不使用本地替换或兼容补丁。其源码树与原先的 `fed9cc3` pin 一致；此次更新记录正式合并的 main 来源。管理查询桥接、运行时关闭、HTTP API、账户信息和条件写修复已包含在该源码中。`otterio-*-compat.patch` 与旧核心报告保留为历史证据，不再作为当前环境搭建步骤；独立的可选控制台协议环境见下文。任一依赖更新后都必须重跑验收矩阵，见[开发指南](development.md)和 [CLI 迁移说明](../cli-migration.md)。
 
 ## 测试工具覆盖的部署
 
@@ -28,11 +28,19 @@ S3 操作使用独立发布的 `github.com/soulteary/otterio-sdk/v7 v7.3.1`，�
 
 对象验收覆盖桶操作、空对象与小对象、特殊字符和非 ASCII 名称、65 MiB 分片传输与下载哈希、服务端复制、stat、mirror、分享及权限失败。高级检查覆盖部分 IAM 与服务账号操作、服务配置往返、配额、对象版本与标签、对象锁与保留、生命周期配置、CSV Select、SSE-C、实时事件、管理流、profile / 健康输出、heal 状态及服务控制。
 
-这些检查各有边界：生命周期配置往返不代表真实到期删除；heal 状态不代表故障磁盘恢复；KMS 拒绝不代表 KMS 加密通过；实时订阅不代表外部通知目标投递通过。入口和权限要求见 [管理说明](administration.md)。
+这些核心检查各有边界：生命周期配置往返不代表真实到期删除；heal 状态不代表故障磁盘恢复；KMS 拒绝不代表 KMS 加密通过；实时订阅不代表外部通知目标投递通过。入口和权限要求见 [管理说明](administration.md)。
+
+## 可选控制台协议与生命周期环境
+
+控制台使用两条不同的服务端基线。未应用补丁的固定服务端用于浏览、对象上传/删除和设置的安全只读降级。保护性策略/版本/生命周期编辑与自身 IAM 改密，需要在该源码的可写副本上应用 `buildscripts/console-server-p3.patch`。`requiredServerPatches: []` 指核心基线；`consoleSettingsProtocol` 单独记录这项可选协议及拓扑限制。补丁还没有包含在固定服务端依赖或已发布版本中。
+
+应用补丁后的环境还验证当前与非当前版本转换、持久化目标引用、源端重启、指定版本恢复、准确远端版本清理和目标保护。独立进程验收使用临时四盘源端和目标端，覆盖 `single-http` 与 `dual-tls`；不证明外部提供商、分布式、gateway 或文件系统转换已经通过。范围见[生命周期说明](../lifecycle-transition.md)和[当前验证记录](../lifecycle-transition-verification.json)。较早的第三阶段报告记录的是上一版补丁，继续保留历史状态。
+
+两条服务端基线的复现命令见[开发指南](development.md#复现可选控制台协议环境)。解读证据时，将服务端源码、补丁哈希、二进制身份和实际通过场景一起核对。本机控制台仍是从源码构建的可选程序；当前 CLI 发行归档与镜像不包含它。
 
 ## 原生 CI 与交叉编译
 
-[Go CI](../../.github/workflows/go.yml) 配置了 Linux、macOS、Windows 的原生单元和竞态测试。真实 OtterIO 集成配置在 Linux / macOS 上分别使用 `CGO_ENABLED=0`、`1`，先构建固定版本服务端，再执行矩阵。工作流无论成功或失败都会归档报告和诊断证据。
+[Go CI](../../.github/workflows/go.yml) 配置了 Linux、macOS、Windows 的原生单元、竞态、控制台前端与辅助程序测试。真实 OtterIO 集成配置在 Linux / macOS 上分别使用 `CGO_ENABLED=0`、`1`：先测试未应用补丁的固定服务端，再构建带可选 P3 补丁的独立程序，验证设置、对象写回归与生命周期。工作流无论成功或失败都会归档报告和诊断证据。独立的 [CLI 兼容工作流](../../.github/workflows/cli-compat.yml)在各原生 CI 平台比较固定基线与候选程序。
 
 交叉编译包含 11 个目标：
 
@@ -50,7 +58,7 @@ windows/amd64
 windows/arm64
 ```
 
-交叉编译通过只证明能生成目标程序，不能替代原生运行、文件系统 / ACL 测试或真实服务联调。Windows、FreeBSD 等目标没有与 Linux / macOS 相同的服务集成验证记录。当前发行工作流为后续时间戳版本配置了 Linux amd64、arm64 容器发布。旧版可能只有程序归档；只有发行清单记录了 `images`，才能据此使用镜像标签或摘要。安装方法见 [安装说明](installation.md)。
+交叉编译通过只证明能生成目标程序，不能替代原生运行、文件系统 / ACL 测试或真实服务联调。Windows、FreeBSD 等目标没有与 Linux / macOS 相同的服务集成验证记录。当前发行工作流为后续时间戳版本配置了 Linux amd64、arm64 容器发布，验证索引中的两个平台，但只在 Linux amd64 上运行容器冒烟测试。旧版可能只有程序归档；只有发行清单记录了 `images`，才能据此使用镜像标签或摘要。安装方法见 [安装说明](installation.md)。
 
 工作流配置不等于运行通过。应在 [GitHub Actions](https://github.com/soulteary/oc/actions) 中检查对应源码提交的实际结果。本地报告记录二进制哈希和运行平台，只为对应运行提供证据，不自动覆盖后续每个发行版。
 

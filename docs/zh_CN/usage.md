@@ -152,6 +152,19 @@ oc retention set --default governance 30d store/oc-locked-example
 governance 与 compliance 的限制由服务端执行。
 使用前查看[兼容范围](compatibility.md)中验证过的部署和操作；这里不提供 bypass 或破坏性清理示例。
 
+## 生命周期配置与远端存储层
+
+`oc ilm` 管理服务端支持的生命周期规则。保存或列出规则，不等于已经验证服务端随后会
+对匹配对象执行到期删除或转换。实验控制台可以在支持其[设置协议](console.md#桶配置与自身账户)
+的服务端上审阅完整生命周期 XML，并通过 revision 保护提交；普通 CLI `ilm` 命令不提供
+控制台的 revision 确认流程。
+
+远端目标使用 `oc admin bucket remote` 注册，Web 尚无目标编辑面板。当前 main 增加
+`--service ilm` 和 storage class label。ILM 目标修改要求可选的生命周期协议；
+固定且未打补丁的服务端、安装示例所用的 CLI 发布版均不包含这次新增功能。
+目标权限见[管理指南](administration.md)，单节点 erasure 验证范围、持久化引用和服务端
+降级限制见[生命周期执行与恢复](../lifecycle-transition.md)。控制台尚无历史版本选择或恢复按钮。
+
 ## 在脚本中处理输出
 
 ```sh

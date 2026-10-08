@@ -6,7 +6,7 @@
 
 ## 选择版本和平台
 
-从 [GitHub Releases](https://github.com/soulteary/oc/releases) 选择版本。标签采用 UTC 的 `RELEASE.YYYY-MM-DDTHH-MM-SSZ`，不使用语义化版本号。下面以已发布的 `RELEASE.2026-10-07T14-10-00Z` 演示归档安装；升级时改成需要的已发布标签。
+从 [GitHub Releases](https://github.com/soulteary/oc/releases) 选择版本。标签采用 UTC 的 `RELEASE.YYYY-MM-DDTHH-MM-SSZ`，不使用语义化版本号。下面以已发布的 `RELEASE.2026-10-07T17-07-26Z` 演示归档安装；升级时改成需要的已发布标签。归档提供该标签的 CLI，不包含当前 main 的全部功能；实验性的[本机控制台](console.md)需要单独从源码构建。
 
 归档中的平台名为：
 
@@ -25,7 +25,7 @@
 
 ```bash
 set -euo pipefail
-TAG=RELEASE.2026-10-07T14-10-00Z
+TAG=RELEASE.2026-10-07T17-07-26Z
 PLATFORM=linux-amd64
 ARCHIVE="oc-$TAG-$PLATFORM.tar.gz"
 WORK_DIR="$(mktemp -d)"
@@ -71,7 +71,7 @@ macOS 下载前设置 `PLATFORM=darwin-arm64` 或 `darwin-amd64`。系统阻止�
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$Tag = 'RELEASE.2026-10-07T14-10-00Z'
+$Tag = 'RELEASE.2026-10-07T17-07-26Z'
 $Platform = 'windows-amd64'
 $Archive = "oc-$Tag-$Platform.zip"
 $WorkDir = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString())
