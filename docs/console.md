@@ -2,7 +2,7 @@
 
 [中文](zh_CN/console.md) · [Documentation](README.md) · [Migration plan](console-migration.md)
 
-`oc-console` is an optional source-built program for one operator and one configured S3 alias on the local machine. Browsing and downloads are read-only by default. Explicit write mode adds uploads, exact-key/batch/prefix deletion, cancellation and per-object results. Servers with the P3 protocol also expose protected bucket settings and own IAM secret rotation. The existing OtterIO Web console remains available.
+`oc-console` is an optional source-built program for one operator and one configured S3 alias on the local machine. Browsing, downloads and bucket configuration reads are available in the default read-only mode. Explicit write mode adds uploads, exact-key/batch/prefix deletion, cancellation and per-object results. Servers with the P3 protocol also expose protected bucket settings and own IAM secret rotation. The existing OtterIO Web console remains available.
 
 ## Build and start
 
@@ -61,17 +61,56 @@ Leaving or reloading the page in the browser interrupts browser uploads; the con
 
 ## Bucket settings and own account
 
+Configuration reads work in the default read-only mode. Changes and secret
+rotation require restarting with `--allow-writes`, the selected identity's
+permissions and the matching server protocol; enabling the flag alone does not
+grant access or add server capabilities.
+
+To change a setting:
+
+1. Open **Bucket settings**, enter the exact bucket, choose policy, versioning or lifecycle, and select **Read setting**.
+2. Edit the complete returned document. Select **Review change**, check the loaded bucket, setting and full contents, then **Apply this setting**. For an existing policy or lifecycle, **Review removal** offers a separate removal confirmation.
+3. Check the confirmed document returned by storage. After a conflict or uncertain result, copy edits you need to keep, read the current configuration and review a fresh change before submitting again.
+
 Enter an exact bucket in Settings, including when bucket enumeration is denied. Read bucket policy as complete JSON, and versioning/lifecycle as complete XML. Each setting has its own authorization and errors; OC submits the full document; storage validates supported fields and may normalize its representation. Protected writes reject unsupported fields rather than silently discarding them. This server implements versioning Status, without MFADelete or excluded prefixes. Replacements and policy/lifecycle removal require a separate review of the exact bucket, kind and contents. Policy changes affect access, lifecycle rules may expire data, and enabling versioning is not reversed by suspension. Version configuration removal is unavailable.
+
+Protected saves require the corresponding read permission as well as the
+mutation permission: OC reads before submission and again to verify the saved
+document. Policy uses `s3:GetBucketPolicy` and `s3:PutBucketPolicy` or
+`s3:DeleteBucketPolicy`; versioning uses `s3:GetBucketVersioning` and
+`s3:PutBucketVersioning`; lifecycle uses `s3:GetLifecycleConfiguration` and
+`s3:PutLifecycleConfiguration` for both replacement and removal. A policy that
+revokes your own read access can be committed but fail read-back verification,
+leaving the outcome unconfirmed. Check the actual setting with an identity that
+can read it before making another change; do not replay the submitted write.
 
 Reading over an unsaved draft requires confirmation. Canceling or a failed read keeps the previous document and its exact save scope. The matching server patch now supports current and noncurrent version transitions, persistent destination references, and version-specific restore on erasure storage; see [runtime scope and verification](lifecycle-transition.md). The pinned, unpatched server still refuses protected writes. `NewerNoncurrentVersions` remains unsupported. A tag filter combined with `ExpiredObjectDeleteMarker=true` is also rejected. Invalid UTF-8 and unpaired UTF-16 escapes are refused before a secret or configuration can silently change during decoding.
 
 Protected writes require the server's `X-Otterio-Bucket-Config: v1`, a 64-hex revision and an exists flag. A signed `X-Otterio-Config-If-Match` is checked under the complete metadata transaction lock. Conflicts retain the draft but require a fresh read and review; uncertain outcomes require checking storage before another edit. Writes are never replayed automatically. Documents are limited to 1 MiB, with the server's existing tighter limits still applying. FS protects policy/lifecycle; single-pool erasure also protects versioning. Gateways, multiple pools, V2 signing and servers without the protocol cannot perform these protected writes.
 
+ILM destination registration, credential updates and removal use
+`oc admin bucket remote` in the terminal, as described in the
+[transition guide](lifecycle-transition.md). The Web editor changes lifecycle
+rules but does not manage remote targets or provide historical-version restore
+buttons. The transition protocol is limited to single-node, single-pool erasure.
+
 Own-account discovery returns only identity kind, status and rotation availability. It never returns an access key, secret or session token. Only enabled native IAM users can rotate, subject to explicit `admin:CreateUser` denial. Root, STS, service/directory identities and distributed, etcd or external OPA authorization deployments cannot rotate here. Secrets must contain 8–128 UTF-8 bytes without NUL, CR or LF. Secret input is cleared upon submission, cancellation, close and logout.
+
+To rotate an eligible account, finish or cancel active writes, select **Account**
+to open **Current account**, enter **New secret key**, select **Review secret rotation**, then
+**Rotate secret and stop console**. Verify the resulting credentials in the
+terminal, update the alias using `oc alias set`, restart `oc-console`, and open
+the newly printed URL with its new login code. Preserve the alias's S3,
+management, addressing and trust settings when updating it.
 
 Finish or cancel active writes before rotation; the process rejects rotation concurrent with object/settings writes or multipart cleanup. A confirmed or uncertain submitted rotation retires every session and pending task, flushes a restart acknowledgement, and stops the console. Verify credentials and update the alias in your terminal, then restart and reload the page; OC never rewrites the alias automatically. A definite permission rejection does not itself retire the connection. Retirement covers this OC process, without claiming revocation of previously issued STS or service-account credentials; manage those identities separately.
 
-The currently pinned server dependency does not yet contain P3. The server source implementation and reproducible optional patch are described in [phase three](console-phase-three.md). Older servers retain reads while protected mutations remain disabled.
+The currently pinned server dependency, `6f6d0835ddff68020f1491c403b958fade22841f`, does not contain P3 or the new transition runtime. Build the matching patched server separately; the reproducible optional patch and its scope are described in [phase three](console-phase-three.md) and [lifecycle transitions](lifecycle-transition.md). Building OC does not apply that patch or upgrade your server. Older servers retain reads while protected mutations remain disabled.
+
+Stopping OC or returning to the old UI keeps the current server and does not
+undo configuration changes, rotated secrets or transitioned objects. New
+transition references require a server that understands them; validate storage
+compatibility before any server downgrade.
 
 ## Browsing and operational limits
 
@@ -89,4 +128,4 @@ Shutdown cancels sessions, then allows up to five seconds each for HTTP shutdown
 make test-console
 ```
 
-See [phase-three validation](console-phase-three.md) and [phase-two validation](console-phase-two.md) for exact evidence and remaining scope. Frontend behavior tests require Node in the development environment; running the console does not. `make build` still builds the CLI only; existing release archives and containers do not automatically include this experimental program. Further administration/diagnostics and release/deployment validation and retirement of the old UI remain later migration gates.
+See [phase-three validation](console-phase-three.md), the later [transition verification](lifecycle-transition-verification.json), and [phase-two validation](console-phase-two.md) for exact evidence and remaining scope. Each report applies to its recorded binaries and patch; older P3 reports rejected noncurrent transitions before the later implementation. Frontend behavior tests require Node in the development environment; running the console does not. `make build` still builds the CLI only; existing release archives and containers do not automatically include this experimental program. Further administration/diagnostics and release/deployment validation and retirement of the old UI remain later migration gates.

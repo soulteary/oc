@@ -19,6 +19,9 @@ oc alias set --api s3v4 --path on \
 
 `ls`、`cp`、`mirror` 等对象命令访问 S3 地址，`admin info` 等管理命令访问 `--admin-url`。未设置管理地址时，OC 回退到 S3 地址；这要求服务端也在该入口提供管理接口。两类请求使用同一个别名中的凭据，但管理操作仍须通过服务端权限检查。
 
+对同名别名再次执行 `alias set` 会整体替换保存的条目。轮换凭据时，应再次填写管理地址、CA、
+签名和桶寻址设置；省略管理设置会清空原值。`alias list` 展示保存的条目，命令和环境覆盖则影响当前请求。
+
 管理地址必须是 HTTP 或 HTTPS 根地址，不接受内嵌凭据、查询参数、片段和路径前缀。使用反向代理时，应在该主机直接暴露 OtterIO 管理路由。OC 拒绝管理重定向，避免转发已签名请求或加密的配置、IAM 正文。
 
 未显式指定管理 CA 时，管理请求使用系统根证书与配置目录 `certs/CAs/` 合成的共享信任池。指定 `--admin-ca` 后，管理请求改用系统根证书加该 PEM 文件，不再包含 `certs/CAs/` 中的额外证书；S3 信任设置不受影响。对象入口也使用私有证书时，将其 CA 放到 `certs/CAs/`。保持证书校验开启，具体说明见 [安全文档](security.md)。
@@ -51,7 +54,10 @@ oc admin info store
 oc --json admin info store
 ```
 
-`doctor` 默认离线，输出客户端、Go、SDK 版本、协议、管理入口是否独立、是否设置管理 CA，以及证书校验开关。它不输出入口主机、凭据和配置路径。`--online` 使用 15 秒期限发起只读管理 `ServerInfo` 请求。两种模式都不会验证 S3 读写权限。
+`doctor` 默认离线，输出客户端和 Go 版本、平台及证书校验开关。提供别名时，还会报告入口协议、
+管理入口是否独立、是否设置管理 CA。`adminSDK` 字段表示嵌入的 OtterIO 服务端/管理模块版本，
+不报告独立 S3 SDK 版本。它不输出入口主机、凭据和配置路径。
+`--online` 使用 15 秒期限发起只读管理 `ServerInfo` 请求。两种模式都不会验证 S3 读写权限。
 
 `admin info` 展示服务端信息。其 JSON 错误路径返回非零退出码，并包含错误分类，可用时还会提供错误码。脚本应先检查退出码，再解析成功结果；各管理命令的业务结果结构并不完全相同。
 
@@ -117,6 +123,11 @@ oc admin policy set store archive-reader group=readers
 
 `policy set` 替换该用户或组的策略绑定，`policy update` 在已有绑定中追加策略，`policy unset` 移除指定绑定，`policy remove` 删除策略定义。当前版本使用 `add`、`set`、`update`、`unset`；其他客户端的 `create` / `attach` / `detach` 示例不能直接套用，应以本版本 `--help` 为准。
 
+**当前限制：** `policy update` 遇到已绑定的策略或空策略参数时，没有停止请求，可能提交空的替换值，
+清空用户或组已有的策略绑定。可重复执行的初始化脚本应避免使用它。先用 `user info` 或 `group info`
+读取当前绑定，再用 `policy set` 提交期望保留的完整策略列表，多个策略以逗号分隔，并核对结果。
+列表必须包含所有需要保留的绑定。
+
 用户还支持 `disable`、`enable`、`remove` 和 `policy`，组支持 `disable`、`enable` 和 `remove`。移除组成员的参数为 `ALIAS GROUP MEMBER...`；省略成员时，请求删除空组。操作能否执行由服务端权限和实际状态决定。变更后先用受限测试身份核对访问权限，再向使用方推广。
 
 ## 管理服务账号
@@ -164,6 +175,21 @@ oc admin service restart --timeout 2m store
 ```
 
 默认等待期限为一分钟。OC 只发送一次重启请求，随后等待原有全部节点恢复且启动时间发生变化。超时表示尚未确认恢复，不会再次发送重启。`oc admin service stop store` 停止服务，之后需要通过服务端进程管理方式重新启动。
+
+## 生命周期转换目标
+
+桶生命周期规则使用 `oc ilm`，远程转换目标使用 `oc admin bucket remote`。
+添加 `--service ilm` 目标必须填写非空 `--label`，规则使用该 label 作为 storage class。
+ILM 目标的 `add`、`edit`、`rm` 会先通过签名管理请求检查服务端是否明确返回且只返回一个
+`X-Otterio-Lifecycle-Transition: v1`。该只读检查需要 `admin:GetBucketTarget` 权限，
+修改需要 `admin:SetBucketTarget`。复制目标沿用其独立流程；本地控制台的 `--allow-writes`
+开关不适用于 CLI 命令。
+
+当前固定的 OtterIO 服务端尚不包含这套转换运行时。需要配套的服务端实现或经审查的
+[补丁与验证记录](../lifecycle-transition.md)；普通生命周期配置读写成功不能证明转换或恢复可用。
+新协议限定单节点、单 pool erasure；FS、gateway、多 pool、分布式及外部 S3 提供者不在保证范围内。
+缺失能力标识、重定向或不完整响应都会阻止 ILM 目标修改。OC 尚无专用的 CLI 对象恢复命令，
+记录中的恢复操作使用原生 S3 API。
 
 ## 确认能力和部署前提
 

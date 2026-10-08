@@ -57,6 +57,19 @@ still requires [acceptance checks](compatibility.md).
 Remove an unneeded alias with `oc alias remove store`. This changes client
 configuration and does not delete remote buckets or objects.
 
+`alias set` replaces the entire saved entry for an existing alias. When rotating
+credentials or changing its S3 URL, repeat the intended `--api`, `--path`,
+`--admin-url` and `--admin-ca` settings. Omitted management settings are cleared;
+an omitted path returns to `auto`. Management environment overrides are used at
+request time and are not copied into the saved entry by `alias set`.
+
+`alias list` displays saved configuration only; it does not show process-level
+environment or management overrides. An environment-only alias is absent from
+that list. Removing a saved alias does not unset `OC_HOST_<alias>` or
+`MC_HOST_<alias>`; an environment alias remains usable until its variable is
+unset. Use `doctor ALIAS` to inspect the resolved protocol and management
+settings without printing its credentials or host.
+
 ## Override an alias for one process
 
 An environment alias can supply a URL with credentials:
@@ -161,3 +174,9 @@ oc --json doctor --online store
 The online command reads management ServerInfo with a 15-second deadline; it
 does not test every S3 operation or permission. Continue with
 [troubleshooting](troubleshooting.md) or the [administration guide](administration.md).
+
+Doctor's `adminSDK` field identifies the embedded OtterIO server/admin module,
+not the independent S3 SDK. See the `storageSDK` entry in
+[the compatibility manifest](compatibility.json) for the source baseline's S3
+SDK version, and verify the installed release's own manifest when checking a
+different executable.

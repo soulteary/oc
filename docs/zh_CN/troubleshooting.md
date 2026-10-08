@@ -13,8 +13,10 @@ oc --json doctor
 oc --json doctor store
 ```
 
-doctor 默认离线，不请求服务器。成功报告包含客户端、Go、SDK 版本、平台、入口协议、
-独立管理地址与 CA 设置，以及是否开启证书校验；不包含入口主机、私有路径、凭据和配置目录。
+doctor 默认离线，不请求服务器。成功报告包含客户端和 Go 版本、平台及证书校验开关。
+`adminSDK` 表示嵌入的 OtterIO 服务端/管理模块，不表示独立 S3 SDK。
+入口协议、独立管理地址与 CA 设置只描述指定的别名；不提供别名时，不会检查入口。
+报告不包含入口主机、私有路径、凭据和配置目录。
 失败诊断仍应检查后再分享：普通错误记录可能包含本地路径、主机信息和底层错误消息。
 
 已配置的别名可以执行在线检查，管理 ServerInfo 请求的期限为 15 秒：
@@ -30,9 +32,15 @@ oc --json doctor --online store
 
 在本机运行 `oc alias list store`，再检查目录选择：
 `--config-dir` > `OC_CONFIG_DIR` > `MC_CONFIG_DIR` > 平台默认目录。
+列表只显示文件条目及其保存的管理设置，不显示命令或环境覆盖。仅通过环境变量提供的别名
+可以正常使用，即使 `alias list` 报告文件中没有该别名；删除文件条目也不会取消环境覆盖。
 `OC_HOST_store` 或 `MC_HOST_store` 会覆盖保存的 S3 设置。
 检查变量是否存在时，不要打印其密钥内容；OC 值即使为空，也可能阻止对应 MC 值回退。
 取消不需要的覆盖，再运行离线 doctor。
+
+再次执行 `alias set` 后管理请求失败时，检查命令是否重新填写了 `--admin-url` 和 `--admin-ca`。
+该命令会整体替换条目，省略管理设置会清空原值，省略 `--path` 会恢复为 `auto`。
+重新保存需要保留的完整配置。
 
 OC 不会自动发现 `.mc`，需要按[迁移指南](migration.md)显式导入版本 10 配置。
 初始化报权限错误时，为执行 OC 的账号选择其拥有的可写目录，
@@ -66,6 +74,22 @@ JSON 错误分类可以缩小排查范围：
 已知 SDK 或服务端错误码会保留在 `error.code` 中，也可能没有这个字段。
 普通失败返回 `1`；SIGINT、SIGTERM 通常分别返回 `130`、`143`，清理失败或强制终止可能产生其他非零状态。
 除非任务明确处理取消，否则所有非零状态都应按未完成处理。
+
+## 生命周期目标没有确认支持
+
+修改 ILM 远程目标时可能遇到 `server does not confirm lifecycle transition v1 support`。
+当前固定服务端不含新运行时，先核对[配套实现及协议范围](../lifecycle-transition.md)。
+签名能力探测使用解析后的管理入口，需要 `admin:GetBucketTarget`；修改目标需要
+`admin:SetBucketTarget`。核对权限、管理路由和证书信任；能力标识缺失或异常、重定向、
+不完整响应都会被拒绝。调整本地控制台的 `--allow-writes` 不会授予 CLI 权限或升级服务端。
+普通 `oc ilm` 规则操作不执行这项目标探测，其成功也不能证明转换或恢复可用。
+
+## IAM 策略绑定意外消失
+
+当前 `admin policy update` 实现遇到已绑定策略或空参数时，可能清空已有绑定。
+先用 `admin user info` 或 `admin group info` 检查，再用 `admin policy set` 恢复完整的目标策略列表，
+多个策略以逗号分隔，并验证访问权限。初始化流程不要重复执行 `policy update`，
+详见[管理指南](administration.md#管理策略用户和组)。
 
 ## 传输、镜像同步与通知
 

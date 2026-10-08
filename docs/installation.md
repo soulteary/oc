@@ -6,7 +6,7 @@ Choose a release archive for a native executable, a [container](containers.md) f
 
 ## Choose a release and platform
 
-Use [GitHub Releases](https://github.com/soulteary/oc/releases). Tags follow `RELEASE.YYYY-MM-DDTHH-MM-SSZ` in UTC, rather than semantic versioning. The published `RELEASE.2026-10-07T14-10-00Z` tag is used below as a reproducible archive example; choose another published tag when upgrading.
+Use [GitHub Releases](https://github.com/soulteary/oc/releases). Tags follow `RELEASE.YYYY-MM-DDTHH-MM-SSZ` in UTC, rather than semantic versioning. The published `RELEASE.2026-10-07T17-07-26Z` tag is used below as a reproducible archive example; choose another published tag when upgrading. A release archive contains the CLI from that tag, not every feature in current `main`; the experimental [local console](console.md) requires a separate source build.
 
 Archive platform names are:
 
@@ -25,7 +25,7 @@ The following commands use Bash, `curl`, `awk` and `tar`. Set `PLATFORM` explici
 
 ```bash
 set -euo pipefail
-TAG=RELEASE.2026-10-07T14-10-00Z
+TAG=RELEASE.2026-10-07T17-07-26Z
 PLATFORM=linux-amd64
 ARCHIVE="oc-$TAG-$PLATFORM.tar.gz"
 WORK_DIR="$(mktemp -d)"
@@ -71,7 +71,7 @@ Use PowerShell with `Invoke-WebRequest`, `Get-FileHash` and `Expand-Archive`. Se
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$Tag = 'RELEASE.2026-10-07T14-10-00Z'
+$Tag = 'RELEASE.2026-10-07T17-07-26Z'
 $Platform = 'windows-amd64'
 $Archive = "oc-$Tag-$Platform.zip"
 $WorkDir = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString())

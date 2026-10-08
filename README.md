@@ -8,6 +8,8 @@ A command-line client for OtterIO, S3 object storage and local filesystems.
 
 [简体中文](README_zh_CN.md) · [Documentation](docs/README.md) · [Releases](https://github.com/soulteary/oc/releases) · [Contributing](CONTRIBUTING.md)
 
+[Current project review — 2026-10-08 (中文)](docs/reviews/2026-10-08-project-status.md) records the source, release, validation and remaining-work boundaries.
+
 OC uploads, downloads and inspects objects, synchronizes directories, and manages OtterIO servers. It derives from the Apache-2.0 MinIO Client codebase and retains the upstream notices. OC is an independent community project; it is not affiliated with or endorsed by MinIO, Inc.
 
 [OtterIO](https://github.com/soulteary/otterio) runs the storage server; OC provides its command-line client. To integrate S3 operations into a Go application, use [OtterIO SDK](https://github.com/soulteary/otterio-sdk). The server, client and SDK publish their own releases.
@@ -16,11 +18,10 @@ OC uploads, downloads and inspects objects, synchronizes directories, and manage
 
 Download a platform archive from [GitHub Releases](https://github.com/soulteary/oc/releases), verify its SHA-256 checksum, and put `oc` (`oc.exe` on Windows) on your `PATH`. The [installation guide](docs/installation.md) includes Linux, macOS, Windows and source-build instructions.
 
-The release workflow builds container images for Linux amd64 and arm64. Select a version whose release manifest contains `images`:
+The release workflow builds container images for Linux amd64 and arm64. This example uses a published release whose manifest records its image; check the `images` field before choosing another version:
 
 ```sh
-# Select a published release whose manifest records container images.
-TAG=RELEASE.YYYY-MM-DDTHH-MM-SSZ
+TAG=RELEASE.2026-10-07T17-07-26Z
 docker run --rm "ghcr.io/soulteary/oc:$TAG" --version
 ```
 
@@ -52,8 +53,9 @@ With OtterIO's `--console-address ":9001"`, port 9000 serves S3 and port 9001 se
 - OtterIO administration: server information, users, groups, policies, service accounts, metrics configuration and diagnostics.
 - Separate S3 and management endpoints, including independently configured management CA trust.
 - Explicit configuration import from mc, JSON output and credential-free `doctor` diagnostics.
+- An optional local Web console for browsing, downloads and explicitly enabled object writes; protected bucket settings and own IAM secret rotation require the matching server protocols.
 
-[Compatibility and validation scope](docs/compatibility.md) distinguish tested operations from features that need provider or deployment acceptance. The pinned OtterIO source already includes the compatibility fixes; the current fixture needs no additional server patches. Distributed deployments, external KMS/notification targets and arbitrary third-party S3 services are not covered by the recorded acceptance matrix.
+[Compatibility and validation scope](docs/compatibility.md) distinguish tested operations from features that need provider or deployment acceptance. The pinned OtterIO source includes the core CLI compatibility fixes, so the core fixture needs no additional server patches. Protected console settings, own IAM rotation and the new ILM target/transition protocol require the separate [optional server patch](docs/lifecycle-transition.md); these protocols are absent from the current server pin. Distributed deployments, external KMS/notification targets and arbitrary third-party S3 services are not covered by the recorded acceptance matrix.
 
 ## Migrate from mc
 
@@ -74,7 +76,8 @@ Import accepts configuration version 10, replaces destination aliases after vali
 - [Try OC with a local OtterIO server](docs/quickstart.md): start the server, configure both endpoints, and verify an upload and download.
 - [Configure endpoints and TLS](docs/configuration.md), [transfer and synchronize](docs/usage.md), or [look up commands](docs/commands.md).
 - [Administer OtterIO](docs/administration.md) and [check compatibility](docs/compatibility.md).
-- [Build the experimental local Web console](docs/console.md).
+- [Build the experimental local Web console](docs/console.md): one alias, local sessions, object writes and protected settings. It is source-built separately and is not included in CLI archives or containers.
+- [Configure lifecycle destinations and review transition limits](docs/lifecycle-transition.md).
 - [Troubleshoot problems](docs/troubleshooting.md) and [report vulnerabilities privately](SECURITY.md).
 - [Build and test](docs/development.md), [contribute](CONTRIBUTING.md), or [prepare a release](docs/releasing.md).
 

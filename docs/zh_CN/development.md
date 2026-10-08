@@ -8,7 +8,7 @@
 
 Go 版本以 [go.mod](../../go.mod) 为准，当前为 `1.27.1`。[兼容清单](../compatibility.json)记录相同工具链、独立 S3 SDK 与 kits，以及单独的服务端/管理包源码 pin。CI 和 Makefile 使用 `GOTOOLCHAIN=local`，本机版本过旧时会失败，不会自动下载更新版本；运行检查前先安装要求的工具链。
 
-此外需要 Git 和 Python 3。下面的命令使用 Linux 或 macOS 上的 POSIX shell；Makefile 和交叉编译脚本需要 Bash。服务端集成测试还需要 OpenSSL，竞态测试和 `CGO_ENABLED=1` 需要对应平台的 C 编译器。Windows 的原生构建和测试命令见 [Go 工作流](../../.github/workflows/go.yml)，输出文件应使用 `oc.exe`。
+此外需要 Git 和 Python 3.11 或更新版本（测试实例使用 `hashlib.file_digest`）。控制台前端行为测试需要 Node.js，但构建和运行 `oc-console` 不需要。下面的命令使用 Linux 或 macOS 上的 POSIX shell；Makefile 和交叉编译脚本需要 Bash，Make 的依赖检查还使用 Perl。服务端集成测试需要支持 `req -addext` 的 OpenSSL，竞态测试和 `CGO_ENABLED=1` 需要对应平台的 C 编译器。Windows 的原生构建和测试命令见 [Go 工作流](../../.github/workflows/go.yml)，输出文件应使用 `oc.exe`。
 
 仓库不必放在 GOPATH 下。主要目录如下：
 
@@ -16,8 +16,10 @@ Go 版本以 [go.mod](../../go.mod) 为准，当前为 `1.27.1`。[兼容清单]
 - `cmd/`：命令、参数、配置、文件系统和 S3 客户端，以及大部分行为测试。
 - `pkg/`：客户端辅助包和包测试。
 - `internal/notify/`：保留独立 MIT 许可证的通知实现。
+- `cmd/oc-console/` 与 `internal/console/`：可选本机控制台入口、服务端和内嵌前端。
+- `internal/clienttransport/` 与 `internal/storageclient/`：共享传输及控制台存储操作。
 - `buildscripts/`：依赖检查、集成环境、发行打包和镜像验证。
-- `docs/compatibility.json`：已审查的 S3 SDK、kits、服务端/管理包 pin、工具链、编译目标、所需补丁列表（当前为空）和测试预算。
+- `docs/compatibility.json`：已审查的 S3 SDK、kits、服务端/管理包 pin、工具链、编译目标、核心所需补丁列表（当前为空）、可选控制台协议补丁和测试预算。
 - `.github/workflows/`：平台检查、CodeQL、发布和稳定版本提升。
 
 二进制名为 `oc`，Go module 路径仍是 `github.com/soulteary/mc`。除非单独讨论迁移，否则保留模块路径和已有版权归属。项目不使用 `govendor`。
@@ -54,6 +56,16 @@ PYTHONDONTWRITEBYTECODE=1 python3 buildscripts/test-maintenance.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_release_*.py' -v
 PYTHONDONTWRITEBYTECODE=1 python3 buildscripts/verify-release-boundaries.py
 ```
+
+修改控制台时，还应构建独立程序，运行 Go、前端行为和验收辅助程序的回归检查：
+
+```sh
+make build-console
+make test-console
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_console_*.py' -v
+```
+
+`make build` 只构建 `oc`。启动方法和显式写入模式的边界见[本机控制台指南](console.md)。
 
 用 `gofmt -w PATH/TO/CHANGED.go` 格式化修改过的 Go 文件，再检查 diff。涉及并发、取消、流式处理或文件监听时，还应执行：
 
@@ -102,13 +114,70 @@ python3 buildscripts/test-core-integration.py \
   --artifacts-dir "$OC_INTEGRATION/core-evidence"
 ```
 
-这项检查耗时较长，并需要本地磁盘和内存。失败报告包含部分结果；把本次运行作为验收依据前，逐项检查场景状态。先保存供审查的报告和已脱敏的证据，再清理本次创建的临时目录。脚本会回收服务器进程和场景数据，显式指定的报告与证据目录会保留。排查 cgo 相关问题时，使用 `CGO_ENABLED=1` 重新构建并运行。
+这项检查耗时较长，并需要本地磁盘和内存。失败报告包含部分结果；把本次运行作为验收依据前，逐项检查场景状态。继续执行下面的可选控制台检查时，先保留目录；需要的检查全部完成后，保存供审查的报告和已脱敏的证据，再清理本次创建的临时目录。脚本会回收服务器进程和场景数据，显式指定的报告与证据目录会保留。排查 cgo 相关问题时，使用 `CGO_ENABLED=1` 重新构建并运行。
 
-服务端回归测试的具体命令，以及 Linux/macOS 的 cgo 矩阵，见 [Go 工作流](../../.github/workflows/go.yml)。[兼容说明](compatibility.md)介绍检查能证明的范围和尚未验证的部分。固定源码的通过结果不证明其他 OtterIO 版本已经兼容；旧补丁仅保留为历史 fixture。
+服务端回归测试的具体命令，以及 Linux/macOS 的 cgo 矩阵，见 [Go 工作流](../../.github/workflows/go.yml)。[兼容说明](compatibility.md)介绍检查能证明的范围和尚未验证的部分。固定源码的通过结果不证明其他 OtterIO 版本已经兼容。`otterio-*-compat.patch` 只保留为历史 fixture；下面的可选控制台补丁仍用于当前集成检查。
+
+## 复现可选控制台协议环境
+
+固定服务端支持控制台浏览与对象写入，但还没有包含保护性桶配置、自身 IAM 改密和新的生命周期转换协议。`requiredServerPatches: []` 描述核心基线；单独的 `consoleSettingsProtocol.optionalServerPatch` 记录显式启用的测试环境，不代表已发布服务端依赖或协议。
+
+保持同一个 shell，沿用上面准备的 `OC_INTEGRATION` 目录。先构建控制台，检查未应用补丁的服务端能够安全降级桶设置，并保留对象写入：
+
+```sh
+set -eu
+go build -mod=readonly -trimpath -o "$OC_INTEGRATION/oc-console" ./cmd/oc-console
+OC_SERVER_SOURCE="$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')"
+OC_P3_PATCH="$PWD/buildscripts/console-server-p3.patch"
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio" --server-source "$OC_SERVER_SOURCE" \
+  --settings-legacy --output "$OC_INTEGRATION/console-legacy.json"
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio" --server-source "$OC_SERVER_SOURCE" \
+  --writes --output "$OC_INTEGRATION/console-writes.json"
+```
+
+保留这份源码和程序。在另一份可写源码副本中应用可选补丁，执行工作流中的协议回归检查，并输出独立命名的服务端程序：
+
+```sh
+cp -R "$OC_INTEGRATION/otterio-source" "$OC_INTEGRATION/otterio-p3-source"
+(
+  cd "$OC_INTEGRATION/otterio-p3-source"
+  git apply --check "$OC_P3_PATCH"
+  git apply "$OC_P3_PATCH"
+  go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestBucketTarget|TestTransition|TestXLStorageInline|TestLifecycleTransition|TestLifecycleQueues|TestScannerLifecycle|TestExpiry|TestParseRestore|TestRestoreRequest|TestBeginRestore|TestRestoredVersion|TestPutObjectExpiry' -count=1
+  go test -mod=readonly ./pkg/bucket/lifecycle -count=1
+  if [ "$CGO_ENABLED" = 1 ]; then
+    go test -mod=readonly -race ./pkg/bucket/lifecycle -count=1
+  fi
+  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-p3" .
+)
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_P3_PATCH" --settings \
+  --output "$OC_INTEGRATION/console-settings.json"
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_P3_PATCH" --writes \
+  --output "$OC_INTEGRATION/console-p3-object-regression.json"
+python3 buildscripts/test-lifecycle-transition-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_P3_PATCH" \
+  --output "$OC_INTEGRATION/lifecycle-transition.json"
+```
+
+这些命令沿用工作流的控制台默认场景（`single-http`、`dual-http`、`dual-tls`）和生命周期默认场景（`single-http`、`dual-tls`）。生命周期环境启动独立的临时四盘源端和目标端，不验证外部 S3 服务商。准确本机证据与未验收项见[第三阶段](../console-phase-three.md)、[生命周期转换范围](../lifecycle-transition.md)及其[验证记录](../lifecycle-transition-verification.json)。应用补丁不会扩大未应用补丁的发行版兼容承诺；审查结果时保留两条服务端基线的报告与补丁身份。
 
 ## 理解 CI 的覆盖范围
 
-Go 工作流在 Linux、macOS、Windows 上运行单元和竞态测试；Linux 另有 vet、lint 和交叉编译。服务端集成矩阵覆盖 Linux/macOS，并分别启用和关闭 cgo。此外还检查发行边界、编译依赖清单和可达漏洞。[CodeQL](../../.github/workflows/codeql.yml)另行构建 Go 程序进行分析。
+Go 工作流在 Linux、macOS、Windows 上运行单元、竞态、控制台前端和辅助程序测试；Linux 另有 lint、交叉编译，Linux/macOS 运行 vet。Linux/macOS 服务端矩阵分别启用和关闭 cgo：先对未应用补丁的固定服务端检查核心与 CLI 操作、控制台浏览、设置安全降级和对象写入，再应用可选 P3 补丁、构建另一个服务端，检查保护性设置、自身 IAM 改密、对象写回归及生命周期执行与恢复。上传步骤在失败后仍执行，保留此前已经生成的报告。
+
+独立的 [CLI 兼容工作流](../../.github/workflows/cli-compat.yml)在 Linux、macOS、Windows 上分别构建固定基线与候选程序，比较命令契约。Go 工作流还检查发行边界、编译依赖清单和可达漏洞。[CodeQL](../../.github/workflows/codeql.yml)另行构建 Go 程序进行分析。
 
 获取依赖和漏洞数据需要网络，服务端测试使用本地临时服务。本地通过只说明当前环境的结果，不能代替平台 CI、干净构建的依赖清单或第三方 S3 验收。PR 中应说明相关失败和平台限制。
 

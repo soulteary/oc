@@ -33,6 +33,12 @@ with supported flags and exits with code 1. Invalid `--test`, `--deadline` and
 `--dev` values and an unknown flag each have an exact snapshot in
 [approved-deltas.json](../testdata/cli/approved-deltas.json).
 
+Lifecycle targets add two exact help deltas in the same file:
+`admin bucket remote add` lists `ilm` and `--label`, and `edit` lists `--label`.
+Each approval records the full before and after stdout for Unix and Windows;
+other output, exit codes and configuration effects remain checked against the
+fixed archived baseline.
+
 `cmd/cli-support.go` contains only the application-specific scope, lifecycle and
 presentation rules. Commands and flags use native v3 types. There is no vendored
 framework, legacy CLI facade or `cli-kit` dependency. The separate `oc-console`
@@ -60,12 +66,16 @@ effects; the full raw stack remains in the report. Catalog changes require an
 old-binary baseline and cannot silently refresh expected results.
 
 [CLI CI](../.github/workflows/cli-compat.yml) builds both revisions on Linux,
-macOS and Windows. [Joint CI](../.github/workflows/go.yml) builds the exact remote
-OtterIO module with no replacement or extra patches. It exercises startup
+macOS and Windows. [Joint CI](../.github/workflows/go.yml) first builds the exact remote
+OtterIO module with no replacement or extra patches for the core baseline. It exercises startup
 validation, server and NAS/S3 gateway file operations, explicit management
 routing, TLS directories, signal shutdown, core/advanced operations and the
-local console. OtterIO separately checks both standalone xl.meta tools and an
-external Go gateway consumer.
+local console. A separate optional fixture then applies
+`buildscripts/console-server-p3.patch` to a writable source copy for protected
+settings, own IAM rotation and lifecycle execution/restore checks; this does not
+update the dependency pin or certify a released protocol. See the
+[development guide](development.md). OtterIO separately checks both standalone
+xl.meta tools and an external Go gateway consumer.
 
 Native Windows signals and runtime service acceptance retain their separate
 platform checks. A cross-build or configured workflow is not evidence of a
@@ -112,9 +122,16 @@ OC 和固定版本的 OtterIO 统一采用 `urfave/cli/v3 v3.14.0`。准确模�
 非法 `--test`、`--deadline`、`--dev` 值和未知参数各有独立精确快照，其他差异不能
 借此放行。旧 panic 比较保留稳定首行、退出码和配置副作用，报告仍保存完整原始堆栈。
 
+生命周期目标另外批准两条精确帮助差异：`admin bucket remote add` 增加 `ilm` 和
+`--label`，`edit` 增加 `--label`。Unix、Windows 各保存完整的前后 stdout 快照；
+其他输出、退出码及配置副作用继续核对固定的归档基线，基线本身保持不变。
+
 冻结基线覆盖 OC 339 项、OtterIO 133 项。CI 在同一平台构建旧、新程序，核对 stdout、
 stderr、退出码及配置副作用，再使用可下载的固定 OtterIO 模块进行联合验证。
-历史补丁保留作为旧报告的证据，当前构建无需应用。公共 gateway Go API 的工厂签名
+旧 `otterio-*-compat.patch` 保留作为历史报告的证据，当前核心基线无需应用。
+独立的可选测试实例会在源码副本应用 `console-server-p3.patch`，验证受保护桶设置、
+自身 IAM 改密及生命周期执行和恢复；这不更新依赖 pin，也不表示协议已经发布，
+重现步骤见[开发指南](zh_CN/development.md)。公共 gateway Go API 的工厂签名
 需要外部插件重新编译。`ilm.GetLifecycleOptions`、`GetHealthDataTypeSlice` 和
 `GetGlobalHealthDataTypeSlice` 的参数改为 `*cli.Command`；原 `HealthDataTypeFlag`
 改用 `cli.GenericFlag{Value: &cmd.HealthDataTypeSlice{}}`。普通 CLI 用户无需改写已有命令。完整测试范围及已知验收边界

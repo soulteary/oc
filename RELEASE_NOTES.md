@@ -18,6 +18,16 @@ not reserve a tag or publish archives or images.
   guarantee reject default uploads; explicit replacement needs separate
   confirmation. Canceled transfers attempt cleanup of their own multipart
   uploads, and uncertain commits or failed cleanup remain visible.
+- Read complete bucket policy JSON and versioning/lifecycle XML in the console.
+  With `--allow-writes` and the matching P3 server protocol, review and apply
+  revision-protected replacements, remove policy/lifecycle configurations, and
+  rotate the selected native IAM user's secret. Rotation retires local sessions
+  and requires updating the alias in the terminal before restarting.
+- Add labeled ILM destinations to `oc admin bucket remote` and require the
+  native lifecycle-transition capability before adding, editing or removing an
+  ILM target. The matching optional server patch implements current/noncurrent
+  transitions, persistent destination references and version-specific S3
+  restore on single-node, single-pool erasure. See [runtime scope and evidence](docs/lifecycle-transition.md).
 - Migrate OC and its server/admin dependency to urfave/cli v3.14.0. Preserve
   command scope, environment and list parsing, help, completion, initialization,
   output streams and signal cleanup using frozen old-binary contracts. Correct
@@ -52,14 +62,26 @@ and check `oc --version`; MinIO self-update and SUBNET upload remain disabled.
 The experimental console is built with `make build-console`. The current CLI
 archives and container workflow do not package it. Keep it on literal loopback
 for a single operator; it does not replace the existing OtterIO Web console or
-provide OIDC, centralized deployment, management editing or version selection.
+provide OIDC, centralized deployment, IAM user/group/service-account management,
+object version selection or restore buttons.
 Default create-only uploads require the recorded server capability. Ordinary
 S3 operations and OtterIO administrative operations have different compatibility
 requirements; no blanket historical-server or third-party S3 claim is added.
 
+The pinned OtterIO server does not contain the P3 settings, own-credentials or
+lifecycle-transition protocols. They require the [optional server patch](buildscripts/console-server-p3.patch)
+and its [separate validation](docs/lifecycle-transition-verification.json).
+Older servers retain configuration reads while protected mutations remain
+disabled. Returning to the old UI does not undo saved rules, credentials or
+transitioned data; a server with new transition references cannot be downgraded
+directly to a server that cannot read them.
+
 After this PR merges, release only from a clean, synchronized main commit with
 passing **Go** and **Code scanning - action** runs for that exact source. The
-workflow produces eleven CLI archives, a manifest and checksums, plus verified
+separate **CLI compatibility** result also needs review; the release job does
+not automatically enforce it. Resolve or approve the new ILM help contracts
+before publication. The workflow produces eleven CLI archives, a manifest and
+checksums, plus verified
 Linux amd64/arm64 image identities where configured. Cross-compilation does not
 establish native runtime acceptance on every target. See the
 [2026-10-08 preparation record](docs/releases/2026-10-08-release-review.md) and
@@ -84,6 +106,14 @@ establish native runtime acceptance on every target. See the
 - 默认上传依赖固定版本 OtterIO 在 FS 和单 pool erasure 上的条件写能力，保证并发时
   不覆盖已有对象。缺少该保证的服务端会拒绝默认上传；替换需要单独确认。
   取消时清理本次创建的分片上传，提交结果未确认或清理失败会明确显示。
+- 控制台读取完整桶策略 JSON、版本及生命周期 XML。显式开启 `--allow-writes` 且服务端
+  具备配套 P3 协议时，可以复核并提交受 revision 保护的完整配置替换、删除策略或
+  生命周期配置，以及修改当前原生 IAM 用户的 secret。改密会撤销本机会话，需要在
+  终端更新别名后重新启动。
+- `oc admin bucket remote` 增加带 label 的 ILM 目标；添加、编辑及删除 ILM 目标前
+  必须确认服务端的原生转换能力。配套可选服务端补丁在单节点、单 pool erasure 上
+  实现当前/非当前版本转换、持久化目标引用和指定版本的 S3 恢复，见
+  [执行边界与验证](docs/lifecycle-transition.md)。
 - OC 与服务端 / 管理包依赖迁移到 urfave/cli v3.14.0，用冻结的旧程序合同保留参数
   作用域、环境与列表解析、帮助、补全、初始化、输出流及信号清理。修复 health 用法
   错误渲染，使非法输入显示参数错误而不再 panic。Go API 调用者需按
@@ -109,12 +139,19 @@ MinIO 自更新与 SUBNET 上传保持禁用。
 
 实验控制台通过 `make build-console` 构建，当前 CLI 归档和容器工作流不打包该程序。
 仅供一个操作员在回环 IP 地址使用，不取代现有 OtterIO Web 控制台；
-尚不提供 OIDC、集中部署、管理编辑或对象版本选择。默认不覆盖上传要求服务端具备
-记录的条件写能力。普通 S3 操作与 OtterIO 管理操作有各自的兼容要求，
+尚不提供 OIDC、集中部署、IAM 用户/组/服务账号管理、对象版本选择或恢复按钮。
+默认不覆盖上传要求服务端具备记录的条件写能力。普通 S3 操作与 OtterIO 管理操作有各自的兼容要求，
 本次没有扩大为全部历史服务端或第三方 S3 均兼容的承诺。
 
+固定 OtterIO 服务端尚未包含 P3 桶配置、自身凭据及生命周期转换协议；这些能力需要
+[可选服务端补丁](buildscripts/console-server-p3.patch)，并按[独立验证记录](docs/lifecycle-transition-verification.json)
+确认范围。旧服务端保留配置读取，受保护修改继续禁用。退回原 UI 不会撤销已保存规则、
+secret 或转换数据；存在新转换引用时，不能直接降级到不理解该引用的服务端。
+
 本 PR 合并后，只能从干净且与远程同步的 main 创建发布，并要求 **Go** 和
-**Code scanning - action** 在同一源码提交上通过。工作流生成 11 个 CLI 归档、
+**Code scanning - action** 在同一源码提交上通过。
+独立的 **CLI compatibility** 结果也需要审查，发布任务没有自动强制执行它；
+发布前应修复或批准新增 ILM 帮助合同变化。工作流生成 11 个 CLI 归档、
 发布清单及校验文件，并按配置记录经过验证的 Linux amd64/arm64 镜像身份。
 交叉编译不能代替每个目标的原生运行验收，见
 [2026-10-08 发布准备记录](docs/releases/2026-10-08-release-review.md)和

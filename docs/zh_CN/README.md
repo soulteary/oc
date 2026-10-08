@@ -17,7 +17,8 @@
 
 - [命令索引](commands.md)：命令分类和参数查询方法。
 - [OtterIO 管理](administration.md)：服务信息、身份、策略与诊断。
-- [本机 Web 控制台](console.md)：可选源码构建、单别名、本机会话与当前限制。
+- [本机 Web 控制台](console.md)：可选源码构建、单别名、对象写入、受保护桶配置与自身 IAM 改密。
+- [生命周期转换与恢复](../lifecycle-transition.md)：CLI 目标配置、服务端协议要求、执行及回退边界。
 - [兼容与验证范围](compatibility.md)：SDK 基线、部署覆盖和已知边界。
 - [故障排查](troubleshooting.md)：认证、TLS、地址、流式命令与导入问题。
 - [安全说明](security.md)：凭据保护、发布信任与私下报告漏洞。
@@ -40,10 +41,13 @@
 
 这些记录保留原来的源码范围、限制和测试结果。安装及日常操作以当前指南为准；早期阶段中的“尚未实现”或“尚未验证”不表示项目现在的状态。
 
+- [2026-10-08 项目现状复查](../reviews/2026-10-08-project-status.md)：当前源码与发行边界、文档问题及剩余工作。
 - [阶段一：构建与发布边界](../oc-phase-one.md)。
 - [Web 控制台迁移计划](../console-migration.md)：分阶段实施、权限差异与旧入口移除门槛。
 - [控制台第一阶段实现与验证](../console-phase-one.md)：已交付功能、服务端修复、实际验收与剩余限制。
 - [控制台第二阶段实现与复查](../console-phase-two.md)：对象写操作、交叉审查修复和实际验证。
+- [控制台第三阶段实现与验证](../console-phase-three.md)：桶配置、自身 IAM 改密及历史验收，后续转换另有验证记录。
+- [生命周期转换验证记录](../lifecycle-transition-verification.json)：当前可选服务端补丁、运行时验收及 P2/P3 回归。
 - [阶段二：核心接入](../oc-phase-two.md)。
 - [阶段三：常用功能与迁移](../oc-phase-three.md)及[结果记录](../oc-phase-three-results.json)。
 - [阶段四：稳定性与兼容边界](../oc-phase-four.md)、[结果记录](../oc-phase-four-results.json)和[开发构建依赖清单](../oc-phase-four.cdx.json)。

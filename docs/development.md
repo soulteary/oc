@@ -8,7 +8,7 @@ This guide is for changing OC and reproducing its checks. For installing a publi
 
 Use the Go version declared in [go.mod](../go.mod), currently `1.27.1`. The [compatibility manifest](compatibility.json) records the same toolchain, the independent S3 SDK and kits, and the separate server/admin source pin. CI and the Makefile use `GOTOOLCHAIN=local`, so an older installed toolchain will fail instead of downloading a newer one automatically. Install the required version before running checks.
 
-You also need Git and Python 3. The examples below use a POSIX shell on Linux or macOS. Makefile and cross-compilation targets need Bash; the server integration fixture additionally needs OpenSSL. Race tests and `CGO_ENABLED=1` runs require the platform's C compiler. Windows build/test commands are recorded in the [Go workflow](../.github/workflows/go.yml); use an `oc.exe` output when building natively there.
+You also need Git and Python 3.11 or newer (the fixtures use `hashlib.file_digest`). Console frontend behavior checks require Node.js; building and running `oc-console` does not. The examples below use a POSIX shell on Linux or macOS. Makefile and cross-compilation targets need Bash; the Make dependency check also uses Perl, and the server integration fixture needs OpenSSL with `req -addext` support. Race tests and `CGO_ENABLED=1` runs require the platform's C compiler. Windows build/test commands are recorded in the [Go workflow](../.github/workflows/go.yml); use an `oc.exe` output when building natively there.
 
 The checkout can live outside GOPATH. Its main areas are:
 
@@ -16,8 +16,10 @@ The checkout can live outside GOPATH. Its main areas are:
 - `cmd/`: commands, flags, configuration, filesystem/S3 clients and most behavior tests.
 - `pkg/`: client support packages and package tests.
 - `internal/notify/`: the vendored notification implementation with its own MIT license.
+- `cmd/oc-console/` and `internal/console/`: the optional local console entrypoint, server and embedded frontend.
+- `internal/clienttransport/` and `internal/storageclient/`: shared transport and console storage operations.
 - `buildscripts/`: dependency checks, integration fixtures, release packaging and image validation.
-- `docs/compatibility.json`: reviewed S3 SDK, kits, server/admin pin, toolchain, compile targets, required-patch list (currently empty) and test budgets.
+- `docs/compatibility.json`: reviewed S3 SDK, kits, server/admin pin, toolchain, compile targets, core required-patch list (currently empty), optional console protocol patch and test budgets.
 - `.github/workflows/`: platform checks, CodeQL, publication and stable promotion.
 
 The binary name is `oc`. The module path remains `github.com/soulteary/mc`; preserve it and existing copyright attribution unless a separate migration is agreed. OC does not use `govendor`.
@@ -54,6 +56,16 @@ PYTHONDONTWRITEBYTECODE=1 python3 buildscripts/test-maintenance.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_release_*.py' -v
 PYTHONDONTWRITEBYTECODE=1 python3 buildscripts/verify-release-boundaries.py
 ```
+
+For console changes, also build its separate executable and run the Go, frontend and acceptance-helper regressions:
+
+```sh
+make build-console
+make test-console
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_console_*.py' -v
+```
+
+`make build` builds only `oc`. See [the local console guide](console.md) for startup and the limits of its opt-in write mode.
 
 Format changed Go files with `gofmt -w PATH/TO/CHANGED.go` and review the diff. For concurrent code, cancellation, streams or file watching, also run:
 
@@ -102,13 +114,70 @@ python3 buildscripts/test-core-integration.py \
   --artifacts-dir "$OC_INTEGRATION/core-evidence"
 ```
 
-This is a longer check with local disk and memory requirements. A failure report contains partial results; check every scenario's status before treating the run as acceptance. Save the report and relevant redacted evidence for review, then remove only the temporary directory you created. The script cleans up its servers and scenario storage; the supplied report/evidence directory remains for inspection. Repeat with `CGO_ENABLED=1` when investigating a cgo-specific issue.
+This is a longer check with local disk and memory requirements. A failure report contains partial results; check every scenario's status before treating the run as acceptance. Keep the directory if continuing with the optional console checks below. After completing the checks you need, save the report and relevant redacted evidence for review, then remove only the temporary directory you created. The script cleans up its servers and scenario storage; the supplied report/evidence directory remains for inspection. Repeat with `CGO_ENABLED=1` when investigating a cgo-specific issue.
 
-The exact server regression tests and the Linux/macOS cgo matrix live in the [Go workflow](../.github/workflows/go.yml). [Compatibility](compatibility.md) describes what these checks establish and what remains unverified. Passing tests for one fixed source do not certify another OtterIO version. The old patch files are historical fixtures.
+The exact server regression tests and the Linux/macOS cgo matrix live in the [Go workflow](../.github/workflows/go.yml). [Compatibility](compatibility.md) describes what these checks establish and what remains unverified. Passing tests for one fixed source do not certify another OtterIO version. The `otterio-*-compat.patch` files are historical fixtures; the optional console patch below is still used by current integration checks.
+
+## Reproduce the optional console protocol fixture
+
+The pinned server supports console browsing and object writes, but does not yet include protected bucket configuration, own IAM secret rotation or the new lifecycle transition protocol. `requiredServerPatches: []` describes the core baseline. The separate `consoleSettingsProtocol.optionalServerPatch` identifies an opt-in fixture, not a published server dependency or a released protocol.
+
+Continue in the same shell with the `OC_INTEGRATION` directory prepared above. First build the console and verify the unpatched server's safe settings fallback and object writes:
+
+```sh
+set -eu
+go build -mod=readonly -trimpath -o "$OC_INTEGRATION/oc-console" ./cmd/oc-console
+OC_SERVER_SOURCE="$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')"
+OC_P3_PATCH="$PWD/buildscripts/console-server-p3.patch"
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio" --server-source "$OC_SERVER_SOURCE" \
+  --settings-legacy --output "$OC_INTEGRATION/console-legacy.json"
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio" --server-source "$OC_SERVER_SOURCE" \
+  --writes --output "$OC_INTEGRATION/console-writes.json"
+```
+
+Keep that source and binary intact. Apply the optional patch to a second writable source copy, run the workflow's protocol regressions and build a separately named server:
+
+```sh
+cp -R "$OC_INTEGRATION/otterio-source" "$OC_INTEGRATION/otterio-p3-source"
+(
+  cd "$OC_INTEGRATION/otterio-p3-source"
+  git apply --check "$OC_P3_PATCH"
+  git apply "$OC_P3_PATCH"
+  go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestBucketTarget|TestTransition|TestXLStorageInline|TestLifecycleTransition|TestLifecycleQueues|TestScannerLifecycle|TestExpiry|TestParseRestore|TestRestoreRequest|TestBeginRestore|TestRestoredVersion|TestPutObjectExpiry' -count=1
+  go test -mod=readonly ./pkg/bucket/lifecycle -count=1
+  if [ "$CGO_ENABLED" = 1 ]; then
+    go test -mod=readonly -race ./pkg/bucket/lifecycle -count=1
+  fi
+  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-p3" .
+)
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_P3_PATCH" --settings \
+  --output "$OC_INTEGRATION/console-settings.json"
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_P3_PATCH" --writes \
+  --output "$OC_INTEGRATION/console-p3-object-regression.json"
+python3 buildscripts/test-lifecycle-transition-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_P3_PATCH" \
+  --output "$OC_INTEGRATION/lifecycle-transition.json"
+```
+
+These use the workflow's default console scenarios (`single-http`, `dual-http`, `dual-tls`) and lifecycle scenarios (`single-http`, `dual-tls`). The lifecycle fixture starts separate temporary four-drive source and destination servers; it does not test an external S3 provider. See [phase three](console-phase-three.md), [lifecycle transition scope](lifecycle-transition.md) and its [verification record](lifecycle-transition-verification.json) for exact local evidence and unvalidated cases. Applying this patch does not extend the unpatched release's compatibility claim. Keep reports for both server baselines and the patch identity when reviewing results.
 
 ## Understand the CI scope
 
-The Go workflow runs platform unit/race tests on Linux, macOS and Windows, Linux vet/lint/cross-compilation, and Linux/macOS server integration with cgo both disabled and enabled. It also checks release boundaries, compiled-module inventory and reachable vulnerabilities. [CodeQL](../.github/workflows/codeql.yml) builds the Go code separately for analysis.
+The Go workflow runs platform unit/race tests and console frontend/helper regressions on Linux, macOS and Windows, Linux lint/cross-compilation, and vet on Linux/macOS. Its Linux/macOS integration matrix uses cgo both disabled and enabled. It first tests the unpatched pinned server for core/CLI operations, console browsing, safe settings fallback and object writes. It then applies the optional P3 patch, builds another server and tests protected settings, own IAM rotation, object-write regressions and lifecycle execution/restore. The upload step runs after a failure and preserves the reports generated before that point.
+
+The separate [CLI compatibility workflow](../.github/workflows/cli-compat.yml) builds a fixed baseline and the candidate on Linux, macOS and Windows and compares their command contracts. The Go workflow also checks release boundaries, compiled-module inventory and reachable vulnerabilities. [CodeQL](../.github/workflows/codeql.yml) builds the Go code separately for analysis.
 
 Some checks need network access to fetch dependencies or vulnerability data; server fixture tests use local temporary services. A local pass covers one environment. It does not substitute for platform CI, a clean-build inventory, or acceptance on an external S3 provider. Report relevant failures and platform limits in the pull request.
 
