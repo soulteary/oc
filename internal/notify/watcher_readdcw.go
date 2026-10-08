@@ -229,6 +229,19 @@ func (wd *watched) updateGrip(idx int, cph syscall.Handle, reset bool,
 	return
 }
 
+// closeHandle retires the grip before closing its kernel handle. CloseHandle can
+// queue a successful zero-byte completion before it returns; the completion must
+// already see that the stream was intentionally closed. Registration and rearming
+// are serialized with this operation by the watcher mutex.
+func (g *grip) closeHandle(closeHandle func(syscall.Handle) error) error {
+	handle := syscall.Handle(atomic.SwapUintptr((*uintptr)(&g.handle), uintptr(syscall.InvalidHandle)))
+	if handle == syscall.InvalidHandle {
+		return nil
+	}
+	// Keep the grip invalid even on failure, matching the existing close policy.
+	return closeHandle(handle)
+}
+
 // closeHandle closes handles that are stored in digrip array. Function always
 // tries to close all of the handlers before it exits, even when there are errors
 // returned from the operating system kernel.
@@ -238,24 +251,8 @@ func (wd *watched) closeHandle() (err error) {
 			continue
 		}
 
-		for {
-			handle := syscall.Handle(atomic.LoadUintptr((*uintptr)(&g.handle)))
-			if handle == syscall.InvalidHandle {
-				break // Already closed.
-			}
-
-			e := syscall.CloseHandle(handle)
-			if e != nil && err == nil {
-				err = e
-			}
-
-			// Set invalid handle even when CloseHandle fails. This will leak
-			// the handle but, since we can't close it anyway, there won't be
-			// any difference.
-			if atomic.CompareAndSwapUintptr((*uintptr)(&g.handle),
-				(uintptr)(handle), (uintptr)(syscall.InvalidHandle)) {
-				break
-			}
+		if e := g.closeHandle(syscall.CloseHandle); e != nil && err == nil {
+			err = e
 		}
 	}
 	return

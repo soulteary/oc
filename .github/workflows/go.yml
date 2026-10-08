@@ -70,6 +70,8 @@ jobs:
         run: |
           go build --ldflags="-s -w" -o "${GOPATH}/bin/oc.exe" .
           go test -v -race --timeout 30m ./...
+          # Exercise real handle cancellation repeatedly with race/checkptr on.
+          go test -race -count=100 --timeout 10m ./internal/notify -run 'TestWindowsClosePublishesInvalidHandleBeforeCompletion|TestWindowsCompletionReportsLoss|TestWindowsIdleStopRewatchReleasesHandles|TestWindowsRetiredCompletionKeepsReplacementWatch'
 
       - name: Build, verify and test on Linux
         if: matrix.os == 'ubuntu-latest'
