@@ -324,16 +324,28 @@ class MaintenanceTests(unittest.TestCase):
     def test_transfer_wait4_peaks_are_independent_for_concurrent_children(self):
         # Reap the larger child first: process-global RUSAGE_CHILDREN would
         # incorrectly attribute its retained peak to the smaller child too.
-        children = [stability.TransferProcess(
-            [sys.executable, '-c', f'payload = bytearray({mib} * 1024 * 1024)'],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE) for mib in (1, 48)]
+        children = []
+        def launch(size):
+            child = stability.TransferProcess(
+                [sys.executable, '-c', f'payload = bytearray({size})'],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            children.append(child)
+            return child
         try:
-            for child in reversed(children):
+            startup = launch(1024*1024)
+            startup.communicate(timeout=10)
+            self.assertEqual(startup.returncode, 0)
+            self.assertGreater(startup.exit_peak_rss_kib, 0)
+            # Linux can retain the parent's inherited RSS before exec. Size
+            # the larger allocation above that measured startup high-water.
+            small = launch(1024*1024)
+            large = launch(int(startup.exit_peak_rss_kib*1024) + 64*1024*1024)
+            for child in (large, small):
                 child.communicate(timeout=10)
                 self.assertEqual(child.returncode, 0)
                 self.assertGreater(child.exit_peak_rss_kib, 0)
-            self.assertGreater(children[1].exit_peak_rss_kib,
-                               children[0].exit_peak_rss_kib + 24*1024)
+            self.assertGreater(large.exit_peak_rss_kib,
+                               small.exit_peak_rss_kib + 24*1024)
         finally:
             for child in children:
                 if child.returncode is None:
