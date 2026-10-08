@@ -184,7 +184,7 @@ func (s *Server) createJob(w http.ResponseWriter, sess *session, info consoleapi
 		return nil
 	}
 	s.mu.Lock()
-	if s.closed || sess.ctx.Err() != nil {
+	if s.closed || s.rotating || sess.ctx.Err() != nil {
 		s.mu.Unlock()
 		writeError(w, 401, "login_required", "The console session has ended.")
 		return nil
@@ -348,6 +348,11 @@ func (s *Server) uploadJob(w http.ResponseWriter, r *http.Request, sess *session
 	if j.info.Kind != "upload" || j.info.Status != "waiting" || j.ctx.Err() != nil || !time.Now().Before(j.info.Expires) {
 		s.mu.Unlock()
 		writeError(w, 409, "task_state", "This upload cannot be started again.")
+		return
+	}
+	if s.closed || s.rotating {
+		s.mu.Unlock()
+		writeError(w, 409, "credential_change_pending", "The account secret is being changed. Restart OC after the result.")
 		return
 	}
 	if r.ContentLength != j.info.Size {
@@ -551,6 +556,11 @@ func (s *Server) executeDeletion(w http.ResponseWriter, r *http.Request, sess *s
 	if j.info.Kind != "delete" || j.info.Status != "ready" || j.ctx.Err() != nil || !time.Now().Before(j.info.Expires) {
 		s.mu.Unlock()
 		writeError(w, 409, "task_state", "This deletion plan is no longer ready.")
+		return
+	}
+	if s.closed || s.rotating {
+		s.mu.Unlock()
+		writeError(w, 409, "credential_change_pending", "The account secret is being changed. Restart OC after the result.")
 		return
 	}
 	if args.ConfirmToken == "" || subtle.ConstantTimeCompare(digest[:], j.confirm[:]) != 1 {

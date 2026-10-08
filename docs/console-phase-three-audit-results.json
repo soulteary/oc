@@ -1,0 +1,352 @@
+{
+  "dateUTC": "2026-10-08T10:13:03.143498+00:00",
+  "status": "passed",
+  "scope": "implemented local P3 settings/self identity migration and affected lifecycle/metadata paths",
+  "previousVerification": {
+    "dateUTC": "2026-10-08T08:32:10.796762+00:00",
+    "status": "passed",
+    "scope": "P3 local bucket settings and own native IAM rotation only",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "goVersion": "go version go1.27.1 darwin/arm64",
+    "bases": {
+      "oc": "69a9e7ca8447df14301c4dcdf3f3e6e8f1ba9160",
+      "otterio": "6f6d0835ddff68020f1491c403b958fade22841f"
+    },
+    "binaries": {
+      "oc": "a2e7b985778b814f3b4804b6de9532fa4bd35100c76e22a6f8e9d349ba1d4d38",
+      "oc-console": "596e781ba6cbc90e37b67534aab2994326cc081394a0d1eea90c7b672193d88e",
+      "otterio-with-p3": "ec45648ee6fb7efa825254649b2e551e16682f35c642780961c95e68beb05684",
+      "otterio-unpatched": "888fcb6d20ec437110288214f49e2140bc42ae71e781e1b2ad85cdbd20ad0f39",
+      "oc-console-linux-amd64": "331226ec1e195677ac5dbc3574e5726e3adcea6d2f9372ca6c79f21532050a39",
+      "oc-console-windows-amd64": "0291363b7bfe354020818eeb5262c1da38048d97ca3296e4ba903786b9dd79ce"
+    },
+    "patchProof": {
+      "serverBase": "6f6d0835ddff68020f1491c403b958fade22841f",
+      "patchSha256": "0e384cc23d2e3d716ddce92635df05db9f2a97777b40fd4e8cae00d5fbfea057",
+      "changedFiles": [
+        "cmd/admin-self-credentials.go",
+        "cmd/admin-self-credentials_test.go",
+        "cmd/bucket-config-conditional.go",
+        "cmd/bucket-config-conditional_test.go",
+        "cmd/bucket-config-validation.go",
+        "cmd/bucket-lifecycle-handlers.go",
+        "cmd/bucket-metadata-sys.go",
+        "cmd/bucket-metadata.go",
+        "cmd/bucket-policy-handlers.go",
+        "cmd/bucket-versioning-handler.go",
+        "cmd/configuration-body.go",
+        "cmd/configuration-body_test.go",
+        "cmd/erasure-server-pool.go",
+        "cmd/fiber_admin_router.go",
+        "cmd/fiber_ctx.go",
+        "cmd/fs-v1.go",
+        "cmd/notification.go",
+        "cmd/peer-rest-client.go",
+        "cmd/peer-rest-server.go"
+      ],
+      "appliesToExactCachedModule": true,
+      "matchesWorkingServerFiles": true
+    },
+    "checks": [
+      {
+        "name": "OC full race regression",
+        "status": "passed",
+        "scope": "full ./... earlier in this implementation; final affected packages rerun below"
+      },
+      {
+        "name": "OC final affected race regression",
+        "status": "passed",
+        "packages": [
+          "internal/clienttransport",
+          "internal/storageclient",
+          "internal/console",
+          "cmd/oc-console"
+        ],
+        "seconds": [
+          2.933,
+          11.319,
+          5.517,
+          4.237
+        ]
+      },
+      {
+        "name": "OC vet ./...",
+        "status": "passed"
+      },
+      {
+        "name": "OC changed package golangci-lint",
+        "status": "passed",
+        "issues": 0
+      },
+      {
+        "name": "console web behavior",
+        "status": "passed",
+        "groups": 22
+      },
+      {
+        "name": "console acceptance and measurement helper tests",
+        "status": "passed",
+        "tests": 12
+      },
+      {
+        "name": "maintenance tests",
+        "status": "passed",
+        "tests": 14
+      },
+      {
+        "name": "formatting, diff whitespace and release boundaries",
+        "status": "passed"
+      },
+      {
+        "name": "workflow YAML syntax",
+        "status": "passed",
+        "parser": "Ruby Psych; Python PyYAML unavailable, no dependency installed"
+      },
+      {
+        "name": "fixed server patch application and file equivalence",
+        "status": "passed",
+        "changedFiles": 19
+      },
+      {
+        "name": "fixed patched server targeted race regression",
+        "status": "passed",
+        "seconds": 6.395,
+        "selector": "TestBucketConfig|TestSelfCredentials|TestConditional|TestAccountInfoOwnerAndScopedPrincipals|TestFiberRequestContextValues|TestStreamContext"
+      },
+      {
+        "name": "protected settings real storage",
+        "status": "passed",
+        "groupsPerScenario": 18,
+        "scenarios": 4
+      },
+      {
+        "name": "unpatched server safe fallback",
+        "status": "passed",
+        "groupsPerScenario": 11,
+        "scenarios": 4
+      },
+      {
+        "name": "object writes real storage regression and unchanged performance budgets",
+        "status": "passed",
+        "groupsPerScenario": 21,
+        "scenarios": 4
+      },
+      {
+        "name": "native browser final build read/review",
+        "status": "passed",
+        "checks": 6
+      },
+      {
+        "name": "Linux amd64 and Windows amd64 console cross builds",
+        "status": "passed",
+        "nativeExecution": false
+      },
+      {
+        "name": "independent final cross review",
+        "status": "passed",
+        "unresolvedReproducibleFindings": 0,
+        "scope": "implemented P3 settings/self account, client, HTTP and Web contracts"
+      }
+    ],
+    "reports": [
+      {
+        "name": "console-phase-three-browser-results.json",
+        "sha256": "ef191d131e5176500dcc0a7b74983af5202122f0a71561fd77f484f1df6bc882"
+      },
+      {
+        "name": "console-phase-three-legacy-results.json",
+        "sha256": "755d87a2ea2de98e79e5b917b51bcb230bcc56fe4d8a93ca6a7dee5d0b77b458"
+      },
+      {
+        "name": "console-phase-three-object-regression-results.json",
+        "sha256": "4accf16429b28e1fea7130b2aca4e21fa4ecfe7b6f0c1a08a1c1526942a25a60"
+      },
+      {
+        "name": "console-phase-three-results.json",
+        "sha256": "0df4d22b5153326dacafa07311c658ef988505a97c4c04c6a61cb8f82280f701"
+      }
+    ],
+    "notRun": [
+      "full OtterIO test suite",
+      "remote CI",
+      "native Linux or Windows console execution",
+      "distributed real cluster",
+      "third-party S3",
+      "multi-pool or gateway protected setting writes",
+      "long-duration soak",
+      "release or deployment"
+    ],
+    "remaining": [
+      "P3 user/group/policy/service-account management UI",
+      "P3 diagnostic streams",
+      "publish and pin the P3 server protocol",
+      "P4 distribution and multi-user deployment",
+      "P5 old Web retirement"
+    ],
+    "dependencyPinsUnchanged": true,
+    "noModuleReplace": true,
+    "oldWebRetained": true
+  },
+  "findingsResolved": [
+    "dirty reads discarded drafts; replacement requires explicit confirmation and failed reads retain draft",
+    "malformed/redirected setting acknowledgements allowed confirmation reuse; block until fresh read",
+    "logout left hidden full configuration text; clear every draft and own summary",
+    "post-dispatch self redirect and untrusted errors could falsely retain credentials; classify as unknown and retire",
+    "duplicate protocol headers, contradictory existence, 202 or nonempty 2xx ACK could be trusted; require exact single headers and empty 200/204",
+    "self identity decoding accepted ambiguous aliases/duplicates; enforce exact unique typed fields",
+    "401/403 with large or stalled self response body masked authorization; map status before consuming body",
+    "S3v2 advertised unwritable conditional support; read only with no revision",
+    "raw invalid UTF8 and isolated UTF16 were silently substituted; reject before dispatch or persistence",
+    "pending rotation blocked local logout; preserve auth/Origin/CSRF and revoke only its session",
+    "in-flight login registered during rotation; recheck under session commit lock",
+    "Fiber pre-read preceded handler timeout; install targeted header-time deadline and test actual ServeConn wiring/reuse",
+    "lifecycle actions bypassed tags, duplicated selection and mutated shared slices; uniform immutable URL-decoded matching",
+    "delete-marker-only active rules were skipped; mark active while preserving prefix/disabled filtering",
+    "legacy cleanup errors permitted later writes that leftover files could overwrite; abort subsequent RMW",
+    "replication added after CAS version suspension; recheck fresh versioning in metadata transaction",
+    "noncurrent transition destination was not validated; validate legacy target and reject unsupported P3 field"
+  ],
+  "retainedLimitations": [
+    "P3 conditional lifecycle writes reject NoncurrentVersionTransition, including disabled rules; legacy documents remain readable",
+    "P3 conditional lifecycle writes reject Tag with ExpiredObjectDeleteMarker=true",
+    "noncurrent remote transition execution and stable persisted target selection require future work; no experimental ARN/IsLatest changes applied"
+  ],
+  "reproductionNotes": [
+    "Raw failed counterexamples and final targeted outputs are embedded below.",
+    "The original transport-test handler counter counted Fiber error traversal; corrected to business route counting.",
+    "The legacy missing-target negative test was corrected to native 404/XOtterioAdminRemoteTargetNotFoundError; production error semantics were preserved.",
+    "The pending-logout before-fix test observed503 instead of reaching CSRF/authenticated204 checks; final owner/other-session tests pass."
+  ],
+  "evidence": [
+    {
+      "name": "oc-p3-storage-audit-before.log",
+      "sha256": "462764d6dc45c5e3a03ec2bfba5fddded7f4f34bf45d6f7cabc79600de7c947c",
+      "output": "--- FAIL: TestSettingsV2CanReadButCannotSendUnsignedCondition (0.00s)\n    settings_test.go:251: V2 read failed: <nil>\n--- FAIL: TestSelfRotationLostResponseAndRedirectAreNotRetried (0.06s)\n    --- FAIL: TestSelfRotationLostResponseAndRedirectAreNotRetried/redirect (0.03s)\n        settings_test.go:388: expected safe API error 502/outcome_unknown, got The storage endpoint redirected the request. Check its configured address.\n--- FAIL: TestSettingsAmbiguousCapabilityNeverDispatchesWrite (0.00s)\n    --- FAIL: TestSettingsAmbiguousCapabilityNeverDispatchesWrite/X-Otterio-Bucket-Config (0.00s)\n        settings_test.go:755: expected safe API error 501/settings_unsupported, got <nil>\n    --- FAIL: TestSettingsAmbiguousCapabilityNeverDispatchesWrite/X-Otterio-Config-Revision (0.00s)\n        settings_test.go:755: expected safe API error 501/settings_unsupported, got <nil>\n    --- FAIL: TestSettingsAmbiguousCapabilityNeverDispatchesWrite/X-Otterio-Config-Exists (0.00s)\n        settings_test.go:755: expected safe API error 501/settings_unsupported, got <nil>\n--- FAIL: TestSettingsContradictoryExistenceNeverDispatchesWrite (0.00s)\n    --- FAIL: TestSettingsContradictoryExistenceNeverDispatchesWrite/policy-absent-false (0.00s)\n        settings_test.go:795: expected safe API error 502/UpstreamError, got <nil>\n    --- FAIL: TestSettingsContradictoryExistenceNeverDispatchesWrite/policy-absent-true (0.00s)\n        settings_test.go:797: contradictory existence metadata dispatched a write\n    --- FAIL: TestSettingsContradictoryExistenceNeverDispatchesWrite/lifecycle-absent-false (0.00s)\n        settings_test.go:795: expected safe API error 502/UpstreamError, got <nil>\n    --- FAIL: TestSettingsContradictoryExistenceNeverDispatchesWrite/lifecycle-absent-true (0.00s)\n        settings_test.go:797: contradictory existence metadata dispatched a write\nFAIL\nFAIL\tgithub.com/soulteary/mc/internal/storageclient\t1.882s\nFAIL\n"
+    },
+    {
+      "name": "oc-p3-storage-audit-errors-before.log",
+      "sha256": "d39b2f40a21fbb0285b05f0dea59104493756cc63e006113fad766f73374fbde",
+      "output": "--- FAIL: TestSettingsAmbiguousAcknowledgementNeverConfirmsWrite (0.00s)\n    --- FAIL: TestSettingsAmbiguousAcknowledgementNeverConfirmsWrite/X-Otterio-Bucket-Config (0.00s)\n        settings_test.go:849: expected safe API error 502/outcome_unknown, got <nil>\n    --- FAIL: TestSettingsAmbiguousAcknowledgementNeverConfirmsWrite/X-Otterio-Config-Revision (0.00s)\n        settings_test.go:849: expected safe API error 502/outcome_unknown, got <nil>\n    --- FAIL: TestSettingsAmbiguousAcknowledgementNeverConfirmsWrite/X-Otterio-Config-Exists (0.00s)\n        settings_test.go:849: expected safe API error 502/outcome_unknown, got <nil>\n    --- FAIL: TestSettingsAmbiguousAcknowledgementNeverConfirmsWrite/wrong-existence (0.00s)\n        settings_test.go:849: expected safe API error 502/outcome_unknown, got <nil>\n--- FAIL: TestSettingsUntrustedErrorEnvelopeCannotProveMutationFailure (0.00s)\n    --- FAIL: TestSettingsUntrustedErrorEnvelopeCannotProveMutationFailure/proxy-html (0.00s)\n        settings_test.go:888: expected safe API error 502/outcome_unknown, got The configured account cannot perform this operation.\n    --- FAIL: TestSettingsUntrustedErrorEnvelopeCannotProveMutationFailure/proxy-precondition (0.00s)\n        settings_test.go:888: expected safe API error 502/outcome_unknown, got This setting changed since it was loaded. Reload it before editing again.\n    --- FAIL: TestSettingsUntrustedErrorEnvelopeCannotProveMutationFailure/duplicate-code (0.00s)\n        settings_test.go:888: expected safe API error 502/outcome_unknown, got The configured account cannot perform this operation.\n    --- FAIL: TestSettingsUntrustedErrorEnvelopeCannotProveMutationFailure/trailing-document (0.00s)\n        settings_test.go:888: expected safe API error 502/outcome_unknown, got The configured account cannot perform this operation.\n    --- FAIL: TestSettingsUntrustedErrorEnvelopeCannotProveMutationFailure/unknown-code (0.00s)\n        settings_test.go:888: expected safe API error 502/outcome_unknown, got The storage server could not complete this request.\n    --- FAIL: TestSettingsUntrustedErrorEnvelopeCannotProveMutationFailure/post-commit-redirect (0.00s)\n        settings_test.go:888: expected safe API error 502/outcome_unknown, got The storage endpoint redirected the request. Check its configured address.\n--- FAIL: TestSelfUntrustedErrorEnvelopeCannotProveMutationFailure (0.15s)\n    --- FAIL: TestSelfUntrustedErrorEnvelopeCannotProveMutationFailure/duplicate-code (0.04s)\n        settings_test.go:927: expected safe API error 502/outcome_unknown, got The configured account cannot perform this operation.\n    --- FAIL: TestSelfUntrustedErrorEnvelopeCannotProveMutationFailure/unknown-code (0.02s)\n        settings_test.go:927: expected safe API error 502/outcome_unknown, got The storage server could not complete this request.\n    --- FAIL: TestSelfUntrustedErrorEnvelopeCannotProveMutationFailure/wrong-status (0.02s)\n        settings_test.go:927: expected safe API error 502/outcome_unknown, got The storage server does not support this operation.\n    --- FAIL: TestSelfUntrustedErrorEnvelopeCannotProveMutationFailure/ambiguous-capability (0.02s)\n        settings_test.go:927: expected safe API error 502/outcome_unknown, got <nil>\nFAIL\nFAIL\tgithub.com/soulteary/mc/internal/storageclient\t2.653s\nFAIL\n"
+    },
+    {
+      "name": "oc-p3-storage-audit-ack-before.log",
+      "sha256": "1c55a0a9d686124c7c57fd325ffc3a4c599f8cac225228b08f35700da79e339e",
+      "output": "--- FAIL: TestSettingsAmbiguousAcknowledgementNeverConfirmsWrite (0.00s)\n    --- FAIL: TestSettingsAmbiguousAcknowledgementNeverConfirmsWrite/accepted (0.00s)\n        settings_test.go:856: expected safe API error 502/outcome_unknown, got <nil>\n    --- FAIL: TestSettingsAmbiguousAcknowledgementNeverConfirmsWrite/unexpected-body (0.00s)\n        settings_test.go:856: expected safe API error 502/outcome_unknown, got <nil>\n--- FAIL: TestSelfUntrustedErrorEnvelopeCannotProveMutationFailure (0.05s)\n    --- FAIL: TestSelfUntrustedErrorEnvelopeCannotProveMutationFailure/unexpected-success-body (0.05s)\n        settings_test.go:936: expected safe API error 502/outcome_unknown, got <nil>\nFAIL\nFAIL\tgithub.com/soulteary/mc/internal/storageclient\t2.138s\nFAIL\n"
+    },
+    {
+      "name": "oc-p3-storage-audit-auth-body-before.log",
+      "sha256": "3e02edffe6f4cd65d8cfa185b3d810e2030a11912a1f5411b5b411f8de33ed35",
+      "output": "--- FAIL: TestSelfDiscoveryAuthenticationFailureClosesUnreadBody (0.21s)\n    --- FAIL: TestSelfDiscoveryAuthenticationFailureClosesUnreadBody/401-capability-false (0.05s)\n        settings_test.go:1000: expected safe API error 403/AccessDenied, got The storage server could not complete this request.\n    --- FAIL: TestSelfDiscoveryAuthenticationFailureClosesUnreadBody/401-capability-true (0.05s)\n        settings_test.go:1000: expected safe API error 403/AccessDenied, got The storage server could not complete this request.\n    --- FAIL: TestSelfDiscoveryAuthenticationFailureClosesUnreadBody/403-capability-false (0.05s)\n        settings_test.go:1000: expected safe API error 403/AccessDenied, got The storage server could not complete this request.\n    --- FAIL: TestSelfDiscoveryAuthenticationFailureClosesUnreadBody/403-capability-true (0.05s)\n        settings_test.go:1000: expected safe API error 403/AccessDenied, got The storage server could not complete this request.\nFAIL\nFAIL\tgithub.com/soulteary/mc/internal/storageclient\t1.035s\nFAIL\n"
+    },
+    {
+      "name": "oc-p3-http-utf8-before.log",
+      "sha256": "6e9bdef1ab0d57109bd403b26e7229611ee95b68bc305003b60112e94a2a5aef",
+      "output": "--- FAIL: TestSettingsRejectMalformedUTF8BeforeJSONCanReplaceIt (0.00s)\n    --- FAIL: TestSettingsRejectMalformedUTF8BeforeJSONCanReplaceIt/secret (0.00s)\n        settings_test.go:325: malformed UTF-8 was replaced and dispatched: status=200 saves=0 rotates=1\n    --- FAIL: TestSettingsRejectMalformedUTF8BeforeJSONCanReplaceIt/policy (0.00s)\n        settings_test.go:325: malformed UTF-8 was replaced and dispatched: status=200 saves=1 rotates=0\nFAIL\nFAIL\tgithub.com/soulteary/mc/internal/console\t0.700s\nFAIL\n"
+    },
+    {
+      "name": "oc-p3-http-utf16-before.log",
+      "sha256": "03bd1d62dbcf45f22aea5f5bcbba6a727b3f704b9e2a7935ea85471c36bd0724",
+      "output": "--- FAIL: TestSettingsRejectUnpairedUnicodeEscapesWithoutChangingSecrets (0.00s)\n    settings_test.go:339: unpaired Unicode escape reached secret rotation: status=200 rotates=1\nFAIL\nFAIL\tgithub.com/soulteary/mc/internal/console\t0.795s\nFAIL\n"
+    },
+    {
+      "name": "oc-p3-login-rotation-before.log",
+      "sha256": "cd3d12fe5b2954cdcb542241a80287ae19b478736d65c98c73539db378393cfe",
+      "output": "--- FAIL: TestLoginStartedBeforeRotationCannotRegisterSessionWhilePaused (0.00s)\n    settings_test.go:353: in-flight login registered during rotation: status=200 cookies=1\nFAIL\nFAIL\tgithub.com/soulteary/mc/internal/console\t1.885s\nFAIL\n"
+    },
+    {
+      "name": "oc-p3-login-rotation-after.log",
+      "sha256": "48215e287d5b2dadd9ea68e2cb4dc0e38d2d6611f6a89987a9fd09da91376c64",
+      "output": "ok  \tgithub.com/soulteary/mc/internal/console\t1.537s\n"
+    },
+    {
+      "name": "oc-p3-ui-audit-before-read.txt",
+      "sha256": "15a7d049d94de56faee99fa526e0a35a0fbb6be07b1712448ea7b0b01b7b2351",
+      "output": "Observed before the new draft-read fix, 2026-10-08.\nCommand: node buildscripts/test-console-web.js\n\nFAIL reading another setting cannot discard a dirty draft without confirmation or on failure\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ ''\n- '{\"draft\":\"keep me\"}'\n\n    at Object.run (.../oc/buildscripts/test-console-web.js:620:10)\n22/24 console web behavior groups passed\n\nThe new read regression ran against the still-unmodified app.js. Reading had\nemptied the textarea before storage returned AccessDenied. After the fix, the\ndraft remains while confirmation is pending and survives a failed confirmed read.\n"
+    },
+    {
+      "name": "oc-p3-ui-audit-before-ack.txt",
+      "sha256": "bd9df3d1928efcc6dda281ca109d67fec5bf761e92471fce3df7f4ee7d9f7aa2",
+      "output": "PASS P2 raw file upload sends original File and 100% progress does not confirm storage\nPASS P2 empty prefix plans are reviewable and complete without object deletion\nPASS P2 only explicit busy rejection permits reuse of a deletion confirmation\nPASS P2 expired recovered tasks stop polling without inventing a final outcome\nPASS known bucket settings work without bucket listing and root summaries do not gate writes\nPASS a denied setting does not prevent another kind from loading\nPASS readonly, missing conditional support, and invalid revisions cannot submit writes\nPASS review and save use immutable loaded scope, complete bytes, CSRF and revision\nPASS removal requires review and retains exact bucket/kind without fake version removal\nPASS 412 and unknown setting outcomes preserve drafts and require fresh reads without replay\nPASS closed, canceled, and superseded setting reads cannot restore stale editor content\nPASS an interrupted save requires reading storage before another write and ignores late acknowledgement\nPASS secret rotation is available only for writable enabled IAM identity\nPASS account errors and late responses cannot enable rotation or disturb browsing\nPASS secret byte limits are checked and cancel/close/logout erase input without submitting\nPASS confirmed rotation clears secret immediately and stops all session actions\nPASS unknown rotation, transport loss and page suspension stop the UI without replay\nPASS explicit zero-write 501/502/403 rotation failures retain session and refresh identity\nPASS ambiguous 5xx, explicit retirement and malformed success must still stop rotation UI\nPASS setting save displays server canonical document and uses its fresh revision for the next review\nPASS active-task rejection clears secret and requires a new human review\nPASS an invalid CSRF response clears all configuration and credential drafts\nPASS reading another setting cannot discard a dirty draft without confirmation or on failure\nFAIL malformed successful setting acknowledgement blocks another confirmation and retains draft\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\nfalse !== true\n\n    at Object.run (/Users/soulteary/Lab/github/otterio-group/oc/buildscripts/test-console-web.js:641:10)\n    at async /Users/soulteary/Lab/github/otterio-group/oc/buildscripts/test-console-web.js:679:7\n23/25 console web behavior groups passed\n",
+      "reproduction": "Previous outcome classifier restored only in memory by the adjacent runner; not an unmodified baseline build."
+    },
+    {
+      "name": "oc-p3-ui-audit-before-logout.txt",
+      "sha256": "f849a59deaee6d9c94bd4bbed6d849a1eb1b3048dbe3b7418e01353cbec178fb",
+      "output": "PASS P2 raw file upload sends original File and 100% progress does not confirm storage\nPASS P2 empty prefix plans are reviewable and complete without object deletion\nPASS P2 only explicit busy rejection permits reuse of a deletion confirmation\nPASS P2 expired recovered tasks stop polling without inventing a final outcome\nPASS known bucket settings work without bucket listing and root summaries do not gate writes\nPASS a denied setting does not prevent another kind from loading\nPASS readonly, missing conditional support, and invalid revisions cannot submit writes\nPASS review and save use immutable loaded scope, complete bytes, CSRF and revision\nPASS removal requires review and retains exact bucket/kind without fake version removal\nPASS 412 and unknown setting outcomes preserve drafts and require fresh reads without replay\nPASS closed, canceled, and superseded setting reads cannot restore stale editor content\nPASS an interrupted save requires reading storage before another write and ignores late acknowledgement\nPASS secret rotation is available only for writable enabled IAM identity\nPASS account errors and late responses cannot enable rotation or disturb browsing\nPASS secret byte limits are checked and cancel/close/logout erase input without submitting\nPASS confirmed rotation clears secret immediately and stops all session actions\nPASS unknown rotation, transport loss and page suspension stop the UI without replay\nPASS explicit zero-write 501/502/403 rotation failures retain session and refresh identity\nPASS ambiguous 5xx, explicit retirement and malformed success must still stop rotation UI\nPASS setting save displays server canonical document and uses its fresh revision for the next review\nPASS active-task rejection clears secret and requires a new human review\nPASS an invalid CSRF response clears all configuration and credential drafts\nPASS reading another setting cannot discard a dirty draft without confirmation or on failure\nPASS malformed successful setting acknowledgement blocks another confirmation and retains draft\nPASS redirects and incomplete successful setting DTOs require fresh reads without another write\nPASS logout during secret submission reports an unknown outcome and ignores late confirmation\nFAIL logout clears complete configuration review text as well as editor and secret inputs\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ '{\"private-policy-draft\":true}'\n- ''\n\n    at Object.run (/Users/soulteary/Lab/github/otterio-group/oc/buildscripts/test-console-web.js:699:10)\n    at async /Users/soulteary/Lab/github/otterio-group/oc/buildscripts/test-console-web.js:708:7\n26/27 console web behavior groups passed\n"
+    },
+    {
+      "name": "oc-p3-ui-audit-after.txt",
+      "sha256": "1bf95b296312201b08822c8e46978cb8903e62e3db025c82b70820f32a0e1614",
+      "output": "PASS P2 raw file upload sends original File and 100% progress does not confirm storage\nPASS P2 empty prefix plans are reviewable and complete without object deletion\nPASS P2 only explicit busy rejection permits reuse of a deletion confirmation\nPASS P2 expired recovered tasks stop polling without inventing a final outcome\nPASS known bucket settings work without bucket listing and root summaries do not gate writes\nPASS a denied setting does not prevent another kind from loading\nPASS readonly, missing conditional support, and invalid revisions cannot submit writes\nPASS review and save use immutable loaded scope, complete bytes, CSRF and revision\nPASS removal requires review and retains exact bucket/kind without fake version removal\nPASS 412 and unknown setting outcomes preserve drafts and require fresh reads without replay\nPASS closed, canceled, and superseded setting reads cannot restore stale editor content\nPASS an interrupted save requires reading storage before another write and ignores late acknowledgement\nPASS secret rotation is available only for writable enabled IAM identity\nPASS account errors and late responses cannot enable rotation or disturb browsing\nPASS secret byte limits are checked and cancel/close/logout erase input without submitting\nPASS confirmed rotation clears secret immediately and stops all session actions\nPASS unknown rotation, transport loss and page suspension stop the UI without replay\nPASS explicit zero-write 501/502/403 rotation failures retain session and refresh identity\nPASS ambiguous 5xx, explicit retirement and malformed success must still stop rotation UI\nPASS setting save displays server canonical document and uses its fresh revision for the next review\nPASS active-task rejection clears secret and requires a new human review\nPASS an invalid CSRF response clears all configuration and credential drafts\nPASS reading another setting cannot discard a dirty draft without confirmation or on failure\nPASS malformed successful setting acknowledgement blocks another confirmation and retains draft\nPASS redirects and incomplete successful setting DTOs require fresh reads without another write\nPASS logout during secret submission reports an unknown outcome and ignores late confirmation\nPASS logout clears complete configuration review text as well as editor and secret inputs\nPASS repeated confirmation cannot send concurrent settings writes or secret rotations\nPASS read confirmation keeps immutable requested scope and ignores late replies after window rotation\n29/29 console web behavior groups passed\n"
+    },
+    {
+      "name": "otterio-p3-lifecycle-counterexample.log",
+      "sha256": "781a716dff8a5db88dfa390bf768b54c8206129b98ecbda8441850fc638a07a8",
+      "output": "--- FAIL: TestTaggedLifecycleActions (0.00s)\n    --- FAIL: TestTaggedLifecycleActions/transition-days (0.00s)\n        lifecycle_tagged_actions_test.go:46: one matching rule was selected 2 times\n    --- FAIL: TestTaggedLifecycleActions/transition-date (0.00s)\n        lifecycle_tagged_actions_test.go:46: one matching rule was selected 2 times\n    --- FAIL: TestTaggedLifecycleActions/noncurrent-expiration (0.00s)\n        lifecycle_tagged_actions_test.go:54: nonmatching tags selected action DeleteVersionAction with tags \"\"\n    --- FAIL: TestTaggedLifecycleActions/noncurrent-transition (0.00s)\n        lifecycle_tagged_actions_test.go:54: nonmatching tags selected action TransitionVersionAction with tags \"\"\n    --- FAIL: TestTaggedLifecycleActions/mixed-expiration-transition (0.00s)\n        lifecycle_tagged_actions_test.go:46: one matching rule was selected 2 times\n    --- FAIL: TestTaggedLifecycleActions/mixed-noncurrent-actions (0.00s)\n        lifecycle_tagged_actions_test.go:54: nonmatching tags selected action DeleteVersionAction with tags \"\"\n    --- FAIL: TestTaggedLifecycleActions/legacy-delete-marker (0.00s)\n        lifecycle_tagged_actions_test.go:54: nonmatching tags selected action DeleteVersionAction with tags \"\"\n==================\nWARNING: DATA RACE\nWrite at 0x00c00017f0c0 by goroutine 34:\n  github.com/soulteary/otterio/pkg/bucket/lifecycle.Filter.TestTags()\n      /Users/soulteary/Lab/github/otterio-group/otterio/pkg/bucket/lifecycle/filter.go:157 +0x90\n  github.com/soulteary/otterio/pkg/bucket/lifecycle.TestConcurrentLifecycleTagMatching.func1()\n      /Users/soulteary/Lab/github/otterio-group/otterio/pkg/bucket/lifecycle/lifecycle_tagged_actions_test.go:88 +0x18c\n\nPrevious write at 0x00c00017f0c0 by goroutine 21:\n  github.com/soulteary/otterio/pkg/bucket/lifecycle.Filter.TestTags()\n      /Users/soulteary/Lab/github/otterio-group/otterio/pkg/bucket/lifecycle/filter.go:157 +0x90\n  github.com/soulteary/otterio/pkg/bucket/lifecycle.TestConcurrentLifecycleTagMatching.func1()\n      /Users/soulteary/Lab/github/otterio-group/otterio/pkg/bucket/lifecycle/lifecycle_tagged_actions_test.go:88 +0x18c\n\nGoroutine 34 (running) created at:\n  github.com/soulteary/otterio/pkg/bucket/lifecycle.TestConcurrentLifecycleTagMatching()\n      /Users/soulteary/Lab/github/otterio-group/otterio/pkg/bucket/lifecycle/lifecycle_tagged_actions_test.go:85 +0x224\n  testing.tRunner()\n      /Users/soulteary/.gvm/gos/go1.27.1/src/testing/testing.go:2193 +0x164\n  testing.(*T).Run.gowrap1()\n      /Users/soulteary/.gvm/gos/go1.27.1/src/testing/testing.go:2258 +0x34\n\nGoroutine 21 (running) created at:\n  github.com/soulteary/otterio/pkg/bucket/lifecycle.TestConcurrentLifecycleTagMatching()\n      /Users/soulteary/Lab/github/otterio-group/otterio/pkg/bucket/lifecycle/lifecycle_tagged_actions_test.go:85 +0x224\n  testing.tRunner()\n      /Users/soulteary/.gvm/gos/go1.27.1/src/testing/testing.go:2193 +0x164\n  testing.(*T).Run.gowrap1()\n      /Users/soulteary/.gvm/gos/go1.27.1/src/testing/testing.go:2258 +0x34\n==================\n--- FAIL: TestConcurrentLifecycleTagMatching (0.00s)\n    testing.go:1865: race detected during execution of test\nFAIL\nFAIL\tgithub.com/soulteary/otterio/pkg/bucket/lifecycle\t1.608s\nFAIL\n"
+    },
+    {
+      "name": "otterio-p3-audit-cleanup-counterexample.log",
+      "sha256": "0980dc54b93abfd80bc231d7ac389fbdd4a1c03ea2d3ce522d9c9a13cf5e1189",
+      "output": "--- FAIL: TestDeleteMarkerActiveRules (0.00s)\n    lifecycle_tagged_actions_test.go:155: delete-marker rule was skipped for prefix \"\"\n    lifecycle_tagged_actions_test.go:155: delete-marker rule was skipped for prefix \"logs/\"\n    lifecycle_tagged_actions_test.go:155: delete-marker rule was skipped for prefix \"logs/item\"\nFAIL\nFAIL\tgithub.com/soulteary/otterio/pkg/bucket/lifecycle\t0.449s\n--- FAIL: TestBucketConfigTransactions (0.35s)\n    bucket-config-conditional_test.go:422: failed legacy cleanup allowed a later commit: <nil>\nFAIL\nFAIL\tgithub.com/soulteary/otterio/cmd\t1.334s\nFAIL\n"
+    },
+    {
+      "name": "otterio-p3-audit-metadata-counterexample.log",
+      "sha256": "ec408579ae6d63f071a0e75098f2823de43f64d72f7fe2d15644fb4bb1b60ded",
+      "output": "--- FAIL: TestBucketConfigTransactions (0.22s)\n    bucket-config-conditional_test.go:231: lifecycle.xml unsafe edit accepted: status=200 body=\n--- FAIL: TestBucketConfigReplicationVersioningTransaction (1.43s)\n    bucket-config-replication_test.go:59: replication committed after CAS suspension: <nil>\nFAIL\nFAIL\tgithub.com/soulteary/otterio/cmd\t2.728s\nFAIL\n"
+    },
+    {
+      "name": "otterio-p3-audit-final-race.log",
+      "sha256": "ca130b034a1569e92b151d38ebf7c003c431e1a56cda00077bfb92acc2cd144c",
+      "output": "ok  \tgithub.com/soulteary/otterio/cmd\t7.879s\n"
+    },
+    {
+      "name": "otterio-p3-audit-lifecycle-final-race.log",
+      "sha256": "6e5719a90e7915c73ea8d1b9c8d571d4e0763294bc19255ae14e33cafed38e84",
+      "output": "ok  \tgithub.com/soulteary/otterio/pkg/bucket/lifecycle\t1.482s\n"
+    }
+  ],
+  "patchProof": {
+    "serverBase": "6f6d0835ddff68020f1491c403b958fade22841f",
+    "patchSha256": "04e8553175d0de9fb448f2167d33d48e45d03407f57335dce2b939d969b30001",
+    "changedFiles": [
+      "cmd/admin-self-credentials.go",
+      "cmd/admin-self-credentials_test.go",
+      "cmd/bucket-config-conditional.go",
+      "cmd/bucket-config-conditional_test.go",
+      "cmd/bucket-config-replication_test.go",
+      "cmd/bucket-config-validation.go",
+      "cmd/bucket-handlers.go",
+      "cmd/bucket-lifecycle-handlers.go",
+      "cmd/bucket-lifecycle.go",
+      "cmd/bucket-metadata-sys.go",
+      "cmd/bucket-metadata.go",
+      "cmd/bucket-policy-handlers.go",
+      "cmd/bucket-versioning-handler.go",
+      "cmd/configuration-body.go",
+      "cmd/configuration-body_test.go",
+      "cmd/configuration-json.go",
+      "cmd/configuration-json_test.go",
+      "cmd/configuration-transport.go",
+      "cmd/configuration-transport_test.go",
+      "cmd/erasure-server-pool.go",
+      "cmd/fiber_admin_router.go",
+      "cmd/fiber_ctx.go",
+      "cmd/fiber_router.go",
+      "cmd/fs-v1.go",
+      "cmd/notification.go",
+      "cmd/peer-rest-client.go",
+      "cmd/peer-rest-server.go",
+      "pkg/bucket/lifecycle/filter.go",
+      "pkg/bucket/lifecycle/lifecycle.go",
+      "pkg/bucket/lifecycle/lifecycle_tagged_actions_test.go"
+    ],
+    "appliesToExactCachedModule": true,
+    "matchesWorkingServerFiles": true
+  },
+  "finalIndependentReview": {
+    "unresolvedReproducibleMigrationFindings": 0,
+    "scope": "frozen implemented P3 paths; unsupported remote noncurrent conversion explicitly rejected rather than claimed complete"
+  },
+  "committed": false,
+  "published": false
+}

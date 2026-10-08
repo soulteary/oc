@@ -79,5 +79,33 @@
   "gatewayDeployments": [
     "nas-local-filesystem",
     "s3-local-otterio-upstream"
-  ]
+  ],
+  "consoleSettingsProtocol": {
+    "bucketConfiguration": "v1",
+    "ownIAMCredentials": "v1",
+    "serverBase": "6f6d0835ddff68020f1491c403b958fade22841f",
+    "optionalServerPatch": "buildscripts/console-server-p3.patch",
+    "protectedWritesInPinnedServer": false,
+    "legacyReadOnlyFallback": true,
+    "validatedTopology": "local-filesystem-and-single-node-single-pool-erasure",
+    "nativeIAMRotationOnly": true,
+    "unsupportedConditionalLifecycleFields": [
+      "Tag with ExpiredObjectDeleteMarker=true",
+      "NoncurrentVersionTransition.NewerNoncurrentVersions"
+    ],
+    "lifecycleTransitionProtocol": {
+      "version": "v1",
+      "header": "X-Otterio-Lifecycle-Transition",
+      "protectedTargetManagementInPinnedServer": false,
+      "validatedTopology": "single-node-four-disk-erasure",
+      "noncurrentVersionTransition": true,
+      "persistentDestinationReference": true,
+      "versionSpecificRestore": true,
+      "selectRestore": false,
+      "filesystemTransition": false,
+      "registryMaxActiveJobs": 10000,
+      "registryMaxBytes": 4194304,
+      "verification": "docs/lifecycle-transition-verification.json"
+    }
+  }
 }

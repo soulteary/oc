@@ -1,0 +1,34 @@
+{
+  "dateUTC": "2026-10-08T12:24:57.304935+00:00",
+  "status": "failed",
+  "scope": "independent source and tier processes, four-disk erasure, actual scanner, OC protected lifecycle writes",
+  "serverSource": "6f6d0835ddff68020f1491c403b958fade22841f",
+  "serverPatchSHA256": "84a98f268f530e7662c0b9191aab35991ca61f31293f80e784e8291bf61bf1a9",
+  "binaries": {
+    "oc": {
+      "sha256": "20aadaa913900f60997bde750426df9b82afcd488083cca53fc77358b49bd92a"
+    },
+    "oc-console": {
+      "sha256": "9d46a9d9d5ca26cae53820385adc7fbcf28ca1b5419f4d0d7025807a537c9342"
+    },
+    "otterio": {
+      "sha256": "cc180c2473314730773da0dfd884c758c6810798d1dbfbf1b7312623869dfd4c"
+    }
+  },
+  "harnessSHA256": "1628b412f72bed26733a5be3c6aa8a9f1afd7c3095790e7724dbb6062b04412b",
+  "scenarios": [
+    {
+      "scenario": "single-http",
+      "checks": [
+        "OC registers two independent ILM labels and distinct ARNs on the remote service",
+        "OC protects and saves complete mixed lifecycle XML, then reads the new canonical document and revision",
+        "real scanners select the due rule, transition noncurrent versions and empty objects, and preserve latest/filter-mismatched data",
+        "authenticated lifecycle capability gates target writes; CLI credential and metadata edits retain exact destinations and referenced objects",
+        "source restart, rule deletion and current-to-noncurrent changes retain exact remote versions, metadata and range reads",
+        "durable target references prevent removing both destinations after lifecycle deletion and restart"
+      ],
+      "status": "failed"
+    }
+  ],
+  "error": ""
+}

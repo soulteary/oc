@@ -2,7 +2,7 @@
 
 [中文](zh_CN/console.md) · [Documentation](README.md) · [Migration plan](console-migration.md)
 
-`oc-console` is an optional source-built program for one operator and one configured S3 alias on the local machine. Browsing and downloads are read-only by default. Explicit write mode adds uploads, exact-key/batch/prefix deletion, cancellation and per-object results. The existing OtterIO Web console remains available.
+`oc-console` is an optional source-built program for one operator and one configured S3 alias on the local machine. Browsing and downloads are read-only by default. Explicit write mode adds uploads, exact-key/batch/prefix deletion, cancellation and per-object results. Servers with the P3 protocol also expose protected bucket settings and own IAM secret rotation. The existing OtterIO Web console remains available.
 
 ## Build and start
 
@@ -59,11 +59,25 @@ Waiting uploads expire after one minute; ready plans after ten minutes. Running 
 
 Leaving or reloading the page in the browser interrupts browser uploads; the console's Refresh button does not interrupt uploads. Confirmed background deletion can continue. Cancel the task or log out to stop deletion. Page navigation does not undo work.
 
+## Bucket settings and own account
+
+Enter an exact bucket in Settings, including when bucket enumeration is denied. Read bucket policy as complete JSON, and versioning/lifecycle as complete XML. Each setting has its own authorization and errors; OC submits the full document; storage validates supported fields and may normalize its representation. Protected writes reject unsupported fields rather than silently discarding them. This server implements versioning Status, without MFADelete or excluded prefixes. Replacements and policy/lifecycle removal require a separate review of the exact bucket, kind and contents. Policy changes affect access, lifecycle rules may expire data, and enabling versioning is not reversed by suspension. Version configuration removal is unavailable.
+
+Reading over an unsaved draft requires confirmation. Canceling or a failed read keeps the previous document and its exact save scope. The matching server patch now supports current and noncurrent version transitions, persistent destination references, and version-specific restore on erasure storage; see [runtime scope and verification](lifecycle-transition.md). The pinned, unpatched server still refuses protected writes. `NewerNoncurrentVersions` remains unsupported. A tag filter combined with `ExpiredObjectDeleteMarker=true` is also rejected. Invalid UTF-8 and unpaired UTF-16 escapes are refused before a secret or configuration can silently change during decoding.
+
+Protected writes require the server's `X-Otterio-Bucket-Config: v1`, a 64-hex revision and an exists flag. A signed `X-Otterio-Config-If-Match` is checked under the complete metadata transaction lock. Conflicts retain the draft but require a fresh read and review; uncertain outcomes require checking storage before another edit. Writes are never replayed automatically. Documents are limited to 1 MiB, with the server's existing tighter limits still applying. FS protects policy/lifecycle; single-pool erasure also protects versioning. Gateways, multiple pools, V2 signing and servers without the protocol cannot perform these protected writes.
+
+Own-account discovery returns only identity kind, status and rotation availability. It never returns an access key, secret or session token. Only enabled native IAM users can rotate, subject to explicit `admin:CreateUser` denial. Root, STS, service/directory identities and distributed, etcd or external OPA authorization deployments cannot rotate here. Secrets must contain 8–128 UTF-8 bytes without NUL, CR or LF. Secret input is cleared upon submission, cancellation, close and logout.
+
+Finish or cancel active writes before rotation; the process rejects rotation concurrent with object/settings writes or multipart cleanup. A confirmed or uncertain submitted rotation retires every session and pending task, flushes a restart acknowledgement, and stops the console. Verify credentials and update the alias in your terminal, then restart and reload the page; OC never rewrites the alias automatically. A definite permission rejection does not itself retire the connection. Retirement covers this OC process, without claiming revocation of previously issued STS or service-account credentials; manage those identities separately.
+
+The currently pinned server dependency does not yet contain P3. The server source implementation and reproducible optional patch are described in [phase three](console-phase-three.md). Older servers retain reads while protected mutations remain disabled.
+
 ## Browsing and operational limits
 
 Every object operation uses the selected identity. Bucket-root Read/Write hints are informational and do not authorize specific keys or prefixes. Root AccountInfo is supported by the pinned server; unavailable management information does not block S3 operations.
 
-Downloads stream through OC into the browser's download manager. Errors open separately, preserving the console; the session is checked before starting. Version selection, Range, ZIP, presigned sharing, OIDC, management editing and centralized deployment remain outside this milestone.
+Downloads stream through OC into the browser's download manager. Errors open separately, preserving the console; the session is checked before starting. Object version selection, Range, ZIP, presigned sharing, OIDC, user/group/service-account administration and centralized deployment remain outside this milestone.
 
 Process limits are 16 sessions, 8 ordinary storage requests, 2 downloads, 2 prefix scans and 2 writes. S3 metadata/delete calls have a 15-second overall deadline; ordinary console metadata has an additional 30-second limit and prefix scanning a 60-second limit. JSON reads have a 10-second limit. Upload reads and download reads/writes use 30-second progress/idle limits, allowing slow uploads that keep making progress.
 
@@ -75,4 +89,4 @@ Shutdown cancels sessions, then allows up to five seconds each for HTTP shutdown
 make test-console
 ```
 
-See [phase-two validation](console-phase-two.md) for exact evidence and remaining scope. `make build` still builds the CLI only; existing release archives and containers do not automatically include this experimental program. Account/management functionality, release/deployment validation and retirement of the old UI remain later migration gates.
+See [phase-three validation](console-phase-three.md) and [phase-two validation](console-phase-two.md) for exact evidence and remaining scope. Frontend behavior tests require Node in the development environment; running the console does not. `make build` still builds the CLI only; existing release archives and containers do not automatically include this experimental program. Further administration/diagnostics and release/deployment validation and retirement of the old UI remain later migration gates.

@@ -15,6 +15,7 @@
         <div class="topbar-right">
           <span id="session-mode" class="readonly">● Read-only</span>
           <div id="session-actions" class="session-actions" hidden>
+            <button id="open-account" class="button quiet" type="button">Account</button>
             <button id="refresh" class="button quiet" type="button">Refresh</button>
             <button id="logout" class="button quiet" type="button">Log out</button>
           </div>
@@ -31,7 +32,7 @@
           <input id="login-code" name="code" type="password" autocomplete="one-time-code" spellcheck="false" required aria-describedby="code-help" placeholder="Paste the code from your terminal">
           <p id="code-help" class="help">Use the login code printed by <code>oc-console</code>. Your storage credentials stay in the local OC process.</p>
           <button id="login-submit" class="button primary" type="submit">Open console <span aria-hidden="true">→</span></button>
-          <p id="login-status" class="notice" role="status" aria-live="polite"></p>
+          <p id="login-status" class="notice" role="status" aria-live="polite" tabindex="-1"></p>
         </form>
         <p class="login-footnote">Writes are disabled by default. The OC process must explicitly enable them.</p>
       </section>
@@ -49,7 +50,7 @@
           <section class="objects-panel" aria-labelledby="objects-title">
             <div class="object-heading">
               <div><div class="eyebrow">OBJECT BROWSER</div><h2 id="objects-title">Choose a bucket</h2><p id="bucket-created" class="subtle"></p></div>
-              <button id="parent-prefix" class="button quiet" type="button" disabled><span aria-hidden="true">↑</span> Parent</button>
+              <div class="object-controls"><button id="open-settings" class="button quiet" type="button">Bucket settings</button><button id="parent-prefix" class="button quiet" type="button" disabled><span aria-hidden="true">↑</span> Parent</button></div>
             </div>
             <form id="prefix-form" class="prefix-form">
               <label for="prefix-input">Prefix</label>
@@ -78,6 +79,58 @@
         <p id="workspace-footnote" class="workspace-footnote">Read-only browsing. Downloads use your browser’s download manager. If a download fails, its error opens in a separate tab.</p>
       </section>
     </main>
+
+    <dialog id="settings-dialog" class="action-dialog settings-dialog" aria-labelledby="settings-title">
+      <div class="dialog-heading"><h2 id="settings-title">Bucket settings</h2><button id="close-settings" class="button quiet" type="button">Close</button></div>
+      <p class="dialog-description">Read and edit one complete setting at a time. Each request uses your configured identity. Bucket browsing permission is not required to enter a known bucket.</p>
+      <form id="settings-load-form" class="settings-load-form">
+        <div><label for="settings-bucket">Exact bucket name</label><input id="settings-bucket" type="text" autocomplete="off" spellcheck="false" required></div>
+        <div><label for="settings-kind">Setting</label><select id="settings-kind"><option value="policy">Bucket policy</option><option value="versioning">Versioning</option><option value="lifecycle">Lifecycle</option></select></div>
+        <button id="load-setting" class="button quiet" type="submit">Read setting</button>
+      </form>
+      <p id="settings-status" class="notice" role="status" aria-live="polite"></p>
+      <div id="settings-editor" hidden>
+        <p id="settings-scope" class="scope-line"></p>
+        <p id="settings-help" class="help"></p>
+        <label for="settings-document">Complete configuration</label><textarea id="settings-document" rows="12" autocomplete="off" spellcheck="false" aria-describedby="settings-help"></textarea>
+        <p class="help">The complete document is submitted as entered. Storage validates supported fields and may normalize the saved configuration. Reading over unsaved edits requires confirmation; a failed read keeps the draft. OC never retries a conflicting write automatically.</p>
+        <div class="dialog-footer settings-actions"><button id="remove-setting" class="button danger-quiet" type="button" disabled>Review removal</button><button id="save-setting" class="button primary" type="button" disabled>Review change</button></div>
+      </div>
+    </dialog>
+
+    <dialog id="settings-read-dialog" class="action-dialog" aria-labelledby="settings-read-title">
+      <div class="dialog-heading"><h2 id="settings-read-title">Replace unsaved draft?</h2><button id="back-setting-read" class="button quiet" type="button">Keep draft</button></div>
+      <p class="dialog-description">A successful read replaces the unsaved configuration in the editor. No storage setting is changed by reading.</p>
+      <p class="scope-line">Current draft <strong id="settings-read-current"></strong></p>
+      <p class="scope-line">Read next <strong id="settings-read-next"></strong></p>
+      <div class="dialog-footer"><button id="confirm-setting-read" class="button primary" type="button">Read and replace draft</button></div>
+    </dialog>
+
+    <dialog id="settings-review-dialog" class="action-dialog settings-dialog" aria-labelledby="settings-review-title">
+      <div class="dialog-heading"><h2 id="settings-review-title">Review bucket setting</h2><button id="back-settings" class="button quiet" type="button">Back</button></div>
+      <p class="scope-line">Bucket <strong id="settings-review-bucket"></strong></p>
+      <p class="scope-line">Setting <strong id="settings-review-kind"></strong></p>
+      <p id="settings-review-warning" class="dialog-description"></p>
+      <pre id="settings-review-document" class="scope-key setting-preview"></pre>
+      <p id="settings-review-status" class="notice" role="status" aria-live="polite"></p>
+      <div class="dialog-footer"><button id="confirm-setting" class="button danger" type="button">Apply this setting</button></div>
+    </dialog>
+
+    <dialog id="account-dialog" class="action-dialog" aria-labelledby="account-title">
+      <div class="dialog-heading"><h2 id="account-title">Current account</h2><button id="close-account" class="button quiet" type="button">Close</button></div>
+      <p class="dialog-description">This local process uses the alias chosen in your terminal. Bucket summaries indicate access at the bucket root; storage checks the exact operation and its conditions.</p>
+      <p id="self-account-status" class="notice" role="status" aria-live="polite"></p>
+      <p id="self-account-summary" class="scope-line"></p>
+      <ul id="account-buckets" class="account-buckets"></ul>
+      <p id="self-secret-help" class="help"></p>
+      <form id="self-secret-form" hidden>
+        <label for="new-secret">New secret key</label><input id="new-secret" type="password" autocomplete="new-password" spellcheck="false" required aria-describedby="self-secret-help">
+        <p class="help">Use 8–128 UTF-8 bytes. Your access key stays the same. After rotation, update the alias in your terminal and restart OC console; its old sessions cannot be reused.</p>
+        <p id="self-secret-status" class="notice" role="status" aria-live="polite" tabindex="-1"></p>
+        <div class="dialog-footer"><button id="review-secret" class="button danger-quiet" type="button">Review secret rotation</button></div>
+        <div id="secret-confirmation" class="secret-confirmation" hidden><p class="dialog-description">Rotate the secret for this process's current IAM identity? This stops the console and revokes all its local sessions. Stop active transfers and deletions before continuing.</p><div class="dialog-footer settings-actions"><button id="cancel-secret" class="button quiet" type="button">Back</button><button id="confirm-secret" class="button danger" type="submit">Rotate secret and stop console</button></div></div>
+      </form>
+    </dialog>
 
     <dialog id="upload-dialog" class="action-dialog" aria-labelledby="upload-title">
       <form id="upload-form">

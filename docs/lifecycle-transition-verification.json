@@ -1,0 +1,577 @@
+{
+  "dateUTC": "2026-10-08T13:06:05.322828+00:00",
+  "status": "passed",
+  "scope": "current and noncurrent lifecycle transition execution and version-specific restore on native single-node single-pool erasure; includes existing OC P2/P3 regression",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "goVersion": "go version go1.27.1 darwin/arm64",
+  "bases": {
+    "oc": "69a9e7ca8447df14301c4dcdf3f3e6e8f1ba9160",
+    "otterio": "6f6d0835ddff68020f1491c403b958fade22841f"
+  },
+  "modules": {
+    "otterio": "v0.0.0-20261008035209-6f6d0835ddff",
+    "storageSDK": "github.com/soulteary/otterio-sdk/v7 v7.3.1",
+    "lockFilesUnchanged": true,
+    "noModuleReplace": true,
+    "moduleCacheNotEdited": true
+  },
+  "binaries": {
+    "oc": {
+      "sha256": "715bc5c1c4f785515ea433b178e4e14d70783bd64b43b78651100e0917f9bee8",
+      "goVersion": "go1.27.1",
+      "platform": {
+        "CGO_ENABLED": "1",
+        "GOARCH": "arm64",
+        "GOOS": "darwin"
+      }
+    },
+    "oc-console": {
+      "sha256": "b42c13dd3719525be71b9b13a3afd5be1fe78084829b775743d5b25dfc4099d9",
+      "goVersion": "go1.27.1",
+      "platform": {
+        "CGO_ENABLED": "1",
+        "GOARCH": "arm64",
+        "GOOS": "darwin"
+      }
+    },
+    "otterio-with-transition": {
+      "sha256": "d7af7e6e5f1cedf16b1348ad32f90cc56fd6dbbf3ce88e1bf1e32194eaaabcd0",
+      "goVersion": "go1.27.1",
+      "platform": {
+        "CGO_ENABLED": "1",
+        "GOARCH": "arm64",
+        "GOOS": "darwin"
+      }
+    },
+    "otterio-unpatched": {
+      "sha256": "d93dcd4bd47ce89cce5781c64989b6199c831e015a7ebb5a1b1bc3c8fd69e2e4",
+      "goVersion": "go1.27.1",
+      "platform": {
+        "CGO_ENABLED": "1",
+        "GOARCH": "arm64",
+        "GOOS": "darwin"
+      }
+    },
+    "oc-console-linux-amd64": {
+      "sha256": "e2f61740a3c8aeab5e98886cd6cba7590db9da73bfc10baa8d54008cc64a0fdd",
+      "goVersion": "go1.27.1",
+      "platform": {
+        "CGO_ENABLED": "0",
+        "GOARCH": "amd64",
+        "GOOS": "linux"
+      }
+    },
+    "oc-console-windows-amd64": {
+      "sha256": "07470811c47785b4df403627ce09e421027ef4a2963e1d6e2f623a706a1f1ed0",
+      "goVersion": "go1.27.1",
+      "platform": {
+        "CGO_ENABLED": "0",
+        "GOARCH": "amd64",
+        "GOOS": "windows"
+      }
+    }
+  },
+  "patchProof": {
+    "dateUTC": "2026-10-08T13:00:06.785488+00:00",
+    "base": "6f6d0835ddff68020f1491c403b958fade22841f",
+    "patchSHA256": "a0281fc4489fc8c145f78bd1cb50eb41ae50252b812761ccc3340d4b626e18d9",
+    "patchApplies": true,
+    "workingSourceMatchesAppliedPatch": true,
+    "moduleFilesUnchanged": true,
+    "changedFileCount": 61,
+    "files": [
+      {
+        "path": "cmd/admin-bucket-handlers.go",
+        "sha256": "876ff456a1d14bfd7a3208d54f6a04d74e1d287ea4d0f2df11a73a58a463247a"
+      },
+      {
+        "path": "cmd/admin-self-credentials.go",
+        "sha256": "af76252720a6af2d4fefa2affc63325d277b76ac9814eed39db3a71daaf17492"
+      },
+      {
+        "path": "cmd/admin-self-credentials_test.go",
+        "sha256": "af64f0e9043ef3f6aa37ba248bae82e9f81406f1c15e0f87ba20867ce6ed93a1"
+      },
+      {
+        "path": "cmd/api-headers.go",
+        "sha256": "ad01d78e4ef2dbb134c375bbded34d581a71860d13e2fdf33adc243d17da3dd9"
+      },
+      {
+        "path": "cmd/bucket-config-conditional.go",
+        "sha256": "9d652d289988d224225a18e5de6e40145347205dc885c4a39f3a45dbad73e9c4"
+      },
+      {
+        "path": "cmd/bucket-config-conditional_test.go",
+        "sha256": "499dec4db3b995ff22f6ac685379798654476fae5b8e51c8212c3cba41b53217"
+      },
+      {
+        "path": "cmd/bucket-config-replication_test.go",
+        "sha256": "f2917920e6a2caa61b8991e5aa70d1a99e30239313aefa42be9965f2137f7887"
+      },
+      {
+        "path": "cmd/bucket-config-validation.go",
+        "sha256": "1a1f152e2d28305d782cb16d33ce01c92f6a725d78c5b98a837e7e03402bf911"
+      },
+      {
+        "path": "cmd/bucket-handlers.go",
+        "sha256": "616d1781cd537e5ef75a3c6659df77205c18fe42b16a06a2c412ead11b5ee0dd"
+      },
+      {
+        "path": "cmd/bucket-lifecycle-handlers.go",
+        "sha256": "a5baa748c966e5cea385fc3f5a441f011101837b43cba87513eed16bfccdb12f"
+      },
+      {
+        "path": "cmd/bucket-lifecycle-runtime_test.go",
+        "sha256": "b10b025e2e604f71ca0e2ee7972a7cc8430926657914de5c291d0a51ad8f4266"
+      },
+      {
+        "path": "cmd/bucket-lifecycle-transition_test.go",
+        "sha256": "47bf3d9017dad99e631d89f0512d7fa63e1dc58d4e792237ec6a2439279ef0ee"
+      },
+      {
+        "path": "cmd/bucket-lifecycle.go",
+        "sha256": "17111d5e3ac5dee11ca047d5042d8a43e434a4d971f6b1e045dd95c6afa521ea"
+      },
+      {
+        "path": "cmd/bucket-metadata-sys.go",
+        "sha256": "88c9145debe6d94b7c25313ab1b1bc986069b95b9b3805d708d97bb87c40678b"
+      },
+      {
+        "path": "cmd/bucket-metadata.go",
+        "sha256": "c76cb0700a97fc1fda18467afff3023befd358b452850f182a111052709264e5"
+      },
+      {
+        "path": "cmd/bucket-policy-handlers.go",
+        "sha256": "fecc31263039b44a29a2a5dc7a1b366c770dc5cf7718e749f2dddccc9aaeb847"
+      },
+      {
+        "path": "cmd/bucket-targets-registry.go",
+        "sha256": "4857e6a3b5bcc2324ce914dc315865d74d5408fc230c8ce843e474eb43e22e10"
+      },
+      {
+        "path": "cmd/bucket-targets-safety_test.go",
+        "sha256": "58b1bf50e51141c540bc4f064c3ab8bfbe103f0ed662bd72913ea859d50e5461"
+      },
+      {
+        "path": "cmd/bucket-targets.go",
+        "sha256": "ad862d9f16e17ca3aa86980131c96a89b0db57240f2754d94727f159912df89a"
+      },
+      {
+        "path": "cmd/bucket-versioning-handler.go",
+        "sha256": "80f6e8b206c3a3c050ada797e33204663adc4a3306ae7bc51a0162ae4e85a14f"
+      },
+      {
+        "path": "cmd/configuration-body.go",
+        "sha256": "bf4e83ed6a609c524f5d2a9dba4c97c02ea7a3b4e30d2e72ff02de8d38777d98"
+      },
+      {
+        "path": "cmd/configuration-body_test.go",
+        "sha256": "17352fa16c8a778645333879fdf46714c62014fd4a288d5f63d19733e074f3ab"
+      },
+      {
+        "path": "cmd/configuration-json.go",
+        "sha256": "180daee7e6b1603cae8ef37620e4a86d55fcab9f43a3a231407a5e3dc1ef63a7"
+      },
+      {
+        "path": "cmd/configuration-json_test.go",
+        "sha256": "96e2f94f953966e098620d654ec6ec88ae60a1ae863c8965cb054b23549e4239"
+      },
+      {
+        "path": "cmd/configuration-transport.go",
+        "sha256": "9225ee1d219c3d33449849e1013c9ee23bb3fd75295a318f4f7524fc3b13fb16"
+      },
+      {
+        "path": "cmd/configuration-transport_test.go",
+        "sha256": "301ac0a4be65882aab5ececcac49f8d850f7c724f516013b0d532a70689233c0"
+      },
+      {
+        "path": "cmd/data-scanner-expiry_test.go",
+        "sha256": "6dc0dbf69ee15a917e7a181c2f5f49906e7442e5566c2c46875a9edc5bd30b37"
+      },
+      {
+        "path": "cmd/data-scanner-transition_test.go",
+        "sha256": "e73b8cd0bc254ae02115f2917544740670bc9ca4f78b07e8b56a18909bb44af1"
+      },
+      {
+        "path": "cmd/data-scanner.go",
+        "sha256": "31293fabd464f0be2267e58f822ccfcda1a51ae70fd98ab8376f32fd1d646a02"
+      },
+      {
+        "path": "cmd/erasure-healing-common.go",
+        "sha256": "ed82e94e33de9cae852fe0cce5c73f34e6050d08110afe140c75093a8ef6c716"
+      },
+      {
+        "path": "cmd/erasure-healing.go",
+        "sha256": "9ee4c836a32f865a4ea0f438ef71c7e6866e0f1c949c62d0f0d6521b3d86b350"
+      },
+      {
+        "path": "cmd/erasure-metadata.go",
+        "sha256": "51eedba44c620b08c3a1749a21371f858d2eb85704c070b2d231fb885ce1143f"
+      },
+      {
+        "path": "cmd/erasure-object.go",
+        "sha256": "39433be31dd2aba0f2372b05592365022f748e44a4f815c1228859973d1cc216"
+      },
+      {
+        "path": "cmd/erasure-server-pool.go",
+        "sha256": "57d6fcc7fc77451be44544a306d71c00467ebc2e16236e6c89846078b566d2e9"
+      },
+      {
+        "path": "cmd/erasure-sets.go",
+        "sha256": "3e0ddda5065b4def9cc2a0415f1296d92f8e6f33f47001260dc17ebb55545f52"
+      },
+      {
+        "path": "cmd/fiber_admin_router.go",
+        "sha256": "bbf46ee298e2ea72f64a2897e277f559f47755fd6ae2878a3c04bfceda61a0df"
+      },
+      {
+        "path": "cmd/fiber_ctx.go",
+        "sha256": "188fc8b296069628fcd15736965bc4c0cd0e45b40f298d3ff06fed8bf30fae3c"
+      },
+      {
+        "path": "cmd/fiber_router.go",
+        "sha256": "2615674a92390ffe1898449b2f5108659da69dfa0e3b454e8a4b9b5ed2970c68"
+      },
+      {
+        "path": "cmd/fs-v1.go",
+        "sha256": "e028170fcd6b9bfdb9340f424c92b3fa8fbe2cbd57a864cbdf780c31f2222a5f"
+      },
+      {
+        "path": "cmd/notification.go",
+        "sha256": "1a3fafe0339bd6036101ddd9cb913bd6aafd3fab1746d86d5287db4d74c5eb26"
+      },
+      {
+        "path": "cmd/object-api-datatypes.go",
+        "sha256": "0f2d66e0ce139200d25e55a7d7d8f0b5d3032e20fed962a588f4e9b8e016bd9b"
+      },
+      {
+        "path": "cmd/object-api-interface.go",
+        "sha256": "c6a53fb92767483c1a7a474934b49fd0200aec0b8be4a8a672e123cf0d2ccd73"
+      },
+      {
+        "path": "cmd/object-handlers-common.go",
+        "sha256": "c54f31c115086f71198dcd2b172cb5fbd8913ed6282973f484422ab49b96c53d"
+      },
+      {
+        "path": "cmd/object-handlers-lifecycle-header_test.go",
+        "sha256": "bb52ff999cfa0bb8d42c668bb2bc8bde87e01bf43d6ac84b78b236880b150ceb"
+      },
+      {
+        "path": "cmd/object-handlers.go",
+        "sha256": "36559541f7b926143b5feb21ab9943d374ac5026ccc462aecf88820d4b8465ce"
+      },
+      {
+        "path": "cmd/object-headers-transition_test.go",
+        "sha256": "9cf1f53ae09f1a5ad5910cd4cf759541d50e6835eea54b61e3d292ad52a9c4d1"
+      },
+      {
+        "path": "cmd/peer-rest-client.go",
+        "sha256": "23a3f480ce68f5f0bad41eb7e25175d1e33a5bc3538ef4b17ad7f8e46ac26173"
+      },
+      {
+        "path": "cmd/peer-rest-server.go",
+        "sha256": "fe9d8a4248c0fa6e979508894bcba52a7dc12f633bbdcacebe252c91c5698621"
+      },
+      {
+        "path": "cmd/transition-delete-intent-storage_test.go",
+        "sha256": "04a3096e25017ae30fc45aa268a44f27cd7ae912b8782ae471fff9711b9616d2"
+      },
+      {
+        "path": "cmd/transition-reference.go",
+        "sha256": "904a032b7ad33420d9bfe401bd5dc607094a01cc355deb3db8aca2fb3e73f9ea"
+      },
+      {
+        "path": "cmd/transition-restore-events_test.go",
+        "sha256": "09276ccf373b24abbc61aee158aad56269eb6223d798cc1b449df10148ce59a6"
+      },
+      {
+        "path": "cmd/transition-restore-parts.go",
+        "sha256": "a8aae26c405a39e242a8cd778b78887160d4d1d13e09860921c20da3cdf07a65"
+      },
+      {
+        "path": "cmd/transition-storage_test.go",
+        "sha256": "27278a5bfa360a61a7dffa3caff0ba9cfd210fa0b37aa6cb64fbd7a089d49da6"
+      },
+      {
+        "path": "cmd/web-handlers.go",
+        "sha256": "8b22a24e5650802efad2c181df7a7e86d12b8f29bc697273668dee20be0a015b"
+      },
+      {
+        "path": "cmd/xl-storage-format-v2.go",
+        "sha256": "b701d683b1c3caadf374d5203b273192fc27907e4172061c1f10428a1cacf992"
+      },
+      {
+        "path": "cmd/xl-storage-inline-replacement_test.go",
+        "sha256": "404e2ea5346e45f482af46ff66ed7e22aea39e47e3782c79c359ec46ab7d9a13"
+      },
+      {
+        "path": "cmd/xl-storage.go",
+        "sha256": "5c52123e0e4eb2b7562c73758bbe65baf70f31330d76494d2083889f5ed11640"
+      },
+      {
+        "path": "pkg/bucket/lifecycle/filter.go",
+        "sha256": "ca34166e601efd1c316d556a4352272cf696d372df5c8b49dc310e1a85f3d93c"
+      },
+      {
+        "path": "pkg/bucket/lifecycle/lifecycle.go",
+        "sha256": "b446055d6e4ae08e953f4c5c80fc59a63af04e18d28cc2eaf388f197b59bae08"
+      },
+      {
+        "path": "pkg/bucket/lifecycle/lifecycle_selection_test.go",
+        "sha256": "d1e6d3fea11ddaec878d4708bb619fbdc4a7693612a49f6ba85639377d627e82"
+      },
+      {
+        "path": "pkg/bucket/lifecycle/lifecycle_tagged_actions_test.go",
+        "sha256": "1a9757c1e75ef91d163ab17490ef5b02a328ecd3bfc4e99c1ac8ae4d3ea50635"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "exact patched server affected cmd race",
+      "status": "passed",
+      "logSHA256": "878b998c851a5a7f4230e666082bcc23e3f6b81933b68c66e22ac3ceeed11d27",
+      "output": "ok  \tgithub.com/soulteary/otterio/cmd\t56.543s",
+      "selector": "TestBucketConfig|TestSelfCredentials|TestBucketTarget|TestTransition|TestXLStorageInline|TestLifecycleTransition|TestLifecycleQueues|TestScannerLifecycle|TestExpiry|TestParseRestore|TestRestoreRequest|TestBeginRestore|TestRestoredVersion|TestPutObjectExpiry|TestConfiguration|TestFiber|TestGetBucket|TestPutBucket|TestDeleteBucket|TestAccountInfo|TestFindFileInfoInQuorum|TestXLV2FormatData|TestErasureDeleteObjectBasic|TestErasureDeleteObjectsErasureSet|TestBucketMetadata",
+      "count": 1
+    },
+    {
+      "name": "exact patched server full lifecycle package race",
+      "status": "passed",
+      "logSHA256": "f0cbbf2014160c27dafc171e4d7179831f93acf78634f1e9584c41d18903a936",
+      "output": "ok  \tgithub.com/soulteary/otterio/pkg/bucket/lifecycle\t1.700s",
+      "count": 1
+    },
+    {
+      "name": "OC final affected packages race",
+      "status": "passed",
+      "logSHA256": "bf5aeeb9c25b4fe28f2b7d04f1a3fdc322e9c7c97e80350d8dac104bdfb89384",
+      "output": "ok  \tgithub.com/soulteary/mc/internal/clienttransport\t(cached)\nok  \tgithub.com/soulteary/mc/internal/console\t4.124s\nok  \tgithub.com/soulteary/mc/cmd/oc-console\t1.945s\nok  \tgithub.com/soulteary/mc/cmd\t42.475s",
+      "packages": [
+        "internal/clienttransport",
+        "internal/console",
+        "cmd/oc-console",
+        "cmd"
+      ]
+    },
+    {
+      "name": "OC complete storageclient race",
+      "status": "passed",
+      "logSHA256": "f9026f711a43ca322904e054f8704f8d9f45b6dd131f99350a992862f0c62325",
+      "output": "ok  \tgithub.com/soulteary/mc/internal/storageclient\t23.302s",
+      "count": 1
+    },
+    {
+      "name": "OC lint",
+      "status": "passed",
+      "logSHA256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+      "output": "0 issues."
+    },
+    {
+      "name": "exact patched server cmd and lifecycle lint",
+      "status": "passed",
+      "logSHA256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+      "output": "0 issues."
+    },
+    {
+      "name": "OC vet ./...",
+      "status": "passed",
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "exact patched server vet cmd and lifecycle",
+      "status": "passed",
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "console front end behavior",
+      "status": "passed",
+      "logSHA256": "1bf95b296312201b08822c8e46978cb8903e62e3db025c82b70820f32a0e1614",
+      "output": "PASS P2 raw file upload sends original File and 100% progress does not confirm storage\nPASS P2 empty prefix plans are reviewable and complete without object deletion\nPASS P2 only explicit busy rejection permits reuse of a deletion confirmation\nPASS P2 expired recovered tasks stop polling without inventing a final outcome\nPASS known bucket settings work without bucket listing and root summaries do not gate writes\nPASS a denied setting does not prevent another kind from loading\nPASS readonly, missing conditional support, and invalid revisions cannot submit writes\nPASS review and save use immutable loaded scope, complete bytes, CSRF and revision\nPASS removal requires review and retains exact bucket/kind without fake version removal\nPASS 412 and unknown setting outcomes preserve drafts and require fresh reads without replay\nPASS closed, canceled, and superseded setting reads cannot restore stale editor content\nPASS an interrupted save requires reading storage before another write and ignores late acknowledgement\nPASS secret rotation is available only for writable enabled IAM identity\nPASS account errors and late responses cannot enable rotation or disturb browsing\nPASS secret byte limits are checked and cancel/close/logout erase input without submitting\nPASS confirmed rotation clears secret immediately and stops all session actions\nPASS unknown rotation, transport loss and page suspension stop the UI without replay\nPASS explicit zero-write 501/502/403 rotation failures retain session and refresh identity\nPASS ambiguous 5xx, explicit retirement and malformed success must still stop rotation UI\nPASS setting save displays server canonical document and uses its fresh revision for the next review\nPASS active-task rejection clears secret and requires a new human review\nPASS an invalid CSRF response clears all configuration and credential drafts\nPASS reading another setting cannot discard a dirty draft without confirmation or on failure\nPASS malformed successful setting acknowledgement blocks another confirmation and retains draft\nPASS redirects and incomplete successful setting DTOs require fresh reads without another write\nPASS logout during secret submission reports an unknown outcome and ignores late confirmation\nPASS logout clears complete configuration review text as well as editor and secret inputs\nPASS repeated confirmation cannot send concurrent settings writes or secret rotations\nPASS read confirmation keeps immutable requested scope and ignores late replies after window rotation\n29/29 console web behavior groups passed",
+      "groups": 29
+    },
+    {
+      "name": "acceptance helper tests",
+      "status": "passed",
+      "logSHA256": "72f09eca554e87a45b7156c6109520cf15e8b6ec157dc5c033610649b49b8698",
+      "output": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.001s\n\nOK",
+      "tests": 12
+    },
+    {
+      "name": "maintenance tests",
+      "status": "passed",
+      "logSHA256": "37a9d293871f107cd4d096a571d750523778ae7558c28bdf615d97d57bf3734a",
+      "output": "..............\n----------------------------------------------------------------------\nRan 14 tests in 0.556s\n\nOK",
+      "tests": 14
+    },
+    {
+      "name": "release boundary tests",
+      "status": "passed",
+      "logSHA256": "6e29062560a810e34974238d1edc7366042cfd36265fe69f4daa6e2019d14513",
+      "output": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.286s\n\nOK"
+    },
+    {
+      "name": "release boundaries",
+      "status": "passed",
+      "logSHA256": "a36212686303f159f32a80506759471b444e136777187d01fd8229f112a0de89",
+      "output": "OC release boundaries verified"
+    },
+    {
+      "name": "exact patched server dependencies verified",
+      "status": "passed",
+      "logSHA256": "b4537ed75f533f993f371954de47e42a793b8e5b0587577de7e27fb3e50696bd",
+      "output": "all modules verified"
+    },
+    {
+      "name": "OC module verification",
+      "status": "passed",
+      "output": "all modules verified"
+    },
+    {
+      "name": "workflow YAML syntax",
+      "status": "passed",
+      "parser": "Ruby Psych"
+    },
+    {
+      "name": "Linux amd64 and Windows amd64 console cross builds",
+      "status": "passed",
+      "nativeExecution": false
+    },
+    {
+      "name": "final patch, working server source and exact applied source equivalence",
+      "status": "passed",
+      "files": 61
+    },
+    {
+      "name": "process acceptance binary, patch and current harness hash consistency",
+      "status": "passed"
+    }
+  ],
+  "reports": [
+    {
+      "name": "lifecycle-transition-integration-results.json",
+      "sha256": "85289bfb2a7011a7538e21583b78294021da17051068cb34ff050678e5464349",
+      "status": "passed",
+      "scenarios": 2,
+      "groupsPerScenario": 9
+    },
+    {
+      "name": "lifecycle-transition-settings-results.json",
+      "sha256": "e5035b77be666526e3b1f2ab122d40fdded4688e184cb6866b415b3bed7a92fb",
+      "status": "passed",
+      "scenarios": 4,
+      "groupsPerScenario": 20
+    },
+    {
+      "name": "lifecycle-transition-legacy-results.json",
+      "sha256": "603de67103d80db4e68521c5012dc1c813d13ba2db321aaedd5abf35962b34f2",
+      "status": "passed",
+      "scenarios": 4,
+      "groupsPerScenario": 12
+    },
+    {
+      "name": "lifecycle-transition-object-regression-results.json",
+      "sha256": "bc7b8fc9288749918b98d71096a582eb3a3da53db69f0c16930fde7ce6e2a0e3",
+      "status": "passed",
+      "scenarios": 4,
+      "groupsPerScenario": 21
+    }
+  ],
+  "regressionEvidence": [
+    {
+      "finding": "storage class header depended on removed lifecycle rules",
+      "logSHA256": "39d4359d5cf867a0534a084b0d5b3625af7887f8bed0aee6db27f9f06fa854cf",
+      "resolved": true
+    },
+    {
+      "finding": "recorder header fixture needed canonical header lookup",
+      "logSHA256": "25668030f9dec5f89f30bf55ba9d1aee53eadd4e38beff189b5b2e8b9553b984",
+      "resolved": true
+    },
+    {
+      "finding": "restored encrypted/compressed multipart GET and HEAD returned different classes",
+      "logSHA256": "51c27c8a921425b19f7ab35fc310e27f80f4f425c883c7cc92441c04339bc7c1",
+      "resolved": true
+    },
+    {
+      "finding": "eight-disk EC:2 partial inline cleanup split GET metadata quorum",
+      "logSHA256": "216ce9bd7fc81d8e6b7f58283b2c6b4213e2bb641fbe268bbe879e711ecb3c5a",
+      "resolved": true
+    },
+    {
+      "finding": "known native missing-target errors were treated as uncertain writes",
+      "logSHA256": "09b88e67452a64b9e30bd508b8be29308bd44dbe60aa4afadbdf83a8898aea13",
+      "resolved": true
+    },
+    {
+      "finding": "inline small-to-large overwrite retained the previous payload",
+      "logSHA256": "49c3e30d028ba10f882fbdd39e7f2f9f0f48c1f4158deb14bb564d167729963c",
+      "resolved": true
+    }
+  ],
+  "historicalReports": [
+    {
+      "name": "lifecycle-transition-integration-fifth.json",
+      "sha256": "f9344302a601aeb140dd1e50834c657514a835ae9a4367dbc8650139523111d1",
+      "originalStatus": "passed",
+      "historicalOnly": true
+    },
+    {
+      "name": "lifecycle-transition-integration-first.json",
+      "sha256": "3649756e06e9f4aea1dae8a8db334ab5a1bf84ea7b29a0c03e850f7e3b9aef72",
+      "originalStatus": "failed",
+      "historicalOnly": true
+    },
+    {
+      "name": "lifecycle-transition-integration-fourth.json",
+      "sha256": "da6b892414a69881fb36052752a6f18618b4eda26a120cdb293fde3d6fd86584",
+      "originalStatus": "failed",
+      "historicalOnly": true
+    },
+    {
+      "name": "lifecycle-transition-integration-second.json",
+      "sha256": "6c74769774c6d36024fbc330f28066a4f88cb7d0c21774ff9bc5e6fb31a191a4",
+      "originalStatus": "failed",
+      "historicalOnly": true
+    },
+    {
+      "name": "lifecycle-transition-integration-third.json",
+      "sha256": "06e06353fad4f8cfbc998727e9d25f33f8132d3356671d2549dc9ec6137e4075",
+      "originalStatus": "passed",
+      "historicalOnly": true
+    },
+    {
+      "name": "lifecycle-transition-legacy-intermediate.json",
+      "sha256": "315f428bbf69de037e005a42c9539815db70bd98adc8e8a73a3ee4a4a60a6665",
+      "originalStatus": "failed",
+      "historicalOnly": true
+    },
+    {
+      "name": "lifecycle-transition-settings-intermediate.json",
+      "sha256": "55152bd1308296bffe5a4c27ea0750d5ad4be80c01f8f340257943aa12c97a8e",
+      "originalStatus": "failed",
+      "historicalOnly": true
+    }
+  ],
+  "independentReview": {
+    "scope": "prepare/commit, durable target references, scanner retry, version restore, expiry/delete, response metadata and events",
+    "unresolvedConfirmedFindings": 0,
+    "note": "Bounded review and tests; not proof of absence of all defects."
+  },
+  "notValidated": [
+    "Full OtterIO test suite and remote CI execution",
+    "Distributed clusters, gateways, filesystem tiering and multi-pool erasure",
+    "External S3 providers, remote retention policies and provider-specific version allocation",
+    "Disk exhaustion, prolonged soak and every erasure layout",
+    "Native Linux/Windows execution (cross builds only)",
+    "OC historical-version browser and restore buttons; existing editor and native S3 request used",
+    "SELECT restore output persistence and NewerNoncurrentVersions",
+    "Automatic migration of legacy tier references whose original configuration is gone or ambiguous"
+  ],
+  "delivery": {
+    "serverPatchRequired": true,
+    "serverPinUpdated": false,
+    "released": false,
+    "oldWebRemoved": false
+  }
+}

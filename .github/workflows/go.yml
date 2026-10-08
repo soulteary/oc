@@ -60,6 +60,7 @@ jobs:
           go mod download
           python3 buildscripts/test-maintenance.py
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_console_*.py' -v
+          node buildscripts/test-console-web.js
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_release_*.py' -v
           python3 buildscripts/verify-release-boundaries.py
           go mod verify
@@ -217,6 +218,7 @@ jobs:
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio" \
             --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --settings-legacy \
             --output "$RUNNER_TEMP/console-integration.json"
       - name: Verify opt-in console writes and cancellation
         run: |
@@ -225,6 +227,44 @@ jobs:
             --server "$RUNNER_TEMP/otterio" --writes \
             --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
             --output "$RUNNER_TEMP/console-write-integration.json"
+      - name: Apply and verify the optional P3 server protocol
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          # P3 remains opt-in until this protocol is released and pinned.
+          cd "$RUNNER_TEMP/otterio-source"
+          git apply "$GITHUB_WORKSPACE/buildscripts/console-server-p3.patch"
+          go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestBucketTarget|TestTransition|TestXLStorageInline|TestLifecycleTransition|TestLifecycleQueues|TestScannerLifecycle|TestExpiry|TestParseRestore|TestRestoreRequest|TestBeginRestore|TestRestoredVersion|TestPutObjectExpiry' -count=1
+          go test -mod=readonly ./pkg/bucket/lifecycle -count=1
+          if [[ "$CGO_ENABLED" == "1" ]]; then
+            go test -mod=readonly -race ./pkg/bucket/lifecycle -count=1
+          fi
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio-p3" .
+      - name: Verify protected bucket settings and own IAM rotation
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio-p3" --settings \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-patch buildscripts/console-server-p3.patch \
+            --output "$RUNNER_TEMP/console-settings-integration.json"
+      - name: Verify object writes after P3 metadata changes
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio-p3" --writes \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-patch buildscripts/console-server-p3.patch \
+            --output "$RUNNER_TEMP/console-p3-object-regression.json"
+      - name: Verify durable lifecycle execution and restore against a separate tier
+        run: |
+          python3 buildscripts/test-lifecycle-transition-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio-p3" \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-patch buildscripts/console-server-p3.patch \
+            --output "$RUNNER_TEMP/lifecycle-transition-integration.json"
       - name: Upload compatibility results
         if: always()
         uses: actions/upload-artifact@v4
@@ -235,6 +275,9 @@ jobs:
             ${{ runner.temp }}/core-evidence/
             ${{ runner.temp }}/console-integration.json
             ${{ runner.temp }}/console-write-integration.json
+            ${{ runner.temp }}/console-settings-integration.json
+            ${{ runner.temp }}/console-p3-object-regression.json
+            ${{ runner.temp }}/lifecycle-transition-integration.json
 
   inventory:
     name: Binary dependency inventory

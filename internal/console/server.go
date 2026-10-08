@@ -73,12 +73,14 @@ type Server struct {
 
 	mu            sync.Mutex
 	closed        bool
+	rotating      bool
 	sessions      map[[32]byte]*session
 	loginWindow   time.Time
 	loginCount    int
 	apiSlots      chan struct{}
 	downloads     chan struct{}
 	writer        consoleapi.MutationBackend
+	settings      consoleapi.SettingsBackend
 	maxUploadSize int64
 	jobs          map[string]*job
 	writeSlots    chan struct{}
@@ -123,12 +125,13 @@ func New(cfg Config) (*Server, error) {
 		}
 	}
 	life, stopLife := context.WithCancel(context.Background())
+	settings, _ := cfg.Backend.(consoleapi.SettingsBackend)
 	return &Server{
 		backend: cfg.Backend, alias: cfg.Alias, origin: "http://" + u.Host,
 		host: u.Host, code: sha256.Sum256([]byte(cfg.LoginCode)), ttl: cfg.SessionTTL,
 		assets: web.FS(), sessions: make(map[[32]byte]*session),
 		apiSlots: make(chan struct{}, 8), downloads: make(chan struct{}, 2),
-		writer: writer, maxUploadSize: cfg.MaxUploadSize, jobs: make(map[string]*job), writeSlots: make(chan struct{}, 2), planSlots: make(chan struct{}, 2), life: life, stopLife: stopLife, streamIdle: 30 * time.Second,
+		writer: writer, settings: settings, maxUploadSize: cfg.MaxUploadSize, jobs: make(map[string]*job), writeSlots: make(chan struct{}, 2), planSlots: make(chan struct{}, 2), life: life, stopLife: stopLife, streamIdle: 30 * time.Second,
 	}, nil
 }
 
@@ -179,9 +182,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	closed := s.closed
+	rotating := s.rotating
 	s.mu.Unlock()
 	if closed {
 		writeError(w, http.StatusServiceUnavailable, "console_closed", "The console has stopped.")
+		return
+	}
+	// Logout must remain available while writes are paused. It revokes only
+	// this browser session and cancels its request; Origin and CSRF checks
+	// still run below. Storage actions and new logins remain blocked.
+	if rotating && r.URL.Path != "/api/logout" {
+		writeError(w, http.StatusServiceUnavailable, "credential_change_pending", "The account secret is being changed. Wait for the result before restarting OC.")
 		return
 	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") {
@@ -197,6 +208,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.isJobRoute(r.URL.Path) {
 		s.serveJobs(w, r)
+		return
+	}
+	if s.isSettingsRoute(r.URL.Path) {
+		s.serveSettings(w, r)
 		return
 	}
 	method := http.MethodGet
@@ -397,12 +412,17 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(s.life)
 	sess := &session{csrf: csrf, expires: time.Now().Add(s.ttl), ctx: ctx, cancel: cancel}
 	s.mu.Lock()
-	if s.closed || len(s.sessions) >= maxSessions {
+	// A login can finish reading its body after another request starts
+	// rotating credentials. Recheck the pause at the session commit point.
+	if s.closed || s.rotating || len(s.sessions) >= maxSessions {
 		closed := s.closed
+		rotating := s.rotating
 		s.mu.Unlock()
 		cancel()
 		if closed {
 			writeError(w, http.StatusServiceUnavailable, "console_closed", "The console has stopped.")
+		} else if rotating {
+			writeError(w, http.StatusServiceUnavailable, "credential_change_pending", "The account secret is being changed. Wait for the result before restarting OC.")
 		} else {
 			writeError(w, http.StatusTooManyRequests, "too_many_sessions", "Too many console sessions are open. Close an existing session or wait for it to expire.")
 		}

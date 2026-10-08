@@ -75,6 +75,7 @@ build-console:
 
 test-console:
 	@GO111MODULE=on go test -mod=readonly ./internal/clienttransport ./internal/storageclient ./internal/console/... ./cmd/oc-console
+	@node buildscripts/test-console-web.js
 
 # Builds OC and installs it to $GOPATH/bin.
 install: build

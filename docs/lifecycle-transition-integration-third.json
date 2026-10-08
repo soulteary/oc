@@ -1,0 +1,35 @@
+{
+  "dateUTC": "2026-10-08T11:25:17.502130+00:00",
+  "status": "passed",
+  "scope": "independent source and tier processes, four-disk erasure, actual scanner, OC protected lifecycle writes",
+  "serverSource": "6f6d0835ddff68020f1491c403b958fade22841f",
+  "serverPatchSHA256": "3d1dfae9883c669342870147fd9f1e252a4cae429fcecf7cfc97ac25322ea923",
+  "binaries": {
+    "oc": {
+      "sha256": "14df6a691a68e0bab7375d527a84f4317678cad2c7c6d4fb0ef88f16837b28f5"
+    },
+    "oc-console": {
+      "sha256": "38bdbc52e203628e8f8788c823723665044bbb00a42cbb10ec74580d0a9d0462"
+    },
+    "otterio": {
+      "sha256": "6cd0aeb75273d247d8f65e6ca45504af7da4a23d7bd59680d4e498de6c44bfff"
+    }
+  },
+  "harnessSHA256": "242b14f718e93b62b906a98799f437d0f8f4efd99f2a2bf3686e24f94db3cf00",
+  "scenarios": [
+    {
+      "scenario": "single-http",
+      "checks": [
+        "OC registers two independent ILM labels and distinct ARNs on the remote service",
+        "OC protects and saves complete mixed lifecycle XML, then reads the new canonical document and revision",
+        "real scanners select the due rule, transition noncurrent versions and empty objects, and preserve latest/filter-mismatched data",
+        "source restart, rule deletion and current-to-noncurrent changes retain exact remote versions, metadata and range reads",
+        "durable target references prevent removing both destinations after lifecycle deletion and restart",
+        "version-specific restore serves local data during tier outage; failed remote deletion preserves the source recovery reference",
+        "single and bulk permanent deletes remove exact tier versions before source references; drained targets can be removed",
+        "synthetic OC aliases remain unchanged and all owned fixture processes are stopped"
+      ],
+      "status": "passed"
+    }
+  ]
+}

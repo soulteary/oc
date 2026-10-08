@@ -22,6 +22,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/soulteary/mc/pkg/probe"
 	"github.com/soulteary/otterio/pkg/console"
+	"github.com/soulteary/otterio/pkg/madmin"
 	"github.com/urfave/cli/v3"
 )
 
@@ -82,7 +83,12 @@ func mainAdminBucketRemoteRemove(ctx *cli.Command) error {
 	if arn == "" {
 		fatalIf(errInvalidArgument(), "ARN needs to be specified.")
 	}
-	fatalIf(probe.NewError(client.RemoveRemoteTarget(globalContext, sourceBucket, arn)).Trace(args...), "Unable to remove remote target")
+	parsedARN, err := madmin.ParseARN(arn)
+	fatalIf(probe.NewError(err), "Invalid remote target ARN")
+	if parsedARN.Type == madmin.ILMService {
+		fatalIf(probe.NewError(requireLifecycleTargetProtocol(globalContext, aliasedURL, sourceBucket)), "Unable to verify lifecycle target support")
+	}
+	fatalIf(probe.NewError(client.RemoveRemoteTarget(globalContext, sourceBucket, arn)), "Unable to remove remote target")
 
 	printMsg(RemoteMessage{
 		op:           ctx.Name,

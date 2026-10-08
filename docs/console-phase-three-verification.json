@@ -1,0 +1,216 @@
+{
+  "dateUTC": "2026-10-08T10:15:38.812899+00:00",
+  "status": "passed",
+  "scope": "P3 local bucket settings and own native IAM rotation, independently audited; unsupported noncurrent transition writes rejected",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "goVersion": "go version go1.27.1 darwin/arm64",
+  "bases": {
+    "oc": "69a9e7ca8447df14301c4dcdf3f3e6e8f1ba9160",
+    "otterio": "6f6d0835ddff68020f1491c403b958fade22841f"
+  },
+  "binaries": {
+    "oc": "a2e7b985778b814f3b4804b6de9532fa4bd35100c76e22a6f8e9d349ba1d4d38",
+    "oc-console": "38bdbc52e203628e8f8788c823723665044bbb00a42cbb10ec74580d0a9d0462",
+    "otterio-with-p3": "cbc1a96f68d282947e4818bebdb06ee3e3cd8875aab83b2eaf44f93cfec76745",
+    "otterio-unpatched": "888fcb6d20ec437110288214f49e2140bc42ae71e781e1b2ad85cdbd20ad0f39",
+    "oc-console-linux-amd64": "a1d0aa62614822c836fbdf21b9f4c9cc637ed0c3aacd034cd210d72f044692fd",
+    "oc-console-windows-amd64": "bb7ae5f5e47eb550af2b6dc4b81fa3e4dbe3e80345fe6e30bb7a604561ec27f8"
+  },
+  "patchProof": {
+    "serverBase": "6f6d0835ddff68020f1491c403b958fade22841f",
+    "patchSha256": "04e8553175d0de9fb448f2167d33d48e45d03407f57335dce2b939d969b30001",
+    "changedFiles": [
+      "cmd/admin-self-credentials.go",
+      "cmd/admin-self-credentials_test.go",
+      "cmd/bucket-config-conditional.go",
+      "cmd/bucket-config-conditional_test.go",
+      "cmd/bucket-config-replication_test.go",
+      "cmd/bucket-config-validation.go",
+      "cmd/bucket-handlers.go",
+      "cmd/bucket-lifecycle-handlers.go",
+      "cmd/bucket-lifecycle.go",
+      "cmd/bucket-metadata-sys.go",
+      "cmd/bucket-metadata.go",
+      "cmd/bucket-policy-handlers.go",
+      "cmd/bucket-versioning-handler.go",
+      "cmd/configuration-body.go",
+      "cmd/configuration-body_test.go",
+      "cmd/configuration-json.go",
+      "cmd/configuration-json_test.go",
+      "cmd/configuration-transport.go",
+      "cmd/configuration-transport_test.go",
+      "cmd/erasure-server-pool.go",
+      "cmd/fiber_admin_router.go",
+      "cmd/fiber_ctx.go",
+      "cmd/fiber_router.go",
+      "cmd/fs-v1.go",
+      "cmd/notification.go",
+      "cmd/peer-rest-client.go",
+      "cmd/peer-rest-server.go",
+      "pkg/bucket/lifecycle/filter.go",
+      "pkg/bucket/lifecycle/lifecycle.go",
+      "pkg/bucket/lifecycle/lifecycle_tagged_actions_test.go"
+    ],
+    "appliesToExactCachedModule": true,
+    "matchesWorkingServerFiles": true
+  },
+  "checks": [
+    {
+      "name": "OC full race regression",
+      "status": "passed",
+      "scope": "full ./... passed during original P3 implementation before this audit; final changed packages rerun below"
+    },
+    {
+      "name": "OC final affected race regression",
+      "status": "passed",
+      "packages": [
+        "internal/clienttransport",
+        "internal/storageclient",
+        "internal/console",
+        "cmd/oc-console"
+      ],
+      "seconds": [
+        1.196,
+        9.304,
+        6.233,
+        4.736
+      ]
+    },
+    {
+      "name": "OC vet ./...",
+      "status": "passed"
+    },
+    {
+      "name": "OC changed package golangci-lint",
+      "status": "passed",
+      "issues": 0
+    },
+    {
+      "name": "console web behavior",
+      "status": "passed",
+      "groups": 29
+    },
+    {
+      "name": "console acceptance and measurement helper tests",
+      "status": "passed",
+      "tests": 12
+    },
+    {
+      "name": "maintenance tests",
+      "status": "passed",
+      "tests": 14
+    },
+    {
+      "name": "formatting, diff whitespace and release boundaries",
+      "status": "passed"
+    },
+    {
+      "name": "workflow YAML syntax",
+      "status": "passed",
+      "parser": "Ruby Psych; Python PyYAML unavailable, no dependency installed"
+    },
+    {
+      "name": "fixed server patch application and file equivalence",
+      "status": "passed",
+      "changedFiles": 30
+    },
+    {
+      "name": "fixed patched server targeted race regression",
+      "status": "passed",
+      "seconds": 12.736,
+      "selector": "TestBucketConfig|TestSelfCredentials|TestConditional|TestAccountInfoOwnerAndScopedPrincipals|TestFiberRequestContextValues|TestStreamContext|TestRemoveBucketHandler|TestGetBucketLocationHandler|TestHeadBucketHandler|TestListBucketsHandler|TestMarshalUnmarshalBucketMetadata|TestEncodeDecodeBucketMetadata"
+    },
+    {
+      "name": "protected settings real storage",
+      "status": "passed",
+      "groupsPerScenario": 20,
+      "scenarios": 4
+    },
+    {
+      "name": "unpatched server safe fallback",
+      "status": "passed",
+      "groupsPerScenario": 11,
+      "scenarios": 4
+    },
+    {
+      "name": "object writes real storage regression and unchanged performance budgets",
+      "status": "passed",
+      "groupsPerScenario": 21,
+      "scenarios": 4
+    },
+    {
+      "name": "native browser final build read/review",
+      "status": "passed",
+      "checks": 10
+    },
+    {
+      "name": "Linux amd64 and Windows amd64 console cross builds",
+      "status": "passed",
+      "nativeExecution": false
+    },
+    {
+      "name": "independent final cross review",
+      "status": "passed",
+      "unresolvedReproducibleFindings": 0,
+      "scope": "frozen implemented P3 settings/self account/client/HTTP/Web/metadata; unsupported noncurrent conversion explicitly rejected"
+    },
+    {
+      "name": "fixed patched lifecycle full race regression",
+      "status": "passed",
+      "seconds": 4.526
+    },
+    {
+      "name": "independent audit raw counterexamples retained",
+      "status": "passed",
+      "report": "console-phase-three-audit-results.json"
+    },
+    {
+      "name": "final report binary, patch and harness hashes agree",
+      "status": "passed"
+    }
+  ],
+  "reports": [
+    {
+      "name": "console-phase-three-audit-results.json",
+      "sha256": "9bd052eb55403cdfa62ff4fc0f24625581974ce010e1ba2f4f7c7e0f86ce70fc"
+    },
+    {
+      "name": "console-phase-three-browser-results.json",
+      "sha256": "c4968e272904392207bf32000db0eab577f70c0fa29a85a527d47a2e912246e1"
+    },
+    {
+      "name": "console-phase-three-legacy-results.json",
+      "sha256": "1869c65c30ff0cbd4e47a5d42f00749a3cddf27897f890cbf26a447621c7d468"
+    },
+    {
+      "name": "console-phase-three-object-regression-results.json",
+      "sha256": "5f628a61fbce3e9ddf5d0bc05f314342f5b448b825049eee219b1207444be83f"
+    },
+    {
+      "name": "console-phase-three-results.json",
+      "sha256": "c59423738320bb0f8d99359e29bc5e67f9f228e376d4cff3cb8d4af2db822571"
+    }
+  ],
+  "notRun": [
+    "full OtterIO test suite",
+    "remote CI",
+    "native Linux or Windows console execution",
+    "distributed real cluster",
+    "third-party S3",
+    "multi-pool or gateway protected setting writes",
+    "long-duration soak",
+    "release or deployment",
+    "remote lifecycle transition destination/execution/recovery acceptance"
+  ],
+  "remaining": [
+    "noncurrent transition execution and persisted destination recovery before enabling P3 conditional writes",
+    "P3 user/group/policy/service-account management UI",
+    "P3 diagnostic streams",
+    "publish and pin the P3 server protocol",
+    "P4 distribution and multi-user deployment",
+    "P5 old Web retirement"
+  ],
+  "dependencyPinsUnchanged": true,
+  "noModuleReplace": true,
+  "oldWebRetained": true
+}

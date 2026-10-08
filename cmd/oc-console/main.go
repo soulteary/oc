@@ -43,7 +43,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags.StringVar(&opts.s3CA, "s3-ca", "", "S3 PEM CA file, replacing certs/CAs custom trust")
 	flags.StringVar(&opts.adminURL, "admin-url", "", "independent OtterIO management root URL")
 	flags.StringVar(&opts.adminCA, "admin-ca", "", "independent management PEM CA file")
-	flags.BoolVar(&opts.allowWrites, "allow-writes", false, "enable explicitly confirmed object uploads and deletes")
+	flags.BoolVar(&opts.allowWrites, "allow-writes", false, "enable explicitly confirmed object writes, bucket settings and own IAM secret changes")
 	flags.Int64Var(&opts.maxUploadSize, "max-upload-size", 1<<30, "maximum file size in bytes (1 to 5368709120)")
 	showVersion := flags.Bool("version", false, "print version and exit")
 	flags.Usage = func() {
@@ -125,6 +125,8 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 			listenerError = errors.New("console listener stopped unexpectedly")
 		}
 	case <-ctx.Done():
+	case <-handler.Done():
+		_, _ = fmt.Fprintln(output, "The account secret changed or its outcome is uncertain. Update the selected alias credentials in your terminal and restart OC console.")
 	}
 	// Every exit path cancels sessions before draining HTTP and waits for owned
 	// multipart cleanup before closing transports, including a failed Shutdown.

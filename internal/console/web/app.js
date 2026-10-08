@@ -14,6 +14,13 @@
     "upload-submit", "upload-status", "replace-dialog", "close-replace", "replace-bucket", "replace-key", "replace-status", "confirm-replace",
     "delete-dialog", "close-delete", "delete-bucket", "delete-scope", "delete-count", "delete-items", "delete-status", "confirm-delete",
     "exact-delete-dialog", "exact-delete-form", "close-exact-delete", "exact-delete-bucket", "exact-delete-key",
+    "open-settings", "settings-dialog", "close-settings", "settings-load-form", "settings-bucket", "settings-kind", "load-setting",
+    "settings-status", "settings-editor", "settings-scope", "settings-help", "settings-document", "save-setting", "remove-setting",
+    "settings-review-dialog", "back-settings", "settings-review-bucket", "settings-review-kind", "settings-review-warning",
+    "settings-review-document", "settings-review-status", "confirm-setting",
+    "settings-read-dialog", "back-setting-read", "settings-read-current", "settings-read-next", "confirm-setting-read",
+    "open-account", "account-dialog", "close-account", "self-account-status", "self-account-summary", "account-buckets",
+    "self-secret-help", "self-secret-form", "new-secret", "self-secret-status", "review-secret", "secret-confirmation", "cancel-secret", "confirm-secret",
   ];
   const elements = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
   const requests = new Map();
@@ -44,13 +51,21 @@
   let deletePlan = null;
   let jobsMessage = "";
   let pageSuspended = false;
+  let loadedSetting = null;
+  let settingDraft = null;
+  let pendingSettingRead = null;
+  let selfAccount = null;
+  let consoleStopped = false;
+  let rotationInFlight = false;
+  const settingLabels = { policy: "Bucket policy", versioning: "Versioning", lifecycle: "Lifecycle" };
   const dateFormatter = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" });
 
   class APIError extends Error {
-    constructor(status, code, message) {
+    constructor(status, code, message, restartRequired) {
       super(message);
       this.status = status;
       this.code = code;
+      if (typeof restartRequired === "boolean") this.restartRequired = restartRequired;
     }
   }
 
@@ -59,7 +74,8 @@
   }
 
   function updateBusy() {
-    elements["login-submit"].disabled = requests.has("login") || requests.has("session");
+    elements["login-submit"].disabled = consoleStopped || requests.has("login") || requests.has("session");
+    elements["login-code"].disabled = consoleStopped;
     // Refresh is also the way to stop and restart a slow read request.
     elements.refresh.disabled = !state.authenticated || requests.has("logout");
     elements.logout.disabled = requests.has("logout");
@@ -69,6 +85,23 @@
     elements["upload-submit"].disabled = preparing;
     elements["confirm-replace"].disabled = preparing;
     elements["confirm-delete"].disabled = !deletePlan || !deletePlan.confirmToken || deletePlan.job.status !== "ready" || requests.has("delete-execute");
+    elements["open-settings"].disabled = !state.authenticated;
+    elements["open-account"].disabled = !state.authenticated;
+    const settingBusy = requests.has("setting-read") || requests.has("setting-write");
+    elements["load-setting"].disabled = !state.authenticated || settingBusy;
+    elements["settings-bucket"].disabled = settingBusy;
+    elements["settings-kind"].disabled = settingBusy;
+    elements["settings-document"].readOnly = !canWriteSetting() || settingBusy;
+    elements["save-setting"].disabled = !canWriteSetting() || settingBusy;
+    elements["remove-setting"].disabled = !canWriteSetting() || !loadedSetting?.exists || loadedSetting?.kind === "versioning" || settingBusy;
+    elements["confirm-setting"].disabled = !settingDraft || !canWriteSetting() || settingBusy;
+    elements["confirm-setting-read"].disabled = !pendingSettingRead || settingBusy;
+    const secretBusy = requests.has("secret-write");
+    elements["new-secret"].disabled = secretBusy || !elements["secret-confirmation"].hidden;
+    elements["review-secret"].disabled = !canRotateSecret() || secretBusy;
+    elements["confirm-secret"].disabled = !canRotateSecret() || secretBusy;
+    elements["cancel-secret"].disabled = secretBusy;
+    elements["close-account"].disabled = secretBusy;
     updateSelection();
   }
 
@@ -115,6 +148,7 @@
         credentials: "same-origin",
         cache: "no-store",
         ...options,
+        redirect: "error",
         signal: request.controller.signal,
       });
     } catch (error) {
@@ -130,12 +164,17 @@
       throw new APIError(response.status, "InvalidResponse", "The local console returned an unexpected response. Try refreshing.");
     }
     if (!response.ok) {
-      throw new APIError(response.status, data?.code || "RequestFailed", data?.message || "The request could not be completed.");
+      throw new APIError(response.status, data?.code || "RequestFailed", data?.message || "The request could not be completed.", data?.restartRequired);
     }
     return data;
   }
 
   function showLogin(message = "") {
+    if (rotationInFlight) {
+      consoleStopped = true;
+      rotationInFlight = false;
+      message = "The secret rotation response was interrupted. Verify which secret works in your terminal, update the alias, and restart OC console. This request will not be repeated.";
+    }
     const interrupted = [...tasks.values()].some(task => !task.expired && !terminalStates.has(task.job.status));
     state.epoch += 1;
     abortAll();
@@ -149,9 +188,19 @@
     uploadDraft = null;
     uploadLocation = null;
     deletePlan = null;
+    loadedSetting = null;
+    settingDraft = null;
+    pendingSettingRead = null;
+    selfAccount = null;
     jobsMessage = "";
     closeDialogs();
     elements["upload-form"].reset();
+    clearSecret();
+    elements["settings-document"].value = "";
+    elements["settings-bucket"].value = "";
+    for (const id of ["settings-review-document", "settings-read-current", "settings-read-next", "settings-scope", "settings-status", "settings-help", "self-account-summary", "self-account-status", "self-secret-help", "self-secret-status"]) setText(id, "");
+    elements["account-buckets"].replaceChildren();
+    elements["settings-editor"].hidden = true;
     renderTasks();
     renderMode();
     elements["workspace"].hidden = true;
@@ -164,6 +213,7 @@
     setText("alias-name", "");
     setText("login-status", `${message}${interrupted ? " An active task was interrupted. Completed writes are not rolled back; check the affected objects before retrying." : ""}`.trim());
     updateBusy();
+    if (consoleStopped) elements["login-status"].focus();
   }
 
   function expired(error) {
@@ -261,6 +311,7 @@
   }
 
   function renderAccount() {
+    renderAccountBuckets();
     if (!state.bucket) {
       setText("account-status", "Select a bucket to view available permission information.");
       return;
@@ -528,7 +579,8 @@
   }
 
   function closeDialogs() {
-    for (const id of ["upload-dialog", "replace-dialog", "delete-dialog", "exact-delete-dialog"]) {
+    clearSecret();
+    for (const id of ["upload-dialog", "replace-dialog", "delete-dialog", "exact-delete-dialog", "settings-dialog", "settings-read-dialog", "settings-review-dialog", "account-dialog"]) {
       if (elements[id].open) elements[id].close();
     }
   }
@@ -1046,8 +1098,360 @@
     }
   }
 
+  function canWriteSetting() {
+    return state.authenticated && !state.readOnly && loadedSetting?.conditional === true && !loadedSetting.blocked && typeof loadedSetting.revision === "string" && /^[a-f0-9]{64}$/.test(loadedSetting.revision);
+  }
+
+  function canRotateSecret() {
+    return state.authenticated && !state.readOnly && selfAccount?.kind === "iam" && selfAccount.status === "enabled" && selfAccount.canRotateSecret === true;
+  }
+
+  function renderAccountBuckets() {
+    elements["account-buckets"].replaceChildren();
+    if (!state.account) {
+      const item = document.createElement("li");
+      item.textContent = state.accountMessage;
+      elements["account-buckets"].append(item);
+      return;
+    }
+    for (const bucket of state.account.buckets) {
+      const item = document.createElement("li");
+      item.textContent = `${bucket.name} · ${formatSize(bucket.size)} · ${bucket.read ? "read indicated" : "read not indicated"} · ${bucket.write ? "write indicated" : "write not indicated"}`;
+      elements["account-buckets"].append(item);
+    }
+    if (!state.account.buckets.length) {
+      const item = document.createElement("li");
+      item.textContent = "No bucket summary is available for this identity. Exact operations may still be permitted.";
+      elements["account-buckets"].append(item);
+    }
+  }
+
+  function openSettings() {
+    if (!state.authenticated) return;
+    closeSettings();
+    elements["settings-bucket"].value = state.bucket;
+    elements["settings-kind"].value = "policy";
+    elements["settings-editor"].hidden = true;
+    loadedSetting = null;
+    settingDraft = null;
+    pendingSettingRead = null;
+    setText("settings-status", "Enter a bucket and choose a setting to read. Each setting has its own storage permission.");
+    elements["settings-dialog"].showModal();
+    elements[state.bucket ? "load-setting" : "settings-bucket"].focus();
+    updateBusy();
+  }
+
+  function closeSettings() {
+    cancelRequest("setting-read");
+    cancelRequest("setting-write");
+    loadedSetting = null;
+    settingDraft = null;
+    pendingSettingRead = null;
+    elements["settings-document"].value = "";
+    elements["settings-review-document"].textContent = "";
+    for (const id of ["settings-dialog", "settings-read-dialog", "settings-review-dialog"]) if (elements[id].open) elements[id].close();
+    updateBusy();
+  }
+
+  async function readSetting(approvedTarget = null) {
+    if (!state.authenticated || !elements["settings-dialog"].open || pendingSettingRead || requests.has("setting-read") || requests.has("setting-write")) return;
+    const bucket = approvedTarget?.bucket || elements["settings-bucket"].value;
+    const kind = approvedTarget?.kind || elements["settings-kind"].value;
+    if (!bucket || !Object.hasOwn(settingLabels, kind)) return;
+    if (!approvedTarget && loadedSetting && elements["settings-document"].value !== loadedSetting.document) {
+      pendingSettingRead = { bucket, kind };
+      setText("settings-read-current", `${loadedSetting.bucket} · ${settingLabels[loadedSetting.kind]}`);
+      setText("settings-read-next", `${bucket} · ${settingLabels[kind]}`);
+      elements["settings-dialog"].close();
+      elements["settings-read-dialog"].showModal();
+      elements["back-setting-read"].focus();
+      updateBusy();
+      return;
+    }
+    const request = beginRequest("setting-read");
+    settingDraft = null;
+    if (!loadedSetting) elements["settings-editor"].hidden = true;
+    setText("settings-status", `Reading ${settingLabels[kind].toLowerCase()} for ${bucket}…`);
+    updateBusy();
+    try {
+      const parameters = new URLSearchParams({ bucket, kind });
+      const setting = await api(`/api/bucket-settings?${parameters}`, {}, request);
+      if (!currentRequest("setting-read", request) || !elements["settings-dialog"].open) return;
+      if (!setting || setting.bucket !== bucket || setting.kind !== kind || !["json", "xml"].includes(setting.format) || typeof setting.document !== "string" || typeof setting.exists !== "boolean") {
+        throw new APIError(0, "InvalidSetting", "The local console returned an invalid setting. No change can be submitted.");
+      }
+      loadedSetting = { ...setting, blocked: false };
+      elements["settings-document"].value = setting.document;
+      elements["settings-editor"].hidden = false;
+      setText("settings-scope", `${settingLabels[kind]} · ${bucket} · ${setting.format.toUpperCase()} · ${setting.exists ? "configuration present" : "no stored configuration"}`);
+      const viewOnly = state.readOnly ? "This console is read-only." : !canWriteSetting() ? "The server did not provide conditional update support and a valid revision. Changes are unavailable." : "Saving requires this exact configuration revision; a concurrent change is rejected.";
+      const versionHelp = kind === "versioning" ? " Versioning suspension keeps existing versions; it does not return the bucket to its never-enabled state." : "";
+      const absentHelp = !setting.exists ? ` No stored configuration is present. Enter the complete ${setting.format.toUpperCase()} document to create one.` : "";
+      setText("settings-help", `${viewOnly}${versionHelp}${absentHelp}`);
+      setText("settings-status", "");
+    } catch (error) {
+      if (!currentRequest("setting-read", request) || error.name === "AbortError") return;
+      if (expired(error)) return;
+      setText("settings-status", `${settingLabels[kind]} for ${bucket}: ${error.message}${loadedSetting ? " The previous configuration and draft are retained." : ""} Other settings can be read independently.`);
+    } finally {
+      finishRequest("setting-read", request);
+    }
+  }
+
+  function reviewSetting(remove) {
+    if (!elements["settings-dialog"].open || !canWriteSetting() || requests.has("setting-read") || requests.has("setting-write")) return;
+    if (remove && (!loadedSetting.exists || loadedSetting.kind === "versioning")) return;
+    const document = elements["settings-document"].value;
+    if (!remove && !document.trim()) {
+      setText("settings-status", "Enter the complete configuration, or use Review removal for a stored policy or lifecycle.");
+      return;
+    }
+    settingDraft = { bucket: loadedSetting.bucket, kind: loadedSetting.kind, document: remove ? "" : document, revision: loadedSetting.revision, remove, confirm: true };
+    setText("settings-review-bucket", settingDraft.bucket);
+    setText("settings-review-kind", settingLabels[settingDraft.kind]);
+    const risks = {
+      policy: "A bucket policy can expose objects publicly or restrict future access. Review every statement and condition before applying it.",
+      versioning: "Versioning affects future writes and deletes. Enabling it can increase storage use; suspension keeps previous versions and cannot disable object-lock requirements.",
+      lifecycle: "Lifecycle rules can expire current objects and permanently delete historical versions later. Removing rules stops those rules from scheduling future work; it cannot restore objects already removed.",
+    };
+    setText("settings-review-warning", `${remove ? "Remove the complete stored configuration" : "Replace the complete configuration"} for this exact bucket. ${risks[settingDraft.kind]}`);
+    setText("settings-review-document", remove ? "Remove this configuration." : document);
+    setText("settings-review-status", "");
+    setText("confirm-setting", remove ? "Remove this setting" : "Apply this setting");
+    elements["settings-dialog"].close();
+    elements["settings-review-dialog"].showModal();
+    elements["back-settings"].focus();
+    updateBusy();
+  }
+
+  function backSettings() {
+    if (!state.authenticated) return;
+    if (requests.has("setting-write")) {
+      cancelRequest("setting-write");
+      if (loadedSetting) loadedSetting.blocked = true;
+      setText("settings-status", "The save response was interrupted. Its outcome is unknown; read the setting before making another change.");
+    }
+    settingDraft = null;
+    elements["settings-review-document"].textContent = "";
+    if (elements["settings-review-dialog"].open) elements["settings-review-dialog"].close();
+    elements["settings-dialog"].showModal();
+    elements["load-setting"].focus();
+    updateBusy();
+  }
+
+  async function saveSetting() {
+    if (!elements["settings-review-dialog"].open || !settingDraft || !canWriteSetting() || requests.has("setting-write")) return;
+    const draft = settingDraft;
+    const request = beginRequest("setting-write");
+    setText("settings-review-status", "Applying the reviewed setting…");
+    try {
+      const setting = await api("/api/bucket-settings", mutationOptions(draft), request);
+      if (!currentRequest("setting-write", request) || settingDraft !== draft) return;
+      if (!setting || setting.bucket !== draft.bucket || setting.kind !== draft.kind ||
+        setting.format !== (draft.kind === "policy" ? "json" : "xml") || typeof setting.document !== "string" ||
+        typeof setting.exists !== "boolean" || setting.exists === draft.remove || setting.conditional !== true || typeof setting.revision !== "string" || !/^[a-f0-9]{64}$/.test(setting.revision)) {
+        throw new APIError(0, "InvalidSetting", "The local console returned an unexpected update response. Its outcome is unknown.");
+      }
+      loadedSetting = { ...setting, blocked: false };
+      elements["settings-document"].value = setting.document;
+      setText("settings-scope", `${settingLabels[draft.kind]} · ${draft.bucket} · ${loadedSetting.format?.toUpperCase() || "configuration"} · ${setting.exists ? "configuration present" : "no stored configuration"}`);
+      setText("settings-status", "The storage server confirmed this change. Read again before editing if the configuration changed elsewhere.");
+      settingDraft = null;
+      elements["settings-review-document"].textContent = "";
+      elements["settings-review-dialog"].close();
+      elements["settings-dialog"].showModal();
+    } catch (error) {
+      if (!currentRequest("setting-write", request) || error.name === "AbortError") return;
+      if (expired(error)) return;
+      const unknown = error.code === "outcome_unknown" || !error.status || error.status >= 500 || (error.status >= 300 && error.status < 400) || (error.code === "InvalidResponse" && error.status >= 200 && error.status < 300);
+      const conflict = error.status === 412 || error.code === "setting_conflict";
+      if (conflict || unknown) {
+        loadedSetting.blocked = true;
+        settingDraft = null;
+        elements["settings-review-document"].textContent = "";
+        elements["settings-review-dialog"].close();
+        elements["settings-dialog"].showModal();
+        setText("settings-status", conflict ? "The configuration changed since it was read. Your draft is retained. Copy any edits you want to keep, then read the current setting and review a fresh change." : "The update outcome is unknown. Your draft is retained. Read the setting to check what storage accepted before making another change; this write will not be replayed.");
+      } else {
+        setText("settings-review-status", error.message);
+      }
+    } finally {
+      finishRequest("setting-write", request);
+      if (state.authenticated && elements["settings-dialog"].open && loadedSetting?.blocked) elements["load-setting"].focus();
+    }
+  }
+
+  function clearSecret() {
+    elements["new-secret"].value = "";
+    elements["new-secret"].disabled = false;
+    elements["secret-confirmation"].hidden = true;
+    elements["review-secret"].hidden = false;
+  }
+
+  function closeAccount() {
+    if (requests.has("secret-write")) return;
+    cancelRequest("self-account");
+    selfAccount = null;
+    clearSecret();
+    elements["self-secret-form"].hidden = true;
+    if (elements["account-dialog"].open) elements["account-dialog"].close();
+    updateBusy();
+  }
+
+  async function openAccount() {
+    if (!state.authenticated || requests.has("secret-write")) return;
+    closeAccount();
+    renderAccountBuckets();
+    setText("self-account-status", "Loading the current identity's account information…");
+    setText("self-account-summary", "");
+    setText("self-secret-help", "");
+    setText("self-secret-status", "");
+    elements["account-dialog"].showModal();
+    await loadSelfAccount();
+  }
+
+  async function loadSelfAccount(messageAfter = "") {
+    if (!state.authenticated || !elements["account-dialog"].open) return;
+    selfAccount = null;
+    clearSecret();
+    elements["self-secret-form"].hidden = true;
+    const request = beginRequest("self-account");
+    let discoveryFailed = false;
+    try {
+      const account = await api("/api/self-account", {}, request);
+      if (!currentRequest("self-account", request) || !elements["account-dialog"].open) return;
+      if (!account || !["root", "iam", "sts", "service", "directory", "unknown"].includes(account.kind) || !["enabled", "disabled", "unknown"].includes(account.status) || typeof account.canRotateSecret !== "boolean") {
+        throw new APIError(0, "InvalidAccount", "Current identity information is unavailable. Secret rotation is disabled.");
+      }
+      selfAccount = { kind: account.kind, status: account.status, canRotateSecret: account.canRotateSecret };
+      const labels = { root: "Root account", iam: "IAM user", sts: "Temporary STS identity", service: "Service account", directory: "Directory identity", unknown: "Identity type unavailable" };
+      setText("self-account-summary", `${labels[account.kind]} · ${account.status === "unknown" ? "status unavailable" : account.status}`);
+      setText("self-account-status", "");
+      elements["self-secret-form"].hidden = !canRotateSecret();
+      const message = state.readOnly ? "This local console is read-only. Secret rotation is disabled." : account.kind === "unknown" || account.status === "unknown" ? "This server does not provide safe current-identity discovery. Secret rotation is unavailable; bucket browsing remains independent." : account.kind !== "iam" ? "This identity cannot rotate its secret here. Manage root, temporary, service, and directory credentials through their respective owner or identity provider." : !canRotateSecret() ? "The storage server does not permit secret rotation for this identity." : "Secret rotation changes only this IAM user's secret and preserves its account status. OC does not write the new secret to your alias file.";
+      setText("self-secret-help", message);
+    } catch (error) {
+      if (!currentRequest("self-account", request) || error.name === "AbortError") return;
+      if (expired(error)) return;
+      discoveryFailed = true;
+      setText("self-account-status", error.message);
+      setText("self-secret-help", "Account information is unavailable. Bucket browsing remains independent; secret rotation is disabled.");
+    } finally {
+      if (messageAfter && currentRequest("self-account", request) && elements["account-dialog"].open) {
+        setText("self-account-status", `${messageAfter}${discoveryFailed ? " Current identity information could not be refreshed; secret rotation is disabled." : ""}`);
+      }
+      finishRequest("self-account", request);
+    }
+  }
+
+  function stopAfterRotation(confirmed) {
+    consoleStopped = true;
+    rotationInFlight = false;
+    showLogin(confirmed ? "The storage server confirmed secret rotation. All local sessions have ended. Update this alias's secret in your terminal and restart OC console." : "The secret rotation outcome is unknown. This console has stopped using the old identity. Verify which secret works in your terminal, update the alias, and restart OC console. Do not repeat this request automatically.");
+    setText("session-mode", "● Restart required");
+    updateBusy();
+  }
+
+  function validNewSecret() {
+    const length = new TextEncoder().encode(elements["new-secret"].value).length;
+    if (length < 8 || length > 128 || /[\x00\r\n]/.test(elements["new-secret"].value)) {
+      setText("self-secret-status", "Enter a new secret containing 8–128 UTF-8 bytes.");
+      return false;
+    }
+    return true;
+  }
+
+  async function rotateSecret(event) {
+    event.preventDefault();
+    if (!canRotateSecret() || elements["secret-confirmation"].hidden || requests.has("secret-write") || !validNewSecret()) return;
+    const options = mutationOptions({ newSecret: elements["new-secret"].value, confirm: true });
+    clearSecret();
+    const request = beginRequest("secret-write");
+    rotationInFlight = true;
+    setText("self-secret-status", "Rotating the secret and stopping this console…");
+    elements["self-secret-status"].focus();
+    try {
+      const result = await api("/api/self-secret", options, request);
+      if (!currentRequest("secret-write", request)) return;
+      if (!result || result.restartRequired !== true || result.outcome !== "confirmed") {
+        stopAfterRotation(false);
+      } else {
+        stopAfterRotation(true);
+      }
+    } catch (error) {
+      if (!currentRequest("secret-write", request)) return;
+      if (error.restartRequired === true || error.code === "outcome_unknown" || !error.status ||
+        (error.code === "InvalidResponse" && error.status >= 200 && error.status < 300) ||
+        (error.status >= 300 && error.status < 400) ||
+        (error.status >= 500 && error.restartRequired !== false)) {
+        stopAfterRotation(false);
+        return;
+      }
+      rotationInFlight = false;
+      if (expired(error)) return;
+      const message = error.status === 409 && error.code === "active_tasks" ? "Stop active transfers and deletions before rotating the secret. Enter the new secret again when they finish." : `${error.message} Enter the new secret again to make a new request.`;
+      setText("self-secret-status", message);
+      if (error.restartRequired === false) {
+        finishRequest("secret-write", request);
+        await loadSelfAccount(message);
+      }
+    } finally {
+      rotationInFlight = false;
+      finishRequest("secret-write", request);
+      if (state.authenticated && elements["account-dialog"].open && !requests.has("secret-write")) elements[canRotateSecret() ? "new-secret" : "close-account"].focus();
+    }
+  }
+
+  elements["open-settings"].addEventListener("click", openSettings);
+  elements["close-settings"].addEventListener("click", closeSettings);
+  elements["settings-dialog"].addEventListener("cancel", event => { event.preventDefault(); closeSettings(); });
+  elements["settings-load-form"].addEventListener("submit", event => { event.preventDefault(); readSetting(); });
+  function backSettingRead() {
+    pendingSettingRead = null;
+    if (elements["settings-read-dialog"].open) elements["settings-read-dialog"].close();
+    if (!state.authenticated) return;
+    elements["settings-dialog"].showModal();
+    elements["settings-document"].focus();
+    updateBusy();
+  }
+  elements["back-setting-read"].addEventListener("click", backSettingRead);
+  elements["settings-read-dialog"].addEventListener("cancel", event => { event.preventDefault(); backSettingRead(); });
+  elements["confirm-setting-read"].addEventListener("click", () => {
+    if (!pendingSettingRead || !state.authenticated || requests.has("setting-read")) return;
+    const target = pendingSettingRead;
+    pendingSettingRead = null;
+    elements["settings-read-dialog"].close();
+    elements["settings-dialog"].showModal();
+    readSetting(target);
+  });
+  elements["save-setting"].addEventListener("click", () => reviewSetting(false));
+  elements["remove-setting"].addEventListener("click", () => reviewSetting(true));
+  elements["back-settings"].addEventListener("click", backSettings);
+  elements["settings-review-dialog"].addEventListener("cancel", event => { event.preventDefault(); backSettings(); });
+  elements["confirm-setting"].addEventListener("click", saveSetting);
+  elements["open-account"].addEventListener("click", openAccount);
+  elements["close-account"].addEventListener("click", closeAccount);
+  elements["account-dialog"].addEventListener("cancel", event => { event.preventDefault(); closeAccount(); });
+  elements["account-dialog"].addEventListener("close", clearSecret);
+  elements["review-secret"].addEventListener("click", () => {
+    if (!canRotateSecret() || !validNewSecret()) return;
+    setText("self-secret-status", "");
+    elements["secret-confirmation"].hidden = false;
+    elements["new-secret"].disabled = true;
+    elements["review-secret"].hidden = true;
+    elements["cancel-secret"].focus();
+  });
+  elements["cancel-secret"].addEventListener("click", () => {
+    elements["secret-confirmation"].hidden = true;
+    elements["new-secret"].disabled = false;
+    elements["review-secret"].hidden = false;
+    elements["new-secret"].focus();
+  });
+  elements["self-secret-form"].addEventListener("submit", rotateSecret);
+
   elements["login-form"].addEventListener("submit", async event => {
     event.preventDefault();
+    if (consoleStopped) return;
     const code = elements["login-code"].value.trim();
     if (!code) return;
     const request = beginRequest("login");
@@ -1066,6 +1470,7 @@
   });
 
   elements.logout.addEventListener("click", async () => {
+    clearSecret();
     const request = beginRequest("logout");
     try {
       await api("/api/logout", { method: "POST", headers: { "X-CSRF-Token": state.csrfToken } }, request);
@@ -1188,6 +1593,7 @@
   });
 
   async function restoreSession() {
+    if (consoleStopped) return;
     showLogin();
     const request = beginRequest("session");
     try {
@@ -1201,7 +1607,12 @@
     }
   }
 
-  window.addEventListener("pagehide", () => { pageSuspended = true; abortAll(); });
+  window.addEventListener("pagehide", () => {
+    pageSuspended = true;
+    clearSecret();
+    if (rotationInFlight) stopAfterRotation(false);
+    else abortAll();
+  });
   window.addEventListener("pageshow", event => {
     pageSuspended = false;
     if (event.persisted) restoreSession();

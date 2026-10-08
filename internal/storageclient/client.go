@@ -31,6 +31,7 @@ type Config struct {
 type Client struct {
 	s3                  *minio.Client
 	admin               *madmin.AdminClient
+	adminEndpoint       string
 	s3Endpoint          string
 	s3Options           minio.Options
 	appName, appVersion string
@@ -77,6 +78,7 @@ func New(cfg Config) (*Client, error) {
 	}
 	client := &Client{
 		s3Endpoint: s3URL.Host, appName: cfg.AppName, appVersion: cfg.AppVersion,
+		adminEndpoint:   adminURL.String(),
 		s3Transport:     clienttransport.New(cfg.RootCAs),
 		adminTransport:  clienttransport.New(cfg.AdminRootCAs),
 		metadataTimeout: 15 * time.Second,

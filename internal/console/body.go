@@ -3,6 +3,7 @@
 package console
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -99,7 +100,15 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, value any, max int64) bo
 	defer cancel()
 	body, closeBody := boundedBody(w, r, ctx, 10*time.Second)
 	defer closeBody()
-	decoder := json.NewDecoder(http.MaxBytesReader(w, body, max))
+	// encoding/json silently substitutes malformed Unicode inside strings.
+	// Validate the bounded wire bytes first so a configuration or secret
+	// cannot be changed into a different value during JSON decoding.
+	data, err := io.ReadAll(http.MaxBytesReader(w, body, max))
+	if err != nil || !validJSONEncoding(data) {
+		writeError(w, 400, "invalid_input", "The request body is invalid or timed out.")
+		return false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil {
 		writeError(w, 400, "invalid_input", "The request body is invalid or timed out.")

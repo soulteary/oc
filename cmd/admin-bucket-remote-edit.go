@@ -33,6 +33,7 @@ import (
 )
 
 var adminBucketRemoteEditFlags = []cli.Flag{
+	&cli.StringFlag{Name: "label", Usage: "storage class label for a lifecycle (ilm) target"},
 	&cli.StringFlag{
 		Name:  "arn",
 		Usage: "ARN of target",
@@ -108,7 +109,7 @@ func checkAdminBucketRemoteEditSyntax(ctx *cli.Command) {
 		cli.ShowCommandHelpAndExit(context.Background(), ctx, ctx.Name, 1) // last argument is exit code
 	}
 	if !ctx.IsSet("arn") {
-		fatalIf(errInvalidArgument().Trace(ctx.Args().Slice()...), "--arn flag needs to be set")
+		fatalIf(errInvalidArgument(), "--arn flag needs to be set")
 	}
 }
 
@@ -124,16 +125,26 @@ func modifyRemoteTarget(cli *cli.Command, targets []madmin.BucketTarget) *madmin
 		}
 	}
 	if foundIdx < 0 {
-		fatalIf(errInvalidArgument().Trace(args...), "Unable to edit remote target - `"+arn+"` not found")
+		fatalIf(errInvalidArgument(), "Unable to edit remote target - `"+arn+"` not found")
 	}
 	bktTarget := targets[foundIdx].Clone()
+	// The pinned admin DTO's Clone copies Path into API. Preserve the actual
+	// protocol so a credential edit cannot accidentally move the destination.
+	bktTarget.API = targets[foundIdx].API
+	if cli.IsSet("label") {
+		label := strings.TrimSpace(cli.String("label"))
+		if err := validateRemoteTargetLabel(string(bktTarget.Type), label); err != nil {
+			fatalIf(probe.NewError(err), "Invalid remote target label")
+		}
+		bktTarget.Label = label
+	}
 	if cli.IsSet("sync") {
 		syncState := strings.ToLower(cli.String("sync"))
 		switch syncState {
 		case "enable", "disable":
 			bktTarget.ReplicationSync = syncState == "enable"
 		default:
-			fatalIf(errInvalidArgument().Trace(args...), "--sync can be either [enable|disable]")
+			fatalIf(errInvalidArgument(), "--sync can be either [enable|disable]")
 		}
 	}
 
@@ -165,13 +176,13 @@ func modifyRemoteTarget(cli *cli.Command, targets []madmin.BucketTarget) *madmin
 		console.SetColor(cred, color.New(color.FgYellow, color.Italic))
 		creds := &auth.Credentials{AccessKey: accessKey, SecretKey: secretKey}
 		if host != bktTarget.Endpoint {
-			fatalIf(errInvalidArgument().Trace(args...), "configured Endpoint `"+host+"` does not match "+bktTarget.Endpoint+"` for this ARN `"+bktTarget.Arn+"`")
+			fatalIf(errInvalidArgument(), "configured Endpoint `"+host+"` does not match "+bktTarget.Endpoint+"` for this ARN `"+bktTarget.Arn+"`")
 		}
 		if targetBucket != bktTarget.TargetBucket {
-			fatalIf(errInvalidArgument().Trace(args...), "configured remote target bucket `"+targetBucket+"` does not match "+bktTarget.TargetBucket+"` for this ARN `"+bktTarget.Arn+"`")
+			fatalIf(errInvalidArgument(), "configured remote target bucket `"+targetBucket+"` does not match "+bktTarget.TargetBucket+"` for this ARN `"+bktTarget.Arn+"`")
 		}
 		if sourceBucket != bktTarget.SourceBucket {
-			fatalIf(errInvalidArgument().Trace(args...), "configured source bucket `"+sourceBucket+"` does not match "+bktTarget.SourceBucket+"` for this ARN `"+bktTarget.Arn+"`")
+			fatalIf(errInvalidArgument(), "configured source bucket `"+sourceBucket+"` does not match "+bktTarget.SourceBucket+"` for this ARN `"+bktTarget.Arn+"`")
 		}
 		bktTarget.TargetBucket = targetBucket
 		bktTarget.Secure = secure
@@ -210,13 +221,16 @@ func mainAdminBucketRemoteEdit(ctx *cli.Command) error {
 	_, sourceBucket := url2Alias(args[0])
 
 	targets, e := client.ListRemoteTargets(globalContext, sourceBucket, "")
-	fatalIf(probe.NewError(e).Trace(args...), "Unable to fetch remote target.")
+	fatalIf(probe.NewError(e), "Unable to fetch remote target.")
 
 	bktTarget := modifyRemoteTarget(ctx, targets)
+	if bktTarget.Type == madmin.ILMService {
+		fatalIf(probe.NewError(requireLifecycleTargetProtocol(globalContext, aliasedURL, sourceBucket)), "Unable to verify lifecycle target support")
+	}
 
 	arn, e := client.UpdateRemoteTarget(globalContext, bktTarget)
 	if e != nil {
-		fatalIf(probe.NewError(e).Trace(args...), "Unable to update remote target `"+bktTarget.Endpoint+"` from `"+bktTarget.SourceBucket+"` -> `"+bktTarget.TargetBucket+"`")
+		fatalIf(probe.NewError(e), "Unable to update remote target `"+bktTarget.Endpoint+"` from `"+bktTarget.SourceBucket+"` -> `"+bktTarget.TargetBucket+"`")
 	}
 
 	printMsg(RemoteMessage{
@@ -226,6 +240,7 @@ func mainAdminBucketRemoteEdit(ctx *cli.Command) error {
 		AccessKey:    bktTarget.Credentials.AccessKey,
 		SourceBucket: bktTarget.SourceBucket,
 		RemoteARN:    arn,
+		Label:        bktTarget.Label,
 	})
 
 	return nil

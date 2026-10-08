@@ -14,6 +14,7 @@ SOURCE = SUPPORT['otterioSource']
 
 def info():
     return {'oc': {'Deps': [{'Path': 'github.com/soulteary/otterio', 'Version': SDK}]},
+            'oc-console': {'Deps': [{'Path': 'github.com/soulteary/otterio', 'Version': SDK}]},
             'otterio': {'Settings': [{'Key': 'vcs.revision', 'Value': SOURCE},
                                      {'Key': 'vcs.modified', 'Value': 'false'}]}}
 
@@ -35,6 +36,19 @@ class ConsoleBinaryIdentityTests(unittest.TestCase):
                     build['oc']['Deps'][0]['Replace'] = {'Path': '/tmp/local-source'}
                 else:
                     build['otterio']['Settings'][0]['Value'] = '0' * 40
+                with self.assertRaises(ValueError):
+                    acceptance.verify_binary_identity(build, SDK, SOURCE)
+
+    def test_console_binary_must_match_the_verified_cli_pin(self):
+        for changed in ('wrong-sdk', 'missing-sdk', 'replacement'):
+            with self.subTest(changed=changed):
+                build = info()
+                if changed == 'wrong-sdk':
+                    build['oc-console']['Deps'][0]['Version'] = 'v0.0.0-old'
+                elif changed == 'missing-sdk':
+                    build['oc-console']['Deps'] = []
+                else:
+                    build['oc-console']['Deps'][0]['Replace'] = {'Path': '/tmp/local-console-source'}
                 with self.assertRaises(ValueError):
                     acceptance.verify_binary_identity(build, SDK, SOURCE)
 

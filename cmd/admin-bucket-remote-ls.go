@@ -127,7 +127,7 @@ func printRemotes(ctx *cli.Command, urlStr string, targets []madmin.BucketTarget
 			}
 		}
 		if maxURLLen > 0 {
-			console.Println(console.Colorize("RemoteListMessage", fmt.Sprintf("%-*.*s %-*.*s->%-*.*s %-*.*s %s %s", maxURLLen+8, maxURLLen+8, "Remote URL", maxSrcLen, maxSrcLen, "Source", maxTgtLen, maxTgtLen, "Target", maxArnLen, maxArnLen, "ARN", "SYNC", "PROXY")))
+			console.Println(console.Colorize("RemoteListMessage", fmt.Sprintf("%-*.*s %-*.*s->%-*.*s %-*.*s %s %s %s", maxURLLen+8, maxURLLen+8, "Remote URL", maxSrcLen, maxSrcLen, "Source", maxTgtLen, maxTgtLen, "Target", maxArnLen, maxArnLen, "ARN", "SYNC", "PROXY", "LABEL")))
 		}
 	}
 	for _, target := range targets {
@@ -155,6 +155,7 @@ func printRemotes(ctx *cli.Command, urlStr string, targets []madmin.BucketTarget
 			SourceBucket:    target.SourceBucket,
 			RemoteARN:       target.Arn,
 			ServiceType:     string(target.Type),
+			Label:           target.Label,
 			ReplicationSync: target.ReplicationSync,
 			Bandwidth:       target.BandwidthLimit,
 			Proxy:           true,

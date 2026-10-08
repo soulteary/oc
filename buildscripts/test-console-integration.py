@@ -50,12 +50,13 @@ def digest(path):
 
 
 def verify_binary_identity(build_info, sdk_pin, server_source):
-    dependencies = build_info['oc'].get('Deps', [])
-    if any('Replace' in item for item in dependencies):
-        raise ValueError('client binary uses a dependency replacement')
-    sdk = next((item for item in dependencies if item['Path'] == 'github.com/soulteary/otterio'), None)
-    if sdk is None or sdk.get('Version') != sdk_pin:
-        raise ValueError('client binary SDK differs from the requested module pin')
+    for name in ('oc', 'oc-console'):
+        dependencies = build_info[name].get('Deps', [])
+        if any('Replace' in item for item in dependencies):
+            raise ValueError(f'{name} binary uses a dependency replacement')
+        sdk = next((item for item in dependencies if item['Path'] == 'github.com/soulteary/otterio'), None)
+        if sdk is None or sdk.get('Version') != sdk_pin:
+            raise ValueError(f'{name} binary SDK differs from the requested module pin')
     settings = {item['Key']: item.get('Value', '') for item in build_info['otterio'].get('Settings', [])}
     revision = settings.get('vcs.revision')
     if revision and revision != server_source:
@@ -234,6 +235,7 @@ def scenario(args, name, preview=False, record=None):
                         raise RuntimeError(f'{method} {path.split("?")[0]}: expected {expected}, got {response.status}: {payload[:300]!r}')
                     return payload, response.headers
             request.jar = jar
+            request.base = base
             return request
 
         try:
@@ -244,7 +246,7 @@ def scenario(args, name, preview=False, record=None):
                 command += ['--console-address', f'127.0.0.1:{ports[1]}']
                 if tls:
                     command += ['--console-certs-dir', str(admincert_dir)]
-            command += [str(root / f'data-{i}') for i in range(4)] if args.writes else [str(root / 'data')]
+            command += [str(root / f'data-{i}') for i in range(4)] if args.writes or args.settings else [str(root / 'data')]
             server = subprocess.Popen(command, env=env, stdout=log, stderr=log)
             deadline = time.monotonic() + 30
             while True:
@@ -346,6 +348,12 @@ def scenario(args, name, preview=False, record=None):
             query = urllib.parse.urlencode({'bucket': bucket, 'key': 'stream.bin'})
             viewer('/api/download?' + query, expected=403)
             checks.append('restricted identity: permitted read succeeds, different object denied')
+            if args.settings or args.settings_legacy:
+                from console_settings_acceptance import verify_settings
+                record['settingsMetrics'] = verify_settings(
+                    root, bucket, cli, request, session, viewer, start_console, browser, stop,
+                    credentials, endpoint, access, secret, context, signed_request,
+                    checks, legacy=args.settings_legacy)
             if args.writes:
                 from console_write_acceptance import verify_writes
                 write_metrics = {}
@@ -397,6 +405,9 @@ def main():
     parser.add_argument('--scenarios', default='single-http,dual-http,dual-tls')
     parser.add_argument('--preview', action='store_true', help='hold the last disposable scenario for manual browser QA')
     parser.add_argument('--writes', action='store_true', help='also test opt-in uploads and deletes on disposable four-disk storage')
+    settings_group = parser.add_mutually_exclusive_group()
+    settings_group.add_argument('--settings', action='store_true', help='test v1 bucket CAS and own IAM rotation on disposable four-disk storage')
+    settings_group.add_argument('--settings-legacy', action='store_true', help='test safe read-only fallback on the current unpatched module pin')
     args = parser.parse_args()
     names = args.scenarios.split(',')
     if any(name not in ('single-http', 'dual-http', 'single-tls', 'dual-tls') for name in names):
@@ -405,10 +416,15 @@ def main():
               'serverSource': args.server_source, 'sdkPin': args.sdk_pin or json.loads((Path(__file__).resolve().parents[1] / 'docs' / 'compatibility.json').read_text())['otterioSDK'],
               'binaries': {name: {'sha256': digest(path)} for name, path in [('oc', args.cli), ('oc-console', args.console), ('otterio', args.server)]},
               'scenarios': [], 'status': 'running'}
-    report['scope'] = 'read-only-and-writes' if args.writes else 'read-only'
-    report['storage'] = 'single-node-four-disk-erasure' if args.writes else 'filesystem'
+    report['scope'] = 'read-only-and-writes' if args.writes else ('read-only-and-protected-settings' if args.settings else 'read-only')
+    if args.settings or args.settings_legacy:
+        report['settingsProfile'] = 'legacy-read-only-fallback' if args.settings_legacy else 'v1-protected-settings'
+    report['storage'] = 'single-node-four-disk-erasure' if args.writes or args.settings else 'filesystem'
     report['harnesses'] = [{'name': path.name, 'sha256': digest(path)} for path in
                            [Path(__file__), Path(__file__).with_name('console_write_acceptance.py')]]
+    if args.settings or args.settings_legacy:
+        settings_path = Path(__file__).with_name('console_settings_acceptance.py')
+        report['harnesses'].append({'name': settings_path.name, 'sha256': digest(settings_path)})
     if args.server_patch:
         report['serverPatches'] = [{'name': Path(patch).name, 'sha256': digest(patch)} for patch in args.server_patch]
     output = Path(args.output)

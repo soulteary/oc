@@ -1,0 +1,33 @@
+{
+  "dateUTC": "2026-10-08T11:21:04.505337+00:00",
+  "status": "failed",
+  "scope": "independent source and tier processes, four-disk erasure, actual scanner, OC protected lifecycle writes",
+  "serverSource": "6f6d0835ddff68020f1491c403b958fade22841f",
+  "serverPatchSHA256": "3d1dfae9883c669342870147fd9f1e252a4cae429fcecf7cfc97ac25322ea923",
+  "binaries": {
+    "oc": {
+      "sha256": "14df6a691a68e0bab7375d527a84f4317678cad2c7c6d4fb0ef88f16837b28f5"
+    },
+    "oc-console": {
+      "sha256": "38bdbc52e203628e8f8788c823723665044bbb00a42cbb10ec74580d0a9d0462"
+    },
+    "otterio": {
+      "sha256": "75e7d05d222917ae9c5438c2d912c7ce78cb094e0530f1fab22c2e5d7ff3b783"
+    }
+  },
+  "harnessSHA256": "85e049cc961be134c2365fd1d9487cc0bad5454480901fae05d3bb6ee4625c28",
+  "scenarios": [
+    {
+      "scenario": "single-http",
+      "checks": [
+        "OC registers two independent ILM labels and distinct ARNs on the remote service",
+        "OC protects and saves complete mixed lifecycle XML, then reads the new canonical document and revision",
+        "real scanners select the due rule, transition noncurrent versions and empty objects, and preserve latest/filter-mismatched data",
+        "source restart, rule deletion and current-to-noncurrent changes retain exact remote versions, metadata and range reads",
+        "durable target references prevent removing both destinations after lifecycle deletion and restart"
+      ],
+      "status": "failed"
+    }
+  ],
+  "error": "POST versions/item.txt: expected 202, got 400: b'<?xml version=\"1.0\" encoding=\"UTF-8\"?>\\n<Error><Code>MalformedXML</Code><Message>expected element &lt;RestoreRequest&gt; in name space http://s3.amazonaws.com/doc/2006-03-01/ but have no name space</Message><Key>versions/item.txt</Key><BucketName>source-fixture</BucketName><Resource>/source-fixture/v'"
+}

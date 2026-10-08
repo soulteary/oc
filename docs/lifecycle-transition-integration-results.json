@@ -1,0 +1,51 @@
+{
+  "dateUTC": "2026-10-08T13:01:26.962753+00:00",
+  "status": "passed",
+  "scope": "independent source and tier processes, four-disk erasure, actual scanner, OC protected lifecycle writes",
+  "serverSource": "6f6d0835ddff68020f1491c403b958fade22841f",
+  "serverPatchSHA256": "a0281fc4489fc8c145f78bd1cb50eb41ae50252b812761ccc3340d4b626e18d9",
+  "binaries": {
+    "oc": {
+      "sha256": "715bc5c1c4f785515ea433b178e4e14d70783bd64b43b78651100e0917f9bee8"
+    },
+    "oc-console": {
+      "sha256": "b42c13dd3719525be71b9b13a3afd5be1fe78084829b775743d5b25dfc4099d9"
+    },
+    "otterio": {
+      "sha256": "d7af7e6e5f1cedf16b1348ad32f90cc56fd6dbbf3ce88e1bf1e32194eaaabcd0"
+    }
+  },
+  "harnessSHA256": "920797952b9ee12b71b2f646e0c8f556c1a29ccf90764ac65de994195f887f3a",
+  "scenarios": [
+    {
+      "scenario": "single-http",
+      "checks": [
+        "OC registers two independent ILM labels and distinct ARNs on the remote service",
+        "OC protects and saves complete mixed lifecycle XML, then reads the new canonical document and revision",
+        "real scanners select the due rule, transition noncurrent versions and empty objects, and preserve latest/filter-mismatched data",
+        "authenticated lifecycle capability gates target writes; CLI credential and metadata edits retain exact destinations and referenced objects",
+        "source restart, rule deletion and current-to-noncurrent changes retain exact remote versions, metadata and range reads",
+        "durable target references prevent removing both destinations after lifecycle deletion and restart",
+        "version-specific restore serves local data during tier outage; deletion intent retains its reference and resumes after restart without lifecycle rules",
+        "single and bulk permanent deletes remove exact tier versions before source references; drained targets can be removed",
+        "synthetic OC aliases remain unchanged and all owned fixture processes are stopped"
+      ],
+      "status": "passed"
+    },
+    {
+      "scenario": "dual-tls",
+      "checks": [
+        "OC registers two independent ILM labels and distinct ARNs on the remote service",
+        "OC protects and saves complete mixed lifecycle XML, then reads the new canonical document and revision",
+        "real scanners select the due rule, transition noncurrent versions and empty objects, and preserve latest/filter-mismatched data",
+        "authenticated lifecycle capability gates target writes; CLI credential and metadata edits retain exact destinations and referenced objects",
+        "source restart, rule deletion and current-to-noncurrent changes retain exact remote versions, metadata and range reads",
+        "durable target references prevent removing both destinations after lifecycle deletion and restart",
+        "version-specific restore serves local data during tier outage; deletion intent retains its reference and resumes after restart without lifecycle rules",
+        "single and bulk permanent deletes remove exact tier versions before source references; drained targets can be removed",
+        "synthetic OC aliases remain unchanged and all owned fixture processes are stopped"
+      ],
+      "status": "passed"
+    }
+  ]
+}

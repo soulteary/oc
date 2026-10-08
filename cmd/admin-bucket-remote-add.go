@@ -42,7 +42,11 @@ var adminBucketRemoteAddFlags = []cli.Flag{
 	},
 	&cli.StringFlag{
 		Name:  "service",
-		Usage: "type of service. Valid options are '[replication]'",
+		Usage: "type of service. Valid options are '[replication,ilm]'",
+	},
+	&cli.StringFlag{
+		Name:  "label",
+		Usage: "storage class label for a lifecycle (ilm) target",
 	},
 	&cli.StringFlag{
 		Name:  "region",
@@ -113,7 +117,7 @@ func checkAdminBucketRemoteAddSyntax(ctx *cli.Command) {
 		cli.ShowCommandHelpAndExit(context.Background(), ctx, ctx.Name, 1) // last argument is exit code
 	}
 	if argsNr > 2 {
-		fatalIf(errInvalidArgument().Trace(ctx.Args().Tail()...),
+		fatalIf(errInvalidArgument(),
 			"Incorrect number of arguments for remote add command.")
 	}
 }
@@ -131,6 +135,7 @@ type RemoteMessage struct {
 	Path                string        `json:"path,omitempty"`
 	Region              string        `json:"region,omitempty"`
 	ServiceType         string        `json:"service"`
+	Label               string        `json:"label,omitempty"`
 	Bandwidth           int64         `json:"bandwidth"`
 	ReplicationSync     bool          `json:"replicationSync"`
 	Proxy               bool          `json:"proxy"`
@@ -157,6 +162,9 @@ func (r RemoteMessage) String() string {
 		}
 		message += " "
 		message += console.Colorize("ProxyLabel", proxyStr)
+		if r.Label != "" {
+			message += " " + r.Label
+		}
 		return message
 	case "rm":
 		return console.Colorize("RemoteMessage", "Removed remote target for `"+r.SourceBucket+"` bucket successfully.")
@@ -209,7 +217,11 @@ func fetchRemoteTarget(cli *cli.Command) (sourceBucket string, bktTarget *madmin
 
 	serviceType := cli.String("service")
 	if !madmin.ServiceType(serviceType).IsValid() {
-		fatalIf(errInvalidArgument().Trace(serviceType), "Invalid service type. Valid option is `[replication]`.")
+		fatalIf(errInvalidArgument().Trace(serviceType), "Invalid service type. Valid options are `[replication,ilm]`.")
+	}
+	label := strings.TrimSpace(cli.String("label"))
+	if err := validateRemoteTargetLabel(serviceType, label); err != nil {
+		fatalIf(probe.NewError(err), "Invalid remote target label")
 	}
 	if cli.IsSet("sync") && serviceType != string(madmin.ReplicationService) {
 		fatalIf(errInvalidArgument(), "Invalid usage. --sync flag applies only to replication service")
@@ -229,12 +241,23 @@ func fetchRemoteTarget(cli *cli.Command) (sourceBucket string, bktTarget *madmin
 		Path:                path,
 		API:                 "s3v4",
 		Type:                madmin.ServiceType(serviceType),
+		Label:               label,
 		Region:              cli.String("region"),
 		BandwidthLimit:      int64(bandwidth),
 		ReplicationSync:     cli.Bool("sync"),
 		HealthCheckDuration: time.Duration(cli.Uint("healthcheck-seconds")) * time.Second,
 	}
 	return sourceBucket, bktTarget
+}
+
+func validateRemoteTargetLabel(service, label string) error {
+	if service == string(madmin.ILMService) && label == "" {
+		return fmt.Errorf("--label is required for an ilm target")
+	}
+	if len(label) > 255 || strings.ContainsAny(label, "\r\n\x00") {
+		return fmt.Errorf("label must contain at most 255 bytes and no control delimiters")
+	}
+	return nil
 }
 
 func getBandwidthInBytes(bandwidthStr string) (bandwidth uint64, err error) {
@@ -261,9 +284,12 @@ func mainAdminBucketRemoteAdd(ctx *cli.Command) error {
 	fatalIf(cerr, "Unable to initialize admin connection.")
 
 	sourceBucket, bktTarget := fetchRemoteTarget(ctx)
+	if bktTarget.Type == madmin.ILMService {
+		fatalIf(probe.NewError(requireLifecycleTargetProtocol(globalContext, aliasedURL, sourceBucket)), "Unable to verify lifecycle target support")
+	}
 	arn, e := client.SetRemoteTarget(globalContext, sourceBucket, bktTarget)
 	if e != nil {
-		fatalIf(probe.NewError(e).Trace(args...), "Unable to configure remote target")
+		fatalIf(probe.NewError(e), "Unable to configure remote target")
 	}
 
 	printMsg(RemoteMessage{
@@ -273,6 +299,7 @@ func mainAdminBucketRemoteAdd(ctx *cli.Command) error {
 		AccessKey:       bktTarget.Credentials.AccessKey,
 		SourceBucket:    sourceBucket,
 		RemoteARN:       arn,
+		Label:           bktTarget.Label,
 		ReplicationSync: bktTarget.ReplicationSync,
 		Proxy:           true,
 	})

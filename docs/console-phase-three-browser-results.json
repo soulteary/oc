@@ -1,0 +1,58 @@
+{
+  "dateUTC": "2026-10-08T10:13:03.143498+00:00",
+  "status": "passed",
+  "scope": "final real browser read/review, draft replacement/failure and logout cleanup; mutations verified by owned HTTP acceptance",
+  "binaries": {
+    "oc-console": {
+      "sha256": "38bdbc52e203628e8f8788c823723665044bbb00a42cbb10ec74580d0a9d0462"
+    },
+    "otterio": {
+      "sha256": "cbc1a96f68d282947e4818bebdb06ee3e3cd8875aab83b2eaf44f93cfec76745"
+    }
+  },
+  "serverSource": "6f6d0835ddff68020f1491c403b958fade22841f",
+  "serverPatchSha256": "04e8553175d0de9fb448f2167d33d48e45d03407f57335dce2b939d969b30001",
+  "checks": [
+    "login and existing object browsing",
+    "absent policy read and removal disabled",
+    "dirty draft requires replacement confirmation; cancellation retains complete editor",
+    "failed read retains prior document and draft",
+    "review retains immutable original bucket/kind after requested target changes; review canceled",
+    "successful confirmed read loads complete persisted version XML; version removal disabled",
+    "version review shows complete document and risks; canceled without POST",
+    "lifecycle remains selectable and absent configuration readable",
+    "root own summary contains no credentials and cannot rotate",
+    "logout clears editor, hidden complete review, own summary and secret input"
+  ],
+  "javascriptErrors": [],
+  "assets": [
+    {
+      "name": "internal/console/web/app.js",
+      "sha256": "f1d1ec926da54ceeefbfa66b91fb80c4bad0bb6ef727798fa14d0b13ed6a7bf2"
+    },
+    {
+      "name": "internal/console/web/assets.go",
+      "sha256": "db1b78fbeed2e436e0327773e7874e46a8dcbc47e3e4a11dfbc2d18f8afc3e6d"
+    },
+    {
+      "name": "internal/console/web/index.html",
+      "sha256": "6c67593188782a27371c2c6f0aa1e1437edbf67cfcb368311eb9cb9eef4f6a68"
+    },
+    {
+      "name": "internal/console/web/style.css",
+      "sha256": "901a15ccae5b69921f99240f702698743472fa173d0a593cd77fcaf3d4b7588e"
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "oc-console-p3-audit-read-confirm.jpg",
+      "sha256": "ce4bc3abb6050ec45c4d7e9eceae2202dcbcb79b50953ba7108f0eabdb15ed83"
+    }
+  ],
+  "notTestedInBrowser": [
+    "configuration submission",
+    "own-secret entry or rotation",
+    "native Windows browser"
+  ],
+  "fixtureCleanup": "owned preview stopped and temporary configuration removed; automatic preview report is interrupted and is not counted as passed"
+}
