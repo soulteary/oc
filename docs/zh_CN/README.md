@@ -7,10 +7,11 @@
 ## 开始使用
 
 1. [安装与升级](installation.md)：发布归档、校验、Windows 和源码构建。
-2. [容器使用](containers.md)：配置和数据挂载、网络入口及版本固定。
-3. [配置 OC](configuration.md)：别名、环境变量、S3/管理地址和 TLS。
-4. [传输与同步](usage.md)：本地文件、S3 对象、mirror 行为和自动化。
-5. [从 mc 迁移](migration.md)：版本 10 导入、备份和证书迁移。
+2. [在本机试用 OC 与 OtterIO](quickstart.md)：启动测试服务、复用启动凭据，并验证 S3 和管理操作。
+3. [容器使用](containers.md)：配置和数据挂载、网络入口及版本固定。
+4. [配置 OC](configuration.md)：别名、环境变量、S3/管理地址和 TLS。
+5. [传输与同步](usage.md)：本地文件、S3 对象、mirror 行为和自动化。
+6. [从 mc 迁移](migration.md)：版本 10 导入、备份和证书迁移。
 
 ## 运行与支持
 
@@ -29,6 +30,11 @@
 - [文档维护](documentation.md)：内容组织、示例约定及本次参考的开源实践。
 - [命名和 module 兼容](../../CONFLICT.md)。
 - [内部通知组件](../../internal/notify/README.md)。
+
+## 相关项目
+
+- [OtterIO](https://github.com/soulteary/otterio)：存储服务端、部署步骤及服务端配置文档。
+- [OtterIO SDK](https://github.com/soulteary/otterio-sdk)：供 Go 应用集成的独立 S3 客户端。OC 分别固定 SDK 与服务端/管理模块版本，见[兼容说明](compatibility.md)。
 
 ## 实现与验证记录
 

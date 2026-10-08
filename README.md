@@ -10,6 +10,8 @@ A command-line client for OtterIO, S3 object storage and local filesystems.
 
 OC uploads, downloads and inspects objects, synchronizes directories, and manages OtterIO servers. It derives from the Apache-2.0 MinIO Client codebase and retains the upstream notices. OC is an independent community project; it is not affiliated with or endorsed by MinIO, Inc.
 
+[OtterIO](https://github.com/soulteary/otterio) runs the storage server; OC provides its command-line client. To integrate S3 operations into a Go application, use [OtterIO SDK](https://github.com/soulteary/otterio-sdk). The server, client and SDK publish their own releases.
+
 ## Install
 
 Download a platform archive from [GitHub Releases](https://github.com/soulteary/oc/releases), verify its SHA-256 checksum, and put `oc` (`oc.exe` on Windows) on your `PATH`. The [installation guide](docs/installation.md) includes Linux, macOS, Windows and source-build instructions.
@@ -26,7 +28,7 @@ See [container usage](docs/containers.md) for persistent configuration, file mou
 
 ## Connect and transfer a file
 
-After installing OC, replace the example addresses with your deployment's S3 and management endpoints. This example uses local HTTP; use HTTPS for connections across an untrusted network. OC prompts for the access key and secret key when they are omitted:
+After installing OC, replace the example addresses with your deployment's S3 and management endpoints. If you need a test server, follow [Try OC with local OtterIO](docs/quickstart.md), which starts a server and reuses its startup credentials. This example uses local HTTP; use HTTPS for connections across an untrusted network. OC prompts for the access key and secret key when they are omitted. Enter the credentials configured on the server; the client does not create a server account:
 
 ```sh
 oc --version
@@ -41,7 +43,7 @@ oc stat store/example/hello.txt
 oc admin info store
 ```
 
-For a single-port OtterIO deployment, omit `--admin-url`. For another S3 provider, use its endpoint, credentials and supported bucket addressing; OtterIO administration is a separate API. Creating a bucket requires the corresponding permission. [Configuration](docs/configuration.md) covers private CAs and endpoint precedence; [everyday usage](docs/usage.md) covers copying, mirroring and object features.
+With OtterIO's `--console-address ":9001"`, port 9000 serves S3 and port 9001 serves the Web console and management API; use the management root URL rather than a console page path. For a single-port OtterIO deployment, omit `--admin-url`. For another S3 provider, use its endpoint, credentials and supported bucket addressing; OtterIO administration is a separate API. Creating a bucket requires the corresponding permission. [Configuration](docs/configuration.md) covers private CAs and endpoint precedence; [everyday usage](docs/usage.md) covers copying, mirroring and object features.
 
 ## What OC provides
 
@@ -51,7 +53,7 @@ For a single-port OtterIO deployment, omit `--admin-url`. For another S3 provide
 - Separate S3 and management endpoints, including independently configured management CA trust.
 - Explicit configuration import from mc, JSON output and credential-free `doctor` diagnostics.
 
-[Compatibility and validation scope](docs/compatibility.md) distinguish tested operations from features that need provider or deployment acceptance. The pinned OtterIO fixture requires five recorded server patches. Distributed deployments, external KMS/notification targets and arbitrary third-party S3 services are not covered by the recorded acceptance matrix.
+[Compatibility and validation scope](docs/compatibility.md) distinguish tested operations from features that need provider or deployment acceptance. The pinned OtterIO source already includes the compatibility fixes; the current fixture needs no additional server patches. Distributed deployments, external KMS/notification targets and arbitrary third-party S3 services are not covered by the recorded acceptance matrix.
 
 ## Migrate from mc
 
@@ -69,6 +71,7 @@ Import accepts configuration version 10, replaces destination aliases after vali
 ## Find the right guide
 
 - [Install and upgrade](docs/installation.md), or [run in a container](docs/containers.md).
+- [Try OC with a local OtterIO server](docs/quickstart.md): start the server, configure both endpoints, and verify an upload and download.
 - [Configure endpoints and TLS](docs/configuration.md), [transfer and synchronize](docs/usage.md), or [look up commands](docs/commands.md).
 - [Administer OtterIO](docs/administration.md) and [check compatibility](docs/compatibility.md).
 - [Build the experimental local Web console](docs/console.md).
@@ -88,7 +91,7 @@ make build
 ./oc --help
 ```
 
-The Go module path remains `github.com/soulteary/mc` for source compatibility. Clone the `oc` repository rather than relying on that historical module name as an installation channel. [Development](docs/development.md) explains test tools, platform coverage and the patched integration fixture.
+The Go module path remains `github.com/soulteary/mc` for source compatibility. Clone the `oc` repository rather than relying on that historical module name as an installation channel. [Development](docs/development.md) explains test tools, platform coverage and the pinned integration fixture.
 
 ## License and attribution
 

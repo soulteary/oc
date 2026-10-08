@@ -121,7 +121,7 @@ oc admin policy set store archive-reader group=readers
 
 ## 管理服务账号
 
-服务账号位于 `admin user svcacct`。当前带补丁的服务端基线会拒绝 root 执行部分服务账号操作，验收使用具有对应管理权限的普通用户。OC 不绕过这项限制。
+服务账号位于 `admin user svcacct`。固定服务端基线会拒绝 root 执行部分服务账号操作，验收使用具有对应管理权限的普通用户。OC 不绕过这项限制。
 
 为 `analyst` 创建服务账号，并用策略文件限制权限：
 
@@ -169,4 +169,4 @@ oc admin service restart --timeout 2m store
 
 CLI 还提供 `admin trace`、`admin console`、`admin profile`、`admin heal`、`admin top`、`admin kms` 和 `admin bucket`。当前帮助已将 `admin heal` 及其旧参数标为弃用。帮助中存在命令，不代表所有服务端或部署都支持它。例如，分布式锁查询需要分布式部署，KMS 操作需要配置外部 KMS，通知目标和复制需要相应的服务端配置及可访问的外部服务。
 
-已有验收覆盖带补丁的单节点 OtterIO 基线上的部分操作。heal 状态检查不能证明故障磁盘恢复；生命周期配置往返不能证明实际到期删除；实时事件流不能证明外部通知投递。边界见 [兼容性说明](compatibility.md)，不支持的操作和权限错误可按 [故障排查](troubleshooting.md) 处理。
+已有验收覆盖固定的单节点 OtterIO 基线上的部分操作；其源码已包含原有兼容修复，不需要另外应用补丁。heal 状态检查不能证明故障磁盘恢复；生命周期配置往返不能证明实际到期删除；实时事件流不能证明外部通知投递。边界见 [兼容性说明](compatibility.md)，不支持的操作和权限错误可按 [故障排查](troubleshooting.md) 处理。

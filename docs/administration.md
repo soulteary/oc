@@ -121,7 +121,7 @@ Other available operations are `user disable`, `user enable`, `user remove` and 
 
 ## Manage service accounts
 
-Service accounts are managed under `admin user svcacct`. The patched baseline tests use a permitted ordinary management user because the server rejects root for some service-account operations. OC does not bypass that restriction.
+Service accounts are managed under `admin user svcacct`. Tests of the pinned server baseline use a permitted ordinary management user because the server rejects root for some service-account operations. OC does not bypass that restriction.
 
 Create an account for `analyst` and restrict it with a policy file:
 
@@ -169,4 +169,4 @@ The default readiness timeout is one minute. OC sends one restart request and wa
 
 The CLI also exposes `admin trace`, `admin console`, `admin profile`, `admin heal`, `admin top`, `admin kms` and `admin bucket`. `admin heal` and its legacy options are marked deprecated in current help. Availability in help is not evidence that every server or deployment can execute them. For example, distributed lock queries require a distributed deployment, KMS operations require a configured external KMS, and notification targets or replication require their corresponding server configuration and reachable services.
 
-The recorded acceptance covers selected operations against a patched single-node OtterIO baseline. Heal status checks do not prove recovery from failed disks; lifecycle configuration round trips do not prove timed expiration; live event streams do not prove delivery to an external notification target. Consult [compatibility](compatibility.md) for those boundaries and [troubleshooting](troubleshooting.md) when a server reports an unsupported operation or a permission error.
+The recorded acceptance covers selected operations against the pinned single-node OtterIO baseline. Its source includes the former compatibility fixes without additional patches. Heal status checks do not prove recovery from failed disks; lifecycle configuration round trips do not prove timed expiration; live event streams do not prove delivery to an external notification target. Consult [compatibility](compatibility.md) for those boundaries and [troubleshooting](troubleshooting.md) when a server reports an unsupported operation or a permission error.

@@ -10,6 +10,8 @@
 
 OC 提供对象上传、下载、查询和目录同步，也可以管理 OtterIO 服务端。项目继承 MinIO Client 的 Apache-2.0 代码，保留原始版权与归属说明。OC 是独立的社区项目，与 MinIO, Inc. 没有隶属或背书关系。
 
+[OtterIO](https://github.com/soulteary/otterio) 运行存储服务，OC 提供命令行客户端。Go 应用需要集成 S3 操作时，使用 [OtterIO SDK](https://github.com/soulteary/otterio-sdk)。服务端、客户端和 SDK 各自发布版本。
+
 ## 安装
 
 从 [GitHub Releases](https://github.com/soulteary/oc/releases) 下载对应平台的归档，验证 SHA-256 后，将 `oc`（Windows 为 `oc.exe`）放入 `PATH`。[安装指南](docs/zh_CN/installation.md) 包含 Linux、macOS、Windows 和源码构建步骤。
@@ -26,7 +28,7 @@ docker run --rm "ghcr.io/soulteary/oc:$TAG" --version
 
 ## 连接并传输文件
 
-安装后，将示例地址替换成部署中的 S3 和管理入口。以下示例使用本机 HTTP；跨越不可信网络时使用 HTTPS。不在命令中填写凭据时，OC 会提示输入 access key 和 secret key：
+安装后，将示例地址替换成部署中的 S3 和管理入口。需要测试服务端时，先阅读[在本机试用 OC 与 OtterIO](docs/zh_CN/quickstart.md)，按步骤启动服务并复用启动凭据。以下示例使用本机 HTTP；跨越不可信网络时使用 HTTPS。不在命令中填写凭据时，OC 会提示输入 access key 和 secret key。应输入服务端已配置的凭据；配置客户端别名不会创建服务端账号：
 
 ```sh
 oc --version
@@ -41,7 +43,7 @@ oc stat store/example/hello.txt
 oc admin info store
 ```
 
-单端口 OtterIO 部署省略 `--admin-url`。连接其他 S3 服务时，使用该服务的地址、凭据和桶寻址方式；OtterIO 管理接口需要单独验收。创建桶需要对应权限。私有 CA 和地址优先级见[配置指南](docs/zh_CN/configuration.md)，复制、同步及对象功能见[常用操作](docs/zh_CN/usage.md)。
+OtterIO 设置 `--console-address ":9001"` 时，9000 提供 S3，9001 提供 Web 控制台和管理 API；管理地址使用服务根 URL，不填写控制台页面路径。单端口部署省略 `--admin-url`。连接其他 S3 服务时，使用该服务的地址、凭据和桶寻址方式；OtterIO 管理接口需要单独验收。创建桶需要对应权限。私有 CA 和地址优先级见[配置指南](docs/zh_CN/configuration.md)，复制、同步及对象功能见[常用操作](docs/zh_CN/usage.md)。
 
 ## 主要功能
 
@@ -51,7 +53,7 @@ oc admin info store
 - 独立的 S3 和管理入口，以及单独配置的管理 CA 信任。
 - 显式导入 mc 配置、JSON 输出和不显示凭据的 `doctor` 诊断。
 
-[兼容范围](docs/zh_CN/compatibility.md) 区分已验证的操作和需要按服务商、部署方式验收的功能。固定 OtterIO 测试基线需要五项已记录的服务端补丁。分布式部署、外部 KMS、外部通知目标及任意第三方 S3 服务不在现有验收矩阵内。
+[兼容范围](docs/zh_CN/compatibility.md) 区分已验证的操作和需要按服务商、部署方式验收的功能。固定 OtterIO 源码已包含兼容修复，当前测试实例不需要另外应用服务端补丁。分布式部署、外部 KMS、外部通知目标及任意第三方 S3 服务不在现有验收矩阵内。
 
 ## 从 mc 迁移
 
@@ -69,6 +71,7 @@ oc --json doctor store
 ## 按任务查找文档
 
 - [安装与升级](docs/zh_CN/installation.md)，或[使用容器](docs/zh_CN/containers.md)。
+- [在本机试用 OC 与 OtterIO](docs/zh_CN/quickstart.md)：启动服务、配置两个入口，并核对上传与下载结果。
 - [配置地址和 TLS](docs/zh_CN/configuration.md)、[传输与同步](docs/zh_CN/usage.md)，或[查询命令](docs/zh_CN/commands.md)。
 - [管理 OtterIO](docs/zh_CN/administration.md)和[检查兼容范围](docs/zh_CN/compatibility.md)。
 - [构建实验性的本机 Web 控制台](docs/zh_CN/console.md)。
@@ -88,7 +91,7 @@ make build
 ./oc --help
 ```
 
-Go module 路径暂保留 `github.com/soulteary/mc`，以兼容源码引用。构建时克隆 `oc` 仓库，不把历史 module 名称当作安装渠道。[开发指南](docs/zh_CN/development.md)说明测试工具、平台覆盖和集成测试补丁。
+Go module 路径暂保留 `github.com/soulteary/mc`，以兼容源码引用。构建时克隆 `oc` 仓库，不把历史 module 名称当作安装渠道。[开发指南](docs/zh_CN/development.md)说明测试工具、平台覆盖和固定源码的集成测试实例。
 
 ## 许可证与归属
 
