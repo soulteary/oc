@@ -43,6 +43,18 @@ not reserve a tag or publish archives or images.
   change records the accepted main commit rather than adding another runtime fix.
   Record the independent SDK, kits and server identities separately in
   compatibility and release manifests.
+- Retire Windows notification handles before closing them, so late successful
+  zero-byte completions from intentional shutdown do not report event loss or
+  trigger unnecessary mirror reconciliation.
+- Compare transfer throughput with fresh destinations and three fixed,
+  alternating measured/reference pairs after warmup. Retain every download's
+  hash check and the existing 5 MiB/s floor, 50% ratio and 512 MiB memory budget.
+  Combine sampled RSS with each process's exit-accounted peak so short transfers
+  still receive a memory measurement.
+- Parallelize cross-compilation, refresh compatible Go build caches and update
+  English/Chinese onboarding, administration and console guides. Record the two
+  intended ILM help changes as exact Unix/Windows approvals; retain the fixed
+  baseline and strict checks for all other CLI output and behavior.
 
 ## Compatibility and upgrade
 
@@ -53,6 +65,11 @@ source identities and validation limits are recorded in
 [compatibility guide](docs/compatibility.md). SDK extraction and independent
 publication are complete; notification stream delivery fixes remain deferred.
 Live notifications still have no durable replay cursor.
+
+`oc admin policy update` currently fails to stop on an already assigned or empty
+policy argument and can submit an empty replacement. Read the existing user/group
+assignments first and use `policy set` with the complete desired policy list;
+see [administration guidance](docs/administration.md).
 
 Existing OC CLI commands, configuration and timestamp release conventions remain
 in place. `OC_*` settings take precedence over supported legacy `MC_*` settings.
@@ -79,8 +96,10 @@ directly to a server that cannot read them.
 After this PR merges, release only from a clean, synchronized main commit with
 passing **Go** and **Code scanning - action** runs for that exact source. The
 separate **CLI compatibility** result also needs review; the release job does
-not automatically enforce it. Resolve or approve the new ILM help contracts
-before publication. The workflow produces eleven CLI archives, a manifest and
+not automatically enforce it. The new ILM help contracts are approved, and all
+339 cases passed on Linux, macOS and Windows for the reviewed pre-PR main
+`f7b784affbf3e3d4d7c54663932d9d1925dca2b3`; review the final merged source again.
+The workflow produces eleven CLI archives, a manifest and
 checksums, plus verified
 Linux amd64/arm64 image identities where configured. Cross-compilation does not
 establish native runtime acceptance on every target. See the
@@ -125,6 +144,14 @@ establish native runtime acceptance on every target. See the
   `6f6d0835ddff68020f1491c403b958fade22841f`，包含 CLI 与 SDK/kits 迁移。
   其源码树与原先固定的 `fed9cc3` 一致；本次换 pin 记录正式合并的 main 来源，
   没有新增运行时修复。兼容与发布清单分别记录独立 SDK、kits 和服务端身份。
+- Windows 通知句柄在关闭前先标记退役，避免主动停止后到达的成功零字节完成事件
+  被误报为事件丢失，进而触发不必要的镜像状态核对。
+- 吞吐验收在预热后使用全新目标和固定三组交替测量 / 参考传输，保留每次下载的
+  hash 检查，以及既有 5 MiB/s 下限、50% 比例与 512 MiB 内存预算。
+  内存检查结合定时采样与每个子进程退出时记录的峰值，短传输也能保留测量结果。
+- 并行执行交叉编译，更新兼容的 Go 构建缓存，并同步中英文入门、管理与控制台指南。
+  将两项有意新增的 ILM 帮助文本登记为精确 Unix / Windows 批准差异；
+  固定历史基线与其他 CLI 输出、行为检查保持严格。
 
 ## 升级与兼容性
 
@@ -132,6 +159,10 @@ OC 的 Go 模块仍为 `github.com/soulteary/mc`，源码构建要求 Go 1.27.1�
 S3 客户端 SDK 与 OtterIO 服务端 / 管理模块是独立依赖，准确版本、源码身份和验证边界
 见[兼容清单](docs/compatibility.json)及[兼容说明](docs/zh_CN/compatibility.md)。
 SDK 提取和独立发布已经完成；通知流投递修复仍延期，实时通知仍无持久化重放游标。
+
+`oc admin policy update` 当前遇到已绑定或空策略参数时没有停止请求，可能提交空替换值。
+先读取用户 / 组的现有绑定，再用 `policy set` 提交期望保留的完整策略列表，见
+[管理说明](docs/zh_CN/administration.md)。
 
 保留现有 OC CLI 命令、配置和时间戳发布约定。`OC_*` 优先于继续支持的旧 `MC_*` 设置。
 导入 mc 配置前先备份。使用经过验证的 OC 发布附件并检查 `oc --version`；
@@ -151,7 +182,9 @@ secret 或转换数据；存在新转换引用时，不能直接降级到不理�
 本 PR 合并后，只能从干净且与远程同步的 main 创建发布，并要求 **Go** 和
 **Code scanning - action** 在同一源码提交上通过。
 独立的 **CLI compatibility** 结果也需要审查，发布任务没有自动强制执行它；
-发布前应修复或批准新增 ILM 帮助合同变化。工作流生成 11 个 CLI 归档、
+新增 ILM 帮助合同变化已获批准，准备 PR 前的 main
+`f7b784affbf3e3d4d7c54663932d9d1925dca2b3` 已在 Linux、macOS、Windows
+全部匹配 339 项合同，合并后的最终源码仍需再次核对。工作流生成 11 个 CLI 归档、
 发布清单及校验文件，并按配置记录经过验证的 Linux amd64/arm64 镜像身份。
 交叉编译不能代替每个目标的原生运行验收，见
 [2026-10-08 发布准备记录](docs/releases/2026-10-08-release-review.md)和
