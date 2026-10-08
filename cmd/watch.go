@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/minio/minio-go/v7/pkg/notification"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/soulteary/otterio-sdk/v7/pkg/notification"
 )
 
 // EventInfo contains the information of the event that occurred and the source

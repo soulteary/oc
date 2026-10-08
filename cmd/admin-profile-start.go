@@ -20,8 +20,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/soulteary/otterio-sdk/v7/pkg/set"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/soulteary/otterio/pkg/madmin"
 	"github.com/urfave/cli/v3"

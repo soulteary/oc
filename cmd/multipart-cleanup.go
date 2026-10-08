@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	minio "github.com/minio/minio-go/v7"
+	minio "github.com/soulteary/otterio-sdk/v7"
 )
 
 type multipartCleanupError struct{ cause error }

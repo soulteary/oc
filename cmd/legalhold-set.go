@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/minio-go/v7"
+	minio "github.com/soulteary/otterio-sdk/v7"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/urfave/cli/v3"
 )

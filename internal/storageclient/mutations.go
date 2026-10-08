@@ -16,9 +16,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	minio "github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/s3utils"
 	"github.com/soulteary/mc/internal/consoleapi"
+	minio "github.com/soulteary/otterio-sdk/v7"
+	"github.com/soulteary/otterio-sdk/v7/pkg/s3utils"
 )
 
 const (

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	minio "github.com/minio/minio-go/v7"
 	"github.com/soulteary/mc/pkg/probe"
+	minio "github.com/soulteary/otterio-sdk/v7"
 )
 
 func TestS3CacheIsolation(t *testing.T) {

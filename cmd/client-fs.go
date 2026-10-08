@@ -34,15 +34,15 @@ import (
 	"github.com/pkg/xattr"
 	"github.com/soulteary/mc/internal/notify"
 
-	minio "github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/encrypt"
-	"github.com/minio/minio-go/v7/pkg/lifecycle"
-	"github.com/minio/minio-go/v7/pkg/notification"
-	"github.com/minio/minio-go/v7/pkg/replication"
 	"github.com/soulteary/mc/pkg/disk"
 	"github.com/soulteary/mc/pkg/hookreader"
 	"github.com/soulteary/mc/pkg/ioutils"
 	"github.com/soulteary/mc/pkg/probe"
+	minio "github.com/soulteary/otterio-sdk/v7"
+	"github.com/soulteary/otterio-sdk/v7/pkg/encrypt"
+	"github.com/soulteary/otterio-sdk/v7/pkg/lifecycle"
+	"github.com/soulteary/otterio-sdk/v7/pkg/notification"
+	"github.com/soulteary/otterio-sdk/v7/pkg/replication"
 	"github.com/soulteary/otterio/pkg/console"
 )
 

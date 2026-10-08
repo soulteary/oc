@@ -11,7 +11,6 @@ require (
 	github.com/klauspost/compress v1.20.1
 	github.com/mattn/go-ieproxy v0.0.12
 	github.com/mattn/go-isatty v0.0.24
-	github.com/minio/minio-go/v7 v7.3.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pkg/profile v1.7.0
 	github.com/pkg/xattr v0.4.12
@@ -20,7 +19,8 @@ require (
 	github.com/rjeczalik/notify v0.9.3
 	github.com/rs/xid v1.6.0
 	github.com/shirou/gopsutil/v3 v3.24.5
-	github.com/soulteary/otterio v0.0.0-20261007220321-af83288d39ef
+	github.com/soulteary/otterio v0.0.0-20261008033249-fed9cc3f491c
+	github.com/soulteary/otterio-sdk/v7 v7.3.1
 	github.com/urfave/cli/v3 v3.14.0
 	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.48.0
@@ -54,8 +54,6 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20260802145828-341c2f0c90b5 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
-	github.com/minio/crc64nvme v1.1.1 // indirect
-	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/montanaflynn/stats v0.12.7 // indirect
@@ -66,9 +64,11 @@ require (
 	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/common v0.72.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
-	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/secure-io/sio-go v0.3.1 // indirect
 	github.com/shoenig/go-m1cpu v0.2.3 // indirect
+	github.com/soulteary/otterio-kits/crc64nvme v1.1.2 // indirect
+	github.com/soulteary/otterio-kits/md5-simd v1.1.3 // indirect
 	github.com/tinylib/msgp v1.6.5 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect

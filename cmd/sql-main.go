@@ -30,8 +30,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/minio-go/v7"
 	"github.com/soulteary/mc/pkg/probe"
+	minio "github.com/soulteary/otterio-sdk/v7"
 	"github.com/soulteary/otterio/pkg/mimedb"
 	"github.com/urfave/cli/v3"
 )

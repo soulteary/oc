@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	minio "github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
+	minio "github.com/soulteary/otterio-sdk/v7"
+	"github.com/soulteary/otterio-sdk/v7/pkg/credentials"
 )
 
 func TestCanceledMultipartAbortsOwnedSession(t *testing.T) {

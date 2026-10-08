@@ -30,14 +30,14 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/encrypt"
-	"github.com/minio/minio-go/v7/pkg/notification"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
+	minio "github.com/soulteary/otterio-sdk/v7"
+	"github.com/soulteary/otterio-sdk/v7/pkg/encrypt"
+	"github.com/soulteary/otterio-sdk/v7/pkg/notification"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/urfave/cli/v3"
 )

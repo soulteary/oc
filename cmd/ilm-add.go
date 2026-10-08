@@ -19,11 +19,11 @@ package cmd
 import (
 	"context"
 
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/soulteary/mc/cmd/ilm"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
+	minio "github.com/soulteary/otterio-sdk/v7"
+	"github.com/soulteary/otterio-sdk/v7/pkg/lifecycle"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/urfave/cli/v3"
 )

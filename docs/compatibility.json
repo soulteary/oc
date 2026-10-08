@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "goToolchain": "1.27.1",
-  "otterioSDK": "v0.0.0-20261007220321-af83288d39ef",
-  "otterioSource": "af83288d39ef62a44f62f8fff69a5aae93023d99",
+  "otterioSDK": "v0.0.0-20261008033249-fed9cc3f491c",
+  "otterioSource": "fed9cc3f491c9851e2fcb695c5b8455c4cca032e",
   "cliFramework": {
     "module": "github.com/urfave/cli/v3",
     "version": "v3.14.0"

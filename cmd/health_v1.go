@@ -23,11 +23,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/soulteary/otterio-sdk/v7/pkg/set"
 	"github.com/soulteary/otterio/pkg/madmin"
 )
 

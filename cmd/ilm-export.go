@@ -20,9 +20,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/soulteary/otterio-sdk/v7/pkg/lifecycle"
 	"github.com/urfave/cli/v3"
 )
 

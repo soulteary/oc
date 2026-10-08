@@ -21,9 +21,9 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/minio/minio-go/v7/pkg/replication"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/soulteary/otterio-sdk/v7/pkg/replication"
 	"github.com/soulteary/otterio/pkg/console"
 	"github.com/urfave/cli/v3"
 )

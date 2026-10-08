@@ -23,11 +23,11 @@ import (
 	"os"
 	"time"
 
-	minio "github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/encrypt"
-	"github.com/minio/minio-go/v7/pkg/lifecycle"
-	"github.com/minio/minio-go/v7/pkg/replication"
 	"github.com/soulteary/mc/pkg/probe"
+	minio "github.com/soulteary/otterio-sdk/v7"
+	"github.com/soulteary/otterio-sdk/v7/pkg/encrypt"
+	"github.com/soulteary/otterio-sdk/v7/pkg/lifecycle"
+	"github.com/soulteary/otterio-sdk/v7/pkg/replication"
 )
 
 // DirOpt - list directory option.
