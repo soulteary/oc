@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import sys
@@ -228,7 +229,7 @@ class MaintenanceTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'fixture transfer failure'):
             self.transfer_fixture(fail='warmup-reference')
 
-    def invoke_sampled_transfer(self, rss_kib=1024, timeout=False):
+    def invoke_sampled_transfer(self, rss_kib=1024, exit_rss_kib=1024, timeout=False):
         class FixtureDone(Exception):
             pass
         class SampleEvent:
@@ -250,6 +251,7 @@ class MaintenanceTests(unittest.TestCase):
             def is_alive(self):
                 return False
         child = unittest.mock.Mock()
+        child.exit_peak_rss_kib = exit_rss_kib
         child.returncode = None if timeout else 0
         child.poll.side_effect = lambda: child.returncode
         child.kill.side_effect = lambda: setattr(child, 'returncode', -9)
@@ -264,8 +266,8 @@ class MaintenanceTests(unittest.TestCase):
             (root / 'large').write_bytes(b'payload')
             self.transfer_evidence = {}
             with patch.object(stability, 'transfer_performance_checks', side_effect=one_transfer), \
-                    patch.object(stability.subprocess, 'Popen', return_value=child), \
-                    patch.object(stability.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, stdout=str(rss_kib).encode())), \
+                    patch.object(stability, 'TransferProcess', return_value=child), \
+                    patch.object(stability.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, stdout=b'' if rss_kib is None else str(rss_kib).encode())), \
                     patch.object(stability.threading, 'Thread', Sampler), \
                     patch.object(stability.threading, 'Event', SampleEvent), \
                     patch.object(stability.time, 'monotonic', side_effect=[10, 10.25, 17.25]):
@@ -288,5 +290,66 @@ class MaintenanceTests(unittest.TestCase):
         with self.assertRaises(subprocess.TimeoutExpired):
             self.invoke_sampled_transfer(timeout=True)
         self.assertEqual(self.transfer_evidence['transferAttempts'][0]['status'], 'failed')
+
+    def test_transfer_exit_peak_closes_short_process_sampling_race(self):
+        outcome = self.invoke_sampled_transfer(rss_kib=None, exit_rss_kib=2048)
+        self.assertEqual(outcome['sampledPeakRSSMiB'], 0)
+        self.assertEqual(outcome['exitPeakRSSMiB'], 2)
+        self.assertEqual(outcome['processPeakRSSMiB'], 2)
+        attempt = self.transfer_evidence['transferAttempts'][0]
+        self.assertEqual(attempt['sampledPeakRSSMiB'], 0)
+        self.assertEqual(attempt['processPeakRSSMiB'], 2)
+        with self.assertRaisesRegex(AssertionError, 'no process memory'):
+            self.invoke_sampled_transfer(rss_kib=None, exit_rss_kib=0)
+        with self.assertRaisesRegex(AssertionError, 'RSS budget'):
+            self.invoke_sampled_transfer(rss_kib=None, exit_rss_kib=600*1024)
+
+    @unittest.skipUnless(hasattr(os, 'wait4'), 'wait4 is only available on POSIX')
+    def test_transfer_wait4_peak_units_and_running_child(self):
+        process = stability.TransferProcess.__new__(stability.TransferProcess)
+        process.pid = 321
+        process.exit_peak_rss_kib = 0
+        for platform, maxrss in (('linux', 2048), ('darwin', 2048*1024)):
+            with self.subTest(platform=platform), \
+                    patch.object(stability.sys, 'platform', platform), \
+                    patch.object(stability.os, 'wait4', return_value=(321, 0, unittest.mock.Mock(ru_maxrss=maxrss))) as wait:
+                self.assertEqual(process._try_wait(os.WNOHANG), (321, 0))
+                self.assertEqual(process.exit_peak_rss_kib, 2048)
+                wait.assert_called_once_with(321, os.WNOHANG)
+        with patch.object(stability.os, 'wait4', return_value=(0, 0, unittest.mock.Mock(ru_maxrss=0))):
+            self.assertEqual(process._try_wait(os.WNOHANG), (0, 0))
+            self.assertEqual(process.exit_peak_rss_kib, 2048)
+
+    @unittest.skipUnless(hasattr(os, 'wait4'), 'wait4 is only available on POSIX')
+    def test_transfer_wait4_peaks_are_independent_for_concurrent_children(self):
+        # Reap the larger child first: process-global RUSAGE_CHILDREN would
+        # incorrectly attribute its retained peak to the smaller child too.
+        children = []
+        def launch(size):
+            child = stability.TransferProcess(
+                [sys.executable, '-c', f'payload = bytearray({size})'],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            children.append(child)
+            return child
+        try:
+            startup = launch(1024*1024)
+            startup.communicate(timeout=10)
+            self.assertEqual(startup.returncode, 0)
+            self.assertGreater(startup.exit_peak_rss_kib, 0)
+            # Linux can retain the parent's inherited RSS before exec. Size
+            # the larger allocation above that measured startup high-water.
+            small = launch(1024*1024)
+            large = launch(int(startup.exit_peak_rss_kib*1024) + 64*1024*1024)
+            for child in (large, small):
+                child.communicate(timeout=10)
+                self.assertEqual(child.returncode, 0)
+                self.assertGreater(child.exit_peak_rss_kib, 0)
+            self.assertGreater(large.exit_peak_rss_kib,
+                               small.exit_peak_rss_kib + 24*1024)
+        finally:
+            for child in children:
+                if child.returncode is None:
+                    child.kill()
+                    child.communicate()
 
 if __name__ == '__main__': unittest.main()

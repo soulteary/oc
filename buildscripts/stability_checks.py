@@ -11,6 +11,7 @@ from pathlib import Path
 import signal
 import statistics
 import subprocess
+import sys
 import threading
 import time
 import json
@@ -18,6 +19,31 @@ import urllib.parse
 from fault_relay import FaultRelay
 from check_budgets import budgets, paired_throughput_gate
 from local_http import local_urlopen
+
+
+class TransferProcess(subprocess.Popen):
+    """Retain this child's exit RSS while communicate() drains both pipes.
+
+    POSIX Popen's timed wait calls _try_wait under its waitpid lock. Use wait4
+    there so a fast transfer cannot disappear before ps captures a sample.
+    Call communicate before poll, which otherwise reaps through waitpid.
+    """
+    def __init__(self, *args, **kwargs):
+        self.exit_peak_rss_kib = 0
+        super().__init__(*args, **kwargs)
+
+    def _try_wait(self, wait_flags):
+        try:
+            pid, status, usage = os.wait4(self.pid, wait_flags)
+        except ChildProcessError:
+            # Match Popen when another waiter has already reaped the child;
+            # absent RSS accounting remains a measurement failure below.
+            return self.pid, 0
+        if pid == self.pid:
+            # Darwin reports bytes; Linux reports KiB. This is per child,
+            # unlike RUSAGE_CHILDREN's shared peak across concurrent transfers.
+            self.exit_peak_rss_kib = usage.ru_maxrss / (1024 if sys.platform == 'darwin' else 1)
+        return pid, status
 
 
 def file_hash(path):
@@ -115,7 +141,7 @@ def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence
         sample_errors = []
         stopped = threading.Event()
         started = time.monotonic()
-        child = subprocess.Popen([oc, '--config-dir', str(config), '--quiet', '--no-color', *args],
+        child = TransferProcess([oc, '--config-dir', str(config), '--quiet', '--no-color', *args],
                                  env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         def sample():
             nonlocal peak
@@ -150,17 +176,22 @@ def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence
                 finished = time.monotonic()
             stopped.set()
             sampler.join(timeout=3)
+            process_peak = max(peak, child.exit_peak_rss_kib)
             attempt.update(exitCode=child.returncode, elapsedSeconds=round(finished-started,3),
                            samplerCleanupSeconds=round(time.monotonic()-finished,3),
+                           exitPeakRSSMiB=round(child.exit_peak_rss_kib/1024,2),
+                           processPeakRSSMiB=round(process_peak/1024,2),
                            sampledPeakRSSMiB=round(peak/1024,2), status="complete" if child.returncode==0 else "failed")
         if sample_errors or sampler.is_alive():
             raise AssertionError('RSS sampler failed or did not terminate')
-        if peak == 0:
-            raise AssertionError('RSS sampler captured no transfer memory sample')
-        if peak > limits["sampledProcessRSSMiB"] * 1024:
+        if process_peak == 0:
+            raise AssertionError('transfer captured no process memory sample')
+        if process_peak > limits["sampledProcessRSSMiB"] * 1024:
             raise AssertionError('transfer exceeded compatibility RSS budget')
         return {'startedAt': started, 'finishedAt': finished, 'elapsedSeconds': finished-started,
                 'sampledPeakRSSMiB': round(peak / 1024, 2),
+                'exitPeakRSSMiB': attempt['exitPeakRSSMiB'],
+                'processPeakRSSMiB': attempt['processPeakRSSMiB'],
                 'samplerCleanupSeconds': attempt['samplerCleanupSeconds']}
 
     checks = transfer_performance_checks(transfer, run, source, root, expected, limits, evidence)
