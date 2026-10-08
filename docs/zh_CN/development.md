@@ -6,7 +6,7 @@
 
 ## 工具链与代码布局
 
-Go 版本以 [go.mod](../../go.mod) 为准，当前为 `1.27.1`。[兼容清单](../compatibility.json)记录相同工具链和固定的 OtterIO SDK。CI 和 Makefile 使用 `GOTOOLCHAIN=local`，本机版本过旧时会失败，不会自动下载更新版本；运行检查前先安装要求的工具链。
+Go 版本以 [go.mod](../../go.mod) 为准，当前为 `1.27.1`。[兼容清单](../compatibility.json)记录相同工具链、独立 S3 SDK 与 kits，以及单独的服务端/管理包源码 pin。CI 和 Makefile 使用 `GOTOOLCHAIN=local`，本机版本过旧时会失败，不会自动下载更新版本；运行检查前先安装要求的工具链。
 
 此外需要 Git 和 Python 3。下面的命令使用 Linux 或 macOS 上的 POSIX shell；Makefile 和交叉编译脚本需要 Bash。服务端集成测试还需要 OpenSSL，竞态测试和 `CGO_ENABLED=1` 需要对应平台的 C 编译器。Windows 的原生构建和测试命令见 [Go 工作流](../../.github/workflows/go.yml)，输出文件应使用 `oc.exe`。
 
@@ -17,7 +17,7 @@ Go 版本以 [go.mod](../../go.mod) 为准，当前为 `1.27.1`。[兼容清单]
 - `pkg/`：客户端辅助包和包测试。
 - `internal/notify/`：保留独立 MIT 许可证的通知实现。
 - `buildscripts/`：依赖检查、集成环境、发行打包和镜像验证。
-- `docs/compatibility.json`：已审查的 SDK、工具链、编译目标、服务端补丁和测试预算。
+- `docs/compatibility.json`：已审查的 S3 SDK、kits、服务端/管理包 pin、工具链、编译目标、服务端补丁和测试预算。
 - `.github/workflows/`：平台检查、CodeQL、发布和稳定版本提升。
 
 二进制名为 `oc`，Go module 路径仍是 `github.com/soulteary/mc`。除非单独讨论迁移，否则保留模块路径和已有版权归属。项目不使用 `govendor`。
@@ -69,7 +69,7 @@ CI 使用 golangci-lint `v2.14.0` 和 [.golangci.yml](../../.golangci.yml)。安
 
 集成脚本启动临时 OtterIO 进程，使用随机凭据、独立客户端配置、本地端口和临时存储。测试会写入和删除测试对象，并对这些临时进程执行管理操作；脚本不接收已有部署的服务地址。
 
-OC 的 SDK 依赖固定在 `go.mod` 中，服务端必须从该版本源码构建；原有兼容修复已包含在源码中。先把模块源码复制到可写的临时目录，不修改共享 module 缓存。完整源码 SHA 记录在 `docs/compatibility.json` 中。
+集成服务端必须从 `go.mod` 固定的 `github.com/soulteary/otterio` 服务端/管理包模块版本构建；原有兼容修复已包含在源码中。单独的 `github.com/soulteary/otterio-sdk/v7` 依赖是 S3 客户端 SDK。先把服务端源码复制到可写的临时目录，不修改共享 module 缓存。`docs/compatibility.json` 中的 `otterioSource` 记录服务端源码 SHA，`storageSDK` 记录独立 SDK 的身份。
 
 下面准备与 CI 相同的 `CGO_ENABLED=0` 测试环境。保持在同一个 shell 中执行，以便后续使用这些目录变量：
 
@@ -114,7 +114,7 @@ Go 工作流在 Linux、macOS、Windows 上运行单元和竞态测试；Linux �
 
 ## 修改依赖、文档与发行内容
 
-有意调整依赖时，一起审查 `go.mod` 和 `go.sum`，必要时同步更新兼容基线及其边界检查，并在 PR 中解释原因。只在依赖图需要变化时执行 `go mod tidy`，随后检查 diff。不要提交临时 `replace`，也不要为了让本地测试通过而悄悄升级固定的 OtterIO SDK。
+有意调整依赖时，一起审查 `go.mod` 和 `go.sum`，必要时同步更新兼容基线及其边界检查，并在 PR 中解释原因。只在依赖图需要变化时执行 `go mod tidy`，随后检查 diff。不要提交临时 `replace`，也不要为了让本地测试通过而悄悄升级已审查的 S3 SDK 或服务端/管理包 pin。
 
 命令参数、默认值、输出或数据行为变化时，同步更新帮助和中英文指南。迁移要求放在[迁移指南](migration.md)，运行注意事项放在[管理指南](administration.md)，诊断步骤放在[排错指南](troubleshooting.md)。`oc-phase-*` 文档保留设计和验证历史，面向用户的入口是按任务组织的指南。
 

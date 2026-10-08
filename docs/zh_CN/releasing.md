@@ -6,7 +6,7 @@ OC 使用 UTC 的 `RELEASE.YYYY-MM-DDTHH-MM-SSZ` 标签，与 OtterIO 一致。
 
 先合并源码和文档改动，等待 **Go** 和 **Code scanning - action** 在同一个 main 提交上通过，再创建新的标签。PR 检查通过不能代替该提交的 main 检查。
 
-根目录 `RELEASE_NOTES.md` 提供 GitHub Release 正文。带日期的发布准备记录保存在 `docs/releases/`；[2026-10-07 准备记录](../releases/2026-10-07-release-review.md)记录的是当时的源码范围，不会为后续发布预留标签。
+根目录 `RELEASE_NOTES.md` 提供 GitHub Release 正文。带日期的发布准备记录保存在 `docs/releases/`；[2026-10-08 准备记录](../releases/2026-10-08-release-review.md)记录本次源码范围，[2026-10-07 准备记录](../releases/2026-10-07-release-review.md)继续作为历史保存。两份记录都不会为后续发布预留标签。
 
 ## 准备标签
 
@@ -35,6 +35,8 @@ git push origin "refs/tags/$TAG"
 11 个归档加上 `release-manifest.json` 和 `checksums.txt`，共 13 个上传附件。SHA-256 文件覆盖所有归档和发布清单。清单记录标签、源码 SHA、SDK/工具链基线、归档哈希，以及实际发布的容器镜像摘要。程序版本参数来自已验证标签和实际源码提交，不要求 SemVer，也不改变 SDK 依赖。写入镜像摘要后，工作流会重新计算发布清单的校验值。
 
 发布任务拒绝已经正式发布的版本和预发布草稿；它会重新检查远程标签，验证本地校验值，上传到稳定版本草稿，再下载并逐一比较附件名称和字节，最后正式发布。这个阶段不改变 GitHub 的 latest 标记。
+
+新增的 `storage_sdk` 与 `otterio_kits` 分别记录独立 S3 客户端及已发布的 kits；旧字段 `otterio_sdk` 继续记录服务端 / 管理模块身份。
 
 `.goreleaser.yml` 仍可用于本地快照或软件包构建，但发布功能关闭；这个工作流不会调用它。
 

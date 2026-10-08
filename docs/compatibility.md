@@ -6,9 +6,13 @@ OC's compatibility claim is limited to versions, deployments and operations with
 
 ## SDK pin and tested server baseline
 
-The current Go toolchain, fixed OtterIO SDK version, full server source SHA and CLI framework version are recorded in [compatibility.json](compatibility.json). The OC module remains `github.com/soulteary/mc`.
+The current Go toolchain, independent S3 SDK, OtterIO kits, server/admin module and full source SHAs are recorded in [compatibility.json](compatibility.json). The OC module remains `github.com/soulteary/mc`.
 
-The client and integration server use the same pinned remote OtterIO source, without local replacements or compatibility patches. The management query bridge, runtime/shutdown, HTTP API, account information and conditional-write fixes are included in that source. The old patch files and earlier reports are retained as historical evidence, not current setup instructions. Upgrading the pin requires rerunning the recorded matrix. See [development](development.md) and [CLI migration](cli-migration.md).
+S3 operations use `github.com/soulteary/otterio-sdk/v7 v7.3.1`, released from `c11549d350d8d1f7474bc26037616e912f344c15`, and published kits `crc64nvme v1.1.2` and `md5-simd v1.1.3`. The manifest's `storageSDK` and `otterioKits` fields identify these dependencies. Its legacy `otterioSDK` field still records the OtterIO server/admin module version so existing acceptance and release identity readers remain compatible; it is not the independent S3 SDK version.
+
+The release-boundary check compares the SDK version and full source SHA with a reviewed tag-to-source mapping fixed independently in `buildscripts/verify-release-boundaries.py`. A full-length SHA alone does not establish release identity. An SDK upgrade must verify the published tag's source and update that mapping together with the dependency and compatibility manifest; the check runs without network access.
+
+Server/admin packages and the integration server use the same pinned remote OtterIO source, `6f6d0835ddff68020f1491c403b958fade22841f`, without local replacements or compatibility patches. Its tree matches the former `fed9cc3` pin; the update records the merged main source. The management query bridge, runtime/shutdown, HTTP API, account information and conditional-write fixes are included in that source. The old patch files and earlier reports are retained as historical evidence, not current setup instructions. Upgrading either dependency requires rerunning the recorded matrix. See [development](development.md) and [CLI migration](cli-migration.md).
 
 ## Deployments exercised by the test harness
 
@@ -81,13 +85,14 @@ For another S3 provider, validate the object operations, authentication, address
 
 Live notifications have no durable replay cursor. Reconnecting cannot guarantee delivery of events emitted during a disconnection. Use a persistent notification target and appropriate consumer acknowledgements when an event history is required. Periodic `mirror --watch` reconciliation concerns current state, not a complete event audit trail; see [usage](usage.md).
 
-SDK stream fixes, SDK extraction and an independently released SDK remain deferred in the baseline. The CLI migration updates the pinned SDK source; SDK stream delivery behavior remains outside this change. `MC_*` environment compatibility remains throughout OC 0.x; removal requires at least one minor-release notice. See [migration](migration.md).
+SDK extraction and independent publication are complete. SDK stream fixes remain deferred; notification delivery behavior remains outside this change. `MC_*` environment compatibility remains throughout OC 0.x; removal requires at least one minor-release notice. See [migration](migration.md).
 
 ## Read the recorded evidence
 
 The current CLI migration and its exact-commit checks are tracked in
 [OC PR #7](https://github.com/soulteary/oc/pull/7) and
 [OtterIO PR #30](https://github.com/soulteary/otterio/pull/30).
+The SDK/kits migration is recorded in [OC PR #8](https://github.com/soulteary/oc/pull/8) and [OtterIO PR #31](https://github.com/soulteary/otterio/pull/31); merged server storage-readiness fixture coverage is recorded in [OtterIO PR #32](https://github.com/soulteary/otterio/pull/32). The [2026-10-08 release preparation](releases/2026-10-08-release-review.md) records the current release baseline and outstanding publication gates.
 CLI reports, compiled-module inventories and joint acceptance reports are
 uploaded by the workflows linked from those checks.
 

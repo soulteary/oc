@@ -42,6 +42,7 @@ These records retain their original source ranges, limitations and test results.
 - [Phase three: operations and migration](oc-phase-three.md), with [recorded results](oc-phase-three-results.json).
 - [Phase four: stability and support policy](oc-phase-four.md), with [recorded results](oc-phase-four-results.json) and [development-build inventory](oc-phase-four.cdx.json).
 - [Release preparation dated 2026-10-07](releases/2026-10-07-release-review.md).
+- [Release preparation dated 2026-10-08](releases/2026-10-08-release-review.md): console, CLI and independently released SDK/kits.
 
 The machine-readable [compatibility manifest](compatibility.json) supplies the toolchain, SDK pin, target list and test budgets. Recorded counts and inventories describe their individual runs; they are not release signatures or a guarantee for every deployment.
 

@@ -22,7 +22,7 @@ PR 描述和发布说明围绕最终改动组织：触发条件、修改后的�
 
 依赖使用 Go modules 管理。一起审查有意调整的 `go.mod` 和 `go.sum`，说明引入或升级依赖的原因。不要提交本地 `replace`，也不要通过批量升级依赖绕过失败的测试环境。
 
-OtterIO SDK、工具链基线和服务端补丁记录在[兼容清单](../compatibility.json)中，由 `buildscripts/verify-release-boundaries.py` 检查。调整基线时，相关测试、文档和边界检查需要放在同一组已审查改动中。
+独立 S3 SDK、kits、服务端/管理包 pin、工具链基线和服务端补丁记录在[兼容清单](../compatibility.json)中，由 `buildscripts/verify-release-boundaries.py` 检查。调整基线时，相关测试、文档和边界检查需要放在同一组已审查改动中。
 
 当前固定服务端源码已包含原有五项兼容修复，不再应用历史补丁。使用兼容清单记录的确切版本构建，不修改共享模块缓存。[开发指南](development.md#复现服务端集成环境)提供具体步骤。
 
