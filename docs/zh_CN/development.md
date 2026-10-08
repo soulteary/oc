@@ -17,7 +17,7 @@ Go 版本以 [go.mod](../../go.mod) 为准，当前为 `1.27.1`。[兼容清单]
 - `pkg/`：客户端辅助包和包测试。
 - `internal/notify/`：保留独立 MIT 许可证的通知实现。
 - `buildscripts/`：依赖检查、集成环境、发行打包和镜像验证。
-- `docs/compatibility.json`：已审查的 S3 SDK、kits、服务端/管理包 pin、工具链、编译目标、服务端补丁和测试预算。
+- `docs/compatibility.json`：已审查的 S3 SDK、kits、服务端/管理包 pin、工具链、编译目标、所需补丁列表（当前为空）和测试预算。
 - `.github/workflows/`：平台检查、CodeQL、发布和稳定版本提升。
 
 二进制名为 `oc`，Go module 路径仍是 `github.com/soulteary/mc`。除非单独讨论迁移，否则保留模块路径和已有版权归属。项目不使用 `govendor`。

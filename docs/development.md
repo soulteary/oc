@@ -17,7 +17,7 @@ The checkout can live outside GOPATH. Its main areas are:
 - `pkg/`: client support packages and package tests.
 - `internal/notify/`: the vendored notification implementation with its own MIT license.
 - `buildscripts/`: dependency checks, integration fixtures, release packaging and image validation.
-- `docs/compatibility.json`: reviewed S3 SDK, kits, server/admin pin, toolchain, compile targets, server patches and test budgets.
+- `docs/compatibility.json`: reviewed S3 SDK, kits, server/admin pin, toolchain, compile targets, required-patch list (currently empty) and test budgets.
 - `.github/workflows/`: platform checks, CodeQL, publication and stable promotion.
 
 The binary name is `oc`. The module path remains `github.com/soulteary/mc`; preserve it and existing copyright attribution unless a separate migration is agreed. OC does not use `govendor`.

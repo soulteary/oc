@@ -7,10 +7,11 @@ Start with installation, then configure an alias and transfer a file. Guides des
 ## Getting started
 
 1. [Install or upgrade OC](installation.md): release archives, checksums, Windows and source builds.
-2. [Run OC in a container](containers.md): configuration and data mounts, endpoint reachability and version pinning.
-3. [Configure OC](configuration.md): aliases, environment variables, S3/management endpoints and TLS.
-4. [Transfer and synchronize data](usage.md): local files, S3 objects, mirror behavior and automation.
-5. [Migrate from mc](migration.md): version 10 import, backups and certificate migration.
+2. [Try OC with local OtterIO](quickstart.md): start a test server, reuse its credentials, and verify S3 and management operations.
+3. [Run OC in a container](containers.md): configuration and data mounts, endpoint reachability and version pinning.
+4. [Configure OC](configuration.md): aliases, environment variables, S3/management endpoints and TLS.
+5. [Transfer and synchronize data](usage.md): local files, S3 objects, mirror behavior and automation.
+6. [Migrate from mc](migration.md): version 10 import, backups and certificate migration.
 
 ## Operation and support
 
@@ -29,6 +30,11 @@ Start with installation, then configure an alias and transfer a file. Guides des
 - [Documentation maintenance](documentation.md): content structure, examples and the open-source references used for this documentation refresh.
 - [Naming and module compatibility](../CONFLICT.md).
 - [Internal notification fork](../internal/notify/README.md).
+
+## Related projects
+
+- [OtterIO](https://github.com/soulteary/otterio): the storage server, deployment and server configuration documentation.
+- [OtterIO SDK](https://github.com/soulteary/otterio-sdk): the independent Go S3 client for application integration. OC pins its SDK dependency separately from the server/admin module; see [compatibility](compatibility.md).
 
 ## Implementation and validation records
 
