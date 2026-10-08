@@ -19,7 +19,7 @@ require (
 	github.com/rjeczalik/notify v0.9.3
 	github.com/rs/xid v1.6.0
 	github.com/shirou/gopsutil/v3 v3.24.5
-	github.com/soulteary/otterio v0.0.0-20261008033249-fed9cc3f491c
+	github.com/soulteary/otterio v0.0.0-20261008035209-6f6d0835ddff
 	github.com/soulteary/otterio-sdk/v7 v7.3.1
 	github.com/urfave/cli/v3 v3.14.0
 	golang.org/x/net v0.59.0

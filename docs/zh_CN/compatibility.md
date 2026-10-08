@@ -6,9 +6,11 @@ OC 的兼容承诺限于已有通过记录的版本、部署和操作。API 能�
 
 ## SDK 固定版本与服务端测试基线
 
-当前 Go 工具链、固定 OtterIO SDK 版本、完整服务端源码 SHA 和 CLI 框架版本记录在 [compatibility.json](../compatibility.json)。OC 的 module 名保持 `github.com/soulteary/mc`。
+当前 Go 工具链、独立 S3 SDK、OtterIO kits、服务端 / 管理模块及完整源码 SHA 记录在 [compatibility.json](../compatibility.json)。OC 的 module 名保持 `github.com/soulteary/mc`。
 
-客户端与集成服务端使用同一固定远程 OtterIO 源码，不使用本地替换或兼容补丁。管理查询桥接、运行时关闭、HTTP API、账户信息和条件写修复已包含在该源码中。旧补丁与旧报告保留为历史证据，不再作为当前环境搭建步骤。更新固定版本后必须重跑验收矩阵，见[开发指南](development.md)和 [CLI 迁移说明](../cli-migration.md)。
+S3 操作使用独立发布的 `github.com/soulteary/otterio-sdk/v7 v7.3.1`，发布源码为 `c11549d350d8d1f7474bc26037616e912f344c15`，并采用已发布的 kits `crc64nvme v1.1.2`、`md5-simd v1.1.3`。清单中的 `storageSDK` 与 `otterioKits` 分别记录这些依赖。旧字段 `otterioSDK` 继续记录服务端 / 管理模块版本，保留已有验收及发布身份读取器的兼容性；该字段不是独立 S3 SDK 的版本。
+
+服务端 / 管理包与集成服务端使用同一固定远程 OtterIO 源码 `6f6d0835ddff68020f1491c403b958fade22841f`，不使用本地替换或兼容补丁。其源码树与原先的 `fed9cc3` pin 一致；此次更新记录正式合并的 main 来源。管理查询桥接、运行时关闭、HTTP API、账户信息和条件写修复已包含在该源码中。旧补丁与旧报告保留为历史证据，不再作为当前环境搭建步骤。任一依赖更新后都必须重跑验收矩阵，见[开发指南](development.md)和 [CLI 迁移说明](../cli-migration.md)。
 
 ## 测试工具覆盖的部署
 
@@ -81,13 +83,15 @@ Console 写入验收固定测量五组 CLI / console 配对上传，交替先后
 
 实时通知没有持久化重放游标，重连不保证补发断线期间的事件。需要完整历史时，应使用持久化通知目标和消费确认机制。`mirror --watch` 的周期核对用于当前状态收敛，不提供完整事件审计，见 [使用说明](usage.md)。
 
-SDK 流修复、SDK 拆分和 SDK 独立发布仍列为暂缓事项。CLI 迁移更新了 SDK 固定源码版本，SDK 的流投递行为不在本次变更范围内。`MC_*` 在 OC 0.x 系列内继续兼容，移除前至少提前一个次版本公告，见 [迁移说明](migration.md)。
+SDK 提取及独立发布已经完成；SDK 流修复仍延期，本次不改变通知投递行为。`MC_*` 在 OC 0.x 系列内继续兼容，移除前至少提前一个次版本公告，见 [迁移说明](migration.md)。
 
 ## 查看验证记录
 
 当前 CLI 迁移及对应提交的检查见 [OC PR #7](https://github.com/soulteary/oc/pull/7)
 和 [OtterIO PR #30](https://github.com/soulteary/otterio/pull/30)。CLI 快照、程序模块清单和
 联合验收报告由关联工作流上传，可在对应检查中下载。
+
+SDK/kits 迁移见 [OC PR #8](https://github.com/soulteary/oc/pull/8)和 [OtterIO PR #31](https://github.com/soulteary/otterio/pull/31)；已经合并的服务端存储就绪验收修正见 [OtterIO PR #32](https://github.com/soulteary/otterio/pull/32)。[2026-10-08 发布准备记录](../releases/2026-10-08-release-review.md)列出本次发布比较基线及尚需执行的发布门槛。
 
 当前合同覆盖 OC 339 项、OtterIO 133 项 CLI 调用。批准的 health 用法错误渲染修复，
 将旧版 panic 和退出码 2 改为具体参数错误和退出码 1。非法健康选择器、时长、布尔值

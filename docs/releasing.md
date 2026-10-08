@@ -8,8 +8,9 @@ Merge source and documentation changes first, then wait for **Go** and
 **Code scanning - action** to pass on that exact main commit before creating a
 fresh tag. A green PR run does not replace these exact-commit main checks.
 Root `RELEASE_NOTES.md` supplies the GitHub release body. Keep dated preparation
-records under `docs/releases/`; the [2026-10-07 preparation](releases/2026-10-07-release-review.md)
-is a historical source-range record, not a template that reserves a future tag.
+records under `docs/releases/`; the [2026-10-08 preparation](releases/2026-10-08-release-review.md)
+records the current source range, and the [2026-10-07 preparation](releases/2026-10-07-release-review.md)
+remains historical. Neither record reserves a future tag.
 
 ## Prepare the tag
 
@@ -43,7 +44,9 @@ compatibility manifest. Windows uses ZIP; other platforms use tar.gz.
 Eleven archives plus `release-manifest.json` and `checksums.txt` make thirteen
 uploaded assets. The SHA-256 file covers all archives and the manifest.
 The manifest records the tag, source SHA, SDK/toolchain baseline, archive hashes
-and published container image digests. Runtime version flags come from the
+and published container image digests. `storage_sdk` and `otterio_kits` record
+the independent S3 client and its published kits; the legacy `otterio_sdk` field
+continues to identify the server/admin module. Runtime version flags come from the
 validated tag and actual source SHA, without requiring SemVer or changing the
 SDK dependency. The workflow refreshes the manifest checksum after recording
 the image digests.

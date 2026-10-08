@@ -50,7 +50,11 @@ class ReleaseBuildTests(unittest.TestCase):
             self.assertEqual(manifest['release_tag'], TAG)
             sha = release.preflight.git(root, 'rev-parse', 'HEAD')
             self.assertEqual(manifest['source_commit'], sha)
-            targets = json.loads((ROOT / 'docs/compatibility.json').read_text())['crossCompileTargets']
+            support = json.loads((ROOT / 'docs/compatibility.json').read_text())
+            self.assertEqual(manifest['otterio_sdk'], support['otterioSDK'])
+            self.assertEqual(manifest['storage_sdk'], support['storageSDK'])
+            self.assertEqual(manifest['otterio_kits'], support['otterioKits'])
+            targets = support['crossCompileTargets']
             self.assertEqual([asset['target'] for asset in manifest['assets']], targets)
             self.assertEqual(len(list(output.iterdir())), 13)
             for args, kwargs in calls:

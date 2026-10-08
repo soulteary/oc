@@ -147,8 +147,8 @@ github.com/shoenig/go-m1cpu v0.2.3 h1:srqcACMKqJblLvPAN61ylvMaylv/bl+g703XKgeAXZ
 github.com/shoenig/go-m1cpu v0.2.3/go.mod h1:38ReYghj5Sqaa2nPBh2aJAHyFSi2vpTQJLM7TFJRxNM=
 github.com/shoenig/test v1.13.2 h1:SaGxHxg7xkRuKuNtuFmHf0LgNGaAgcBT7HN4WHCKfqU=
 github.com/shoenig/test v1.13.2/go.mod h1:MKmiRyEeuFl8y9PCoThaRDgYQZeWBhRQlH99poXz5LI=
-github.com/soulteary/otterio v0.0.0-20261008033249-fed9cc3f491c h1:NQZGVoa+t2JwXGnAmIDBWJMlybn9XXyBbotuXqdTrkE=
-github.com/soulteary/otterio v0.0.0-20261008033249-fed9cc3f491c/go.mod h1:2rhm1s8ZdMh8uHRDW4LMVy0K75uwZD/ol5wxV8JIkvc=
+github.com/soulteary/otterio v0.0.0-20261008035209-6f6d0835ddff h1:pTmSwvOM3eI+VbTgRz036eJwojKisLEx+lFsVNhXLP4=
+github.com/soulteary/otterio v0.0.0-20261008035209-6f6d0835ddff/go.mod h1:2rhm1s8ZdMh8uHRDW4LMVy0K75uwZD/ol5wxV8JIkvc=
 github.com/soulteary/otterio-kits/crc64nvme v1.1.2 h1:PJnTq7jdleWnSL53Q0JbVL6zqwb/DQXRgAp2BuMkK3w=
 github.com/soulteary/otterio-kits/crc64nvme v1.1.2/go.mod h1:15LQhqz+zc2stVo5ASLu+hJtIMeC1H4z2wcyVVSGYpw=
 github.com/soulteary/otterio-kits/md5-simd v1.1.3 h1:c3FJYcEqy0v0TLsnOA9bHZ/F8KBocp6IC+gquzAu0lE=

@@ -42,6 +42,7 @@
 - [阶段三：常用功能与迁移](../oc-phase-three.md)及[结果记录](../oc-phase-three-results.json)。
 - [阶段四：稳定性与兼容边界](../oc-phase-four.md)、[结果记录](../oc-phase-four-results.json)和[开发构建依赖清单](../oc-phase-four.cdx.json)。
 - [2026-10-07 发布准备记录](../releases/2026-10-07-release-review.md)。
+- [2026-10-08 发布准备记录](../releases/2026-10-08-release-review.md)：控制台、CLI 与独立发布的 SDK/kits。
 
 机器可读的[兼容清单](../compatibility.json)记录工具链、SDK 基线、目标平台和测试预算。检查数量和依赖清单只描述各自的运行结果，不是发布签名，也不能保证所有部署都能通过验收。
 

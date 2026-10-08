@@ -6,7 +6,7 @@ This guide is for changing OC and reproducing its checks. For installing a publi
 
 ## Toolchain and source layout
 
-Use the Go version declared in [go.mod](../go.mod), currently `1.27.1`. The [compatibility manifest](compatibility.json) records the same toolchain and the pinned OtterIO SDK. CI and the Makefile use `GOTOOLCHAIN=local`, so an older installed toolchain will fail instead of downloading a newer one automatically. Install the required version before running checks.
+Use the Go version declared in [go.mod](../go.mod), currently `1.27.1`. The [compatibility manifest](compatibility.json) records the same toolchain, the independent S3 SDK and kits, and the separate server/admin source pin. CI and the Makefile use `GOTOOLCHAIN=local`, so an older installed toolchain will fail instead of downloading a newer one automatically. Install the required version before running checks.
 
 You also need Git and Python 3. The examples below use a POSIX shell on Linux or macOS. Makefile and cross-compilation targets need Bash; the server integration fixture additionally needs OpenSSL. Race tests and `CGO_ENABLED=1` runs require the platform's C compiler. Windows build/test commands are recorded in the [Go workflow](../.github/workflows/go.yml); use an `oc.exe` output when building natively there.
 
@@ -17,7 +17,7 @@ The checkout can live outside GOPATH. Its main areas are:
 - `pkg/`: client support packages and package tests.
 - `internal/notify/`: the vendored notification implementation with its own MIT license.
 - `buildscripts/`: dependency checks, integration fixtures, release packaging and image validation.
-- `docs/compatibility.json`: reviewed SDK/toolchain, compile targets, server patches and test budgets.
+- `docs/compatibility.json`: reviewed S3 SDK, kits, server/admin pin, toolchain, compile targets, server patches and test budgets.
 - `.github/workflows/`: platform checks, CodeQL, publication and stable promotion.
 
 The binary name is `oc`. The module path remains `github.com/soulteary/mc`; preserve it and existing copyright attribution unless a separate migration is agreed. OC does not use `govendor`.
@@ -69,7 +69,7 @@ CI uses golangci-lint `v2.14.0` with [.golangci.yml](../.golangci.yml). With tha
 
 The integration test starts disposable local OtterIO processes with random credentials, temporary client configuration, local ports and temporary storage. It writes and deletes test objects and performs administration against those processes. It does not take the address of an existing deployment.
 
-The SDK dependency remains pinned in `go.mod`. Build the integration server from that exact version; it already includes the former compatibility fixes. Copy its source to a writable temporary directory and do not modify the shared module cache. The exact source SHA is recorded in `docs/compatibility.json`.
+Build the integration server from the exact `github.com/soulteary/otterio` server/admin module version pinned in `go.mod`; it already includes the former compatibility fixes. The separate `github.com/soulteary/otterio-sdk/v7` dependency is the S3 client SDK. Copy the server source to a writable temporary directory and do not modify the shared module cache. In `docs/compatibility.json`, `otterioSource` records the server source SHA and `storageSDK` records the independent SDK identity.
 
 The following prepares a `CGO_ENABLED=0` fixture matching the CI setup. Keep the same shell open so the paths remain available:
 
@@ -114,7 +114,7 @@ Some checks need network access to fetch dependencies or vulnerability data; ser
 
 ## Change dependencies, documentation or releases
 
-For an intentional dependency change, review `go.mod` and `go.sum` together, update the compatibility baseline and its boundary checks when appropriate, and explain the reason in the pull request. Run `go mod tidy` only when the dependency graph needs adjustment, then inspect the diff. Do not commit a temporary `replace` or silently upgrade the pinned OtterIO SDK to make a local test pass.
+For an intentional dependency change, review `go.mod` and `go.sum` together, update the compatibility baseline and its boundary checks when appropriate, and explain the reason in the pull request. Run `go mod tidy` only when the dependency graph needs adjustment, then inspect the diff. Do not commit a temporary `replace` or silently upgrade the reviewed S3 SDK or server/admin pin to make a local test pass.
 
 Update command help and the English/Chinese user guides for changed flags, defaults, output or data behavior. Link migration requirements from [migration](migration.md), operational caveats from [administration](administration.md), and diagnostics from [troubleshooting](troubleshooting.md). The `oc-phase-*` documents retain design and verification history; the task guides are the user-facing starting point.
 
