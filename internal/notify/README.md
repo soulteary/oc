@@ -13,6 +13,9 @@ Kernel overflow, malformed notifications and read failures propagate a loss even
 to all affected subscriptions. OC reports WatchEventsLost and mirror reconciles.
 Stop closes idle directory handles immediately; late cancellation completions
 cannot remove a new subscription registered at the same path.
+The grip is atomically marked closed before the kernel handle is closed, so a
+zero-byte cancellation completion during CloseHandle does not report event loss.
+Zero-byte completions on active handles still report buffer overflow.
 Its platform-independent regression tests run on every CI platform.
 
 The Windows fork is part of OC's main module, so its Go module SBOM does not list

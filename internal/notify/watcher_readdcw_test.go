@@ -130,6 +130,47 @@ func TestWindowsCompletionReportsLoss(t *testing.T) {
 	}
 }
 
+func TestWindowsClosePublishesInvalidHandleBeforeCompletion(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"success", nil},
+		{"close-error", syscall.ERROR_ACCESS_DENIED},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := make(chan EventInfo, 1)
+			r := &readdcw{c: out}
+			path, _ := syscall.UTF16FromString(`C:\watched`)
+			g := &grip{handle: 123, pathw: path}
+			over := &overlappedEx{parent: g}
+			calls := 0
+			closeHandle := func(handle syscall.Handle) error {
+				calls++
+				if handle != 123 {
+					t.Fatalf("closed handle %v, want original handle 123", handle)
+				}
+				// Simulate cancellation completing while CloseHandle is still
+				// executing, before the former close-then-CAS could invalidate it.
+				r.completion(0, nil, over)
+				if len(out) != 0 {
+					t.Fatal("in-progress handle close reported event loss")
+				}
+				if syscall.Handle(atomic.LoadUintptr((*uintptr)(&g.handle))) != syscall.InvalidHandle {
+					t.Fatal("kernel close started before the grip was retired")
+				}
+				return tc.err
+			}
+			if err := g.closeHandle(closeHandle); err != tc.err {
+				t.Fatalf("close error %v, want %v", err, tc.err)
+			}
+			if err := g.closeHandle(closeHandle); err != nil || calls != 1 {
+				t.Fatalf("retired handle closed again: calls=%d, error=%v", calls, err)
+			}
+		})
+	}
+}
+
 func TestWindowsLostDispatchIncludesRelatedSubscriptions(t *testing.T) {
 	tree := &recursiveTree{root: root{nd: newnode("")}}
 	base := filepath.Join(t.TempDir(), "watched")
