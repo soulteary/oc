@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   cli-contract:
     name: CLI contract (${{ matrix.os }})
@@ -28,7 +32,11 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+      - uses: ./.github/actions/go-cache
+        with:
+          build-scope: cli-cgo0-trimpath-baseline446e0188
+          dependency-files: '**/go.sum'
       - name: Build fixed baseline and candidate on the same platform
         shell: bash
         env:

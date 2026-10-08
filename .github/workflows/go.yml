@@ -38,7 +38,11 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
-          cache: true
+          cache: false
+
+      - uses: ./.github/actions/go-cache
+        with:
+          build-scope: native-race-kqueue
 
       - name: Verify dependency and release boundaries
         shell: bash
@@ -69,25 +73,44 @@ jobs:
           GOTOOLCHAIN: local
         run: |
           go build --ldflags="-s -w" -o "${GOPATH}/bin/oc.exe" .
-          go test -v -race --timeout 30m ./...
+          go test -v -race -count=1 --timeout 30m ./...
           # Exercise real handle cancellation repeatedly with race/checkptr on.
           go test -race -count=100 --timeout 10m ./internal/notify -run 'TestWindowsClosePublishesInvalidHandleBeforeCompletion|TestWindowsCompletionReportsLoss|TestWindowsIdleStopRewatchReleasesHandles|TestWindowsRetiredCompletionKeepsReplacementWatch'
 
-      - name: Build, verify and test on Linux
+      - name: Build on Linux
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        env:
+          GO111MODULE: on
+          GOTOOLCHAIN: local
+        run: make
+
+      - name: Verify formatting and vet on Linux
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         env:
           GO111MODULE: on
           GOTOOLCHAIN: local
         run: |
-          make
-          diff -au <(gofmt -d *.go) <(printf "")
+          diff -au <(gofmt -d ./*.go) <(printf "")
           diff -au <(gofmt -s -d cmd) <(printf "")
           diff -au <(gofmt -s -d pkg) <(printf "")
           go vet ./...
-          go test -race -v --timeout 20m ./...
+
+      - name: Test with race detection on Linux
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GO111MODULE: on
+          GOTOOLCHAIN: local
+        run: go test -race -v -count=1 --timeout 20m ./...
+
+      - name: Build the race-instrumented Linux executable
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GO111MODULE: on
+          GOTOOLCHAIN: local
+        run: |
           go build -race -tags kqueue -trimpath -o "$RUNNER_TEMP/oc-race" .
-          make crosscompile
 
       - name: Build and test on macOS
         if: matrix.os == 'macos-latest'
@@ -96,7 +119,7 @@ jobs:
         run: |
           make build
           go vet ./...
-          go test -race --timeout 30m ./...
+          go test -race -count=1 --timeout 30m ./...
 
       - name: Lint on Linux
         if: matrix.os == 'ubuntu-latest'
@@ -104,6 +127,24 @@ jobs:
         with:
           version: v2.14.0
           args: --timeout=5m
+
+  crosscompile:
+    name: Cross-compile all eleven supported targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: ./.github/actions/go-cache
+        with:
+          build-scope: cross-eleven-targets-cgo0-kqueue
+      - name: Verify all supported platform builds
+        env:
+          GOTOOLCHAIN: local
+        run: make crosscompile
 
   core-integration:
     name: OC and pinned OtterIO on ${{ matrix.os }} (cgo=${{ matrix.cgo }})
@@ -119,8 +160,11 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: true
-      - name: Build OC and the pinned OtterIO server
+          cache: false
+      - uses: ./.github/actions/go-cache
+        with:
+          build-scope: core-cgo${{ matrix.cgo }}-trimpath
+      - name: Build OC and the local console
         env:
           GOTOOLCHAIN: local
           CGO_ENABLED: ${{ matrix.cgo }}
@@ -128,15 +172,33 @@ jobs:
           go mod download
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/oc" .
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/oc-console" ./cmd/oc-console
+
+      - name: Prepare the pinned OtterIO source
+        env:
+          GOTOOLCHAIN: local
+        run: |
           otterio_source=$(go list -m -f '{{.Dir}}' github.com/soulteary/otterio)
           cp -R "$otterio_source" "$RUNNER_TEMP/otterio-source"
           chmod -R u+w "$RUNNER_TEMP/otterio-source"
+
+      - name: Test the pinned OtterIO regressions
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
           cd "$RUNNER_TEMP/otterio-source"
           # The pinned module includes the server fixes. Build its exact source
           # without layering patches or using an adjacent developer checkout.
           go test -mod=readonly ./cmd/http -run TestShutdownBoundsActiveFiberRequest -count=1
           go test -mod=readonly ./cmd/http -run 'TestHTTPListenerClose|TestServerCounts|TestShutdown|TestTLSServer' -count=3
           go test -mod=readonly ./cmd -run 'TestAdminQueryBridge|TestDarwinRestartSupervisor|TestEncodedObjectPath|TestAdminHealWildcard|TestStreamContext|TestFiberRequestContextValues|TestAccountInfoOwnerAndScopedPrincipals|TestConditional' -count=3
+
+      - name: Build the pinned OtterIO server
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          cd "$RUNNER_TEMP/otterio-source"
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio" .
       - name: Verify CLI startup, gateways, management routing and signal exits
         env:
@@ -183,7 +245,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+      - uses: ./.github/actions/go-cache
+        with:
+          build-scope: inventory-cgo0-trimpath
       - name: Build and inventory the compiled modules
         env:
           GOTOOLCHAIN: local
@@ -208,7 +273,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+      - uses: ./.github/actions/go-cache
+        with:
+          build-scope: govulncheck-v1.8.0
       - name: Scan current source with the Go vulnerability database
         env:
           GOTOOLCHAIN: local
