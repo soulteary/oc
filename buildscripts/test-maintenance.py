@@ -108,7 +108,7 @@ class MaintenanceTests(unittest.TestCase):
 
     def test_compiled_cli_boundary(self):
         sbom.validate_cli_modules([{'Path': 'github.com/urfave/cli/v3', 'Version': 'v3.14.0'},
-                                   {'Path': 'github.com/minio/minio-go/v7', 'Version': 'v7.0.0'}], True)
+                                   {'Path': 'github.com/soulteary/otterio-sdk/v7', 'Version': 'v7.0.0'}], True)
         for modules in ([], [{'Path': 'github.com/urfave/cli/v3', 'Version': 'v3.13.0'}],
                         [{'Path': 'github.com/minio/cli', 'Version': 'v1.24.2'}],
                         [{'Path': 'github.com/minio/cli/v2', 'Version': 'v2.0.0'}]):

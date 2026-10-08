@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net"
 
-	"github.com/minio/minio-go/v7"
+	"github.com/soulteary/otterio-sdk/v7"
 	"github.com/soulteary/otterio/pkg/madmin"
 )
 

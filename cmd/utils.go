@@ -34,8 +34,8 @@ import (
 	"time"
 
 	"github.com/mattn/go-ieproxy"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/encrypt"
+	"github.com/soulteary/otterio-sdk/v7"
+	"github.com/soulteary/otterio-sdk/v7/pkg/encrypt"
 	"github.com/soulteary/otterio/pkg/madmin"
 	"github.com/urfave/cli/v3"
 

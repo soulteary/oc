@@ -31,9 +31,9 @@ import (
 	"golang.org/x/net/http/httpguts"
 	"gopkg.in/h2non/filetype.v1"
 
-	minio "github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/soulteary/mc/pkg/probe"
+	minio "github.com/soulteary/otterio-sdk/v7"
+	"github.com/soulteary/otterio-sdk/v7/pkg/encrypt"
 	"github.com/urfave/cli/v3"
 )
 

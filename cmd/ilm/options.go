@@ -21,9 +21,9 @@ import (
 	"math"
 	"strings"
 
-	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/rs/xid"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/soulteary/otterio-sdk/v7/pkg/lifecycle"
 	"github.com/urfave/cli/v3"
 )
 

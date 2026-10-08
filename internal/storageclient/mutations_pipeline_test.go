@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	minio "github.com/minio/minio-go/v7"
 	"github.com/soulteary/mc/internal/consoleapi"
+	minio "github.com/soulteary/otterio-sdk/v7"
 )
 
 type pipelineReadFunc func([]byte) (int, error)

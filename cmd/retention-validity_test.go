@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/minio/minio-go/v7"
+	"github.com/soulteary/otterio-sdk/v7"
 )
 
 func TestParseRetentionValidity(t *testing.T) {

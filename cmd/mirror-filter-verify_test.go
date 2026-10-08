@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/minio/minio-go/v7/pkg/notification"
 	"github.com/soulteary/mc/pkg/probe"
+	"github.com/soulteary/otterio-sdk/v7/pkg/notification"
 )
 
 func TestMirrorWatchFiltersUseSourceModificationTime(t *testing.T) {

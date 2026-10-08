@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/minio/minio-go/v7"
+	"github.com/soulteary/otterio-sdk/v7"
 )
 
 // lockedRandSource provides protected rand source, implements rand.Source interface.
