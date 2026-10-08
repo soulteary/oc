@@ -131,6 +131,70 @@ class CLIContractRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             cli_contract.differences(before, after, {"unrelated": changes["health"]})
 
+    def test_reviewed_platform_delta_requires_exact_before_and_after(self):
+        changes = {"help/target": {
+            "reason": "reviewed target help extension",
+            "fields_before": {"stdout": "old unix help\n"},
+            "fields_after": {"stdout": "new unix help\n"},
+            "fields_before_by_platform": {"windows": {"stdout": "old windows help\n"}},
+            "fields_after_by_platform": {"windows": {"stdout": "new windows help\n"}},
+        }}
+        for platform in ("unix", "windows"):
+            old = {"id": "help/target", "exit_code": 0, "stdout": f"old {platform} help\n",
+                   "stderr": "", "side_effects": []}
+            new = dict(old, stdout=f"new {platform} help\n")
+            before = {"platform_family": platform, "cases": [old]}
+            after = {"platform_family": platform, "cases": [new]}
+            with self.subTest(platform=platform):
+                self.assertFalse(cli_contract.differences(before, after, changes))
+            for field, value in (("stdout", new["stdout"] + "unreviewed\n"), ("exit_code", 1),
+                                 ("stderr", "unexpected\n"), ("side_effects", [{"path": "config"}])):
+                with self.subTest(platform=platform, changed_field=field):
+                    altered = dict(after, cases=[dict(new, **{field: value})])
+                    self.assertTrue(cli_contract.differences(before, altered, changes))
+            with self.subTest(platform=platform, wrong_before=True), \
+                    self.assertRaisesRegex(ValueError, "does not match the archived case"):
+                cli_contract.differences(dict(before, cases=[dict(old, stdout="unreviewed old help\n")]),
+                                         after, changes)
+            other_platform = "windows" if platform == "unix" else "unix"
+            with self.subTest(platform=platform, other_platform_after=True):
+                altered = dict(after, cases=[dict(new, stdout=f"new {other_platform} help\n")])
+                self.assertTrue(cli_contract.differences(before, altered, changes))
+
+    def test_lifecycle_help_approvals_only_extend_the_archived_target_flags(self):
+        baseline = cli_contract.load(cli_contract.CONTRACT_DIR / "baseline.json")
+        approvals = cli_contract.load(cli_contract.CONTRACT_DIR / "approved-deltas.json")
+        self.assertEqual(approvals["source_commit"], baseline["source"]["commit"])
+        archived = {case["id"]: case for case in baseline["cases"]}
+        label_line = "  --label value                 storage class label for a lifecycle (ilm) target\n"
+        service_line = "  --service value               type of service. Valid options are '[replication]'\n"
+        arn_line = "  --arn value                   ARN of target\n"
+        for command in ("add", "edit"):
+            case_id = f"help/admin/bucket/remote/{command}"
+            change = approvals["cases"][case_id]
+            self.assertEqual(change["fields_before"], {"stdout": archived[case_id]["stdout"]})
+            snapshots = (("unix", change["fields_before"], change["fields_after"]),
+                         ("windows", change["fields_before_by_platform"]["windows"],
+                          change["fields_after_by_platform"]["windows"]))
+            for platform, before_fields, after_fields in snapshots:
+                with self.subTest(command=command, platform=platform):
+                    self.assertEqual(set(before_fields), {"stdout"})
+                    self.assertEqual(set(after_fields), {"stdout"})
+                    old_stdout = before_fields["stdout"]
+                    self.assertNotIn("--label value", old_stdout)
+                    if command == "add":
+                        self.assertEqual(old_stdout.count(service_line), 1)
+                        expected = old_stdout.replace(service_line,
+                            service_line.replace("'[replication]'", "'[replication,ilm]'") + label_line)
+                    else:
+                        self.assertEqual(old_stdout.count(arn_line), 1)
+                        expected = old_stdout.replace(arn_line, label_line + arn_line)
+                    self.assertEqual(after_fields["stdout"], expected)
+                    old = dict(archived[case_id], stdout=old_stdout)
+                    before = {"platform_family": platform, "cases": [old]}
+                    after = dict(before, cases=[dict(old, stdout=expected)])
+                    self.assertFalse(cli_contract.differences(before, after, {case_id: change}))
+
     def test_manifest_and_baseline_case_ids_are_unique(self):
         manifest = cli_contract.load(cli_contract.CONTRACT_DIR / "cases.json")
         baseline = cli_contract.load(cli_contract.CONTRACT_DIR / "baseline.json")

@@ -33,6 +33,12 @@ with supported flags and exits with code 1. Invalid `--test`, `--deadline` and
 `--dev` values and an unknown flag each have an exact snapshot in
 [approved-deltas.json](../testdata/cli/approved-deltas.json).
 
+Lifecycle targets add two exact help deltas in the same file:
+`admin bucket remote add` lists `ilm` and `--label`, and `edit` lists `--label`.
+Each approval records the full before and after stdout for Unix and Windows;
+other output, exit codes and configuration effects remain checked against the
+fixed archived baseline.
+
 `cmd/cli-support.go` contains only the application-specific scope, lifecycle and
 presentation rules. Commands and flags use native v3 types. There is no vendored
 framework, legacy CLI facade or `cli-kit` dependency. The separate `oc-console`
@@ -111,6 +117,10 @@ OC 和固定版本的 OtterIO 统一采用 `urfave/cli/v3 v3.14.0`。准确模�
 原版在显示自定义参数时 panic 并退出 2，现输出具体参数错误及支持的参数，退出 1。
 非法 `--test`、`--deadline`、`--dev` 值和未知参数各有独立精确快照，其他差异不能
 借此放行。旧 panic 比较保留稳定首行、退出码和配置副作用，报告仍保存完整原始堆栈。
+
+生命周期目标另外批准两条精确帮助差异：`admin bucket remote add` 增加 `ilm` 和
+`--label`，`edit` 增加 `--label`。Unix、Windows 各保存完整的前后 stdout 快照；
+其他输出、退出码及配置副作用继续核对固定的归档基线，基线本身保持不变。
 
 冻结基线覆盖 OC 339 项、OtterIO 133 项。CI 在同一平台构建旧、新程序，核对 stdout、
 stderr、退出码及配置副作用，再使用可下载的固定 OtterIO 模块进行联合验证。
