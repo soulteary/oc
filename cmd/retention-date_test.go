@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soulteary/otterio-sdk/v7"
+	minio "github.com/soulteary/otterio-sdk/v7"
 )
 
 func TestGetRetainUntilDateFromDateBoundaries(t *testing.T) {

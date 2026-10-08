@@ -25,7 +25,7 @@ import (
 	// golang does not support flat keys for path matching, find does
 
 	"github.com/soulteary/mc/pkg/probe"
-	"github.com/soulteary/otterio-sdk/v7"
+	minio "github.com/soulteary/otterio-sdk/v7"
 	"golang.org/x/text/unicode/norm"
 )
 

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/soulteary/mc/pkg/probe"
-	"github.com/soulteary/otterio-sdk/v7"
+	minio "github.com/soulteary/otterio-sdk/v7"
 	"github.com/soulteary/otterio-sdk/v7/pkg/credentials"
 	"github.com/soulteary/otterio-sdk/v7/pkg/notification"
 )

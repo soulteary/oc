@@ -35,7 +35,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	json "github.com/soulteary/mc/pkg/colorjson"
 	"github.com/soulteary/mc/pkg/probe"
-	"github.com/soulteary/otterio-sdk/v7"
+	minio "github.com/soulteary/otterio-sdk/v7"
 	"github.com/soulteary/otterio-sdk/v7/pkg/encrypt"
 	"github.com/soulteary/otterio-sdk/v7/pkg/notification"
 	"github.com/soulteary/otterio/pkg/console"
