@@ -67,9 +67,10 @@ with `vcs.modified=false`.
   --timeout 20m ./...`, `go vet ./...` and golangci-lint v2.14.0 (zero issues).
 - The candidate matched all 339 OC CLI cases against the fixed old binary;
   no case catalogs or approved deltas were refreshed.
-- Release-boundary checks and 64 release helper tests passed, including rejected
-  SDK/server version confusion, source truncation, kit drift, retired imports,
-  archive identity/licenses/checksums, publication preflight and image promotion.
+- Release-boundary checks and 65 release helper tests passed, including rejected
+  SDK/server version confusion, source truncation and tag/source mismatch, kit
+  drift, retired imports, archive identity/licenses/checksums, publication
+  preflight and image promotion.
   Seven maintenance and eleven console identity/measurement tests passed.
 - CLI runner regressions passed. Four native Windows process/filesystem cases
   were skipped on macOS; the optional environment-driven candidate test was

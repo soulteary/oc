@@ -6,6 +6,11 @@ import json
 import sys
 from check_budgets import budgets
 
+# Published tag sources are fixed independently of the compatibility manifest.
+REVIEWED_STORAGE_SDK_SOURCES = {
+    'v7.3.1': 'c11549d350d8d1f7474bc26037616e912f344c15',
+}
+
 root = Path(__file__).resolve().parents[1]
 files = [root / p for p in (
     'cmd/update-main.go', 'cmd/main.go', 'cmd/admin-subnet-health.go',
@@ -36,6 +41,8 @@ if storage_sdk.get('module') != 'github.com/soulteary/otterio-sdk/v7' or require
     failures.append('storage SDK differs from the reviewed compatibility manifest')
 if not re.fullmatch(r'[0-9a-f]{40}', storage_sdk.get('source', '')):
     failures.append('compatibility manifest requires the full storage SDK source SHA')
+elif storage_sdk['source'] != REVIEWED_STORAGE_SDK_SOURCES.get(storage_sdk.get('version')):
+    failures.append('storage SDK source does not match the reviewed release')
 kits = support.get('otterioKits', {})
 if set(kits) != {'github.com/soulteary/otterio-kits/crc64nvme', 'github.com/soulteary/otterio-kits/md5-simd'} or any(required_version(module) != version for module, version in kits.items()):
     failures.append('OtterIO kits differ from the reviewed compatibility manifest')

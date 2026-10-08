@@ -51,6 +51,13 @@ class ReleaseBoundaryTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('storage SDK differs', result.stderr)
 
+    def test_full_sdk_source_must_match_the_reviewed_release(self):
+        support = json.loads((ROOT / 'docs/compatibility.json').read_text())
+        sdk = dict(support['storageSDK'], source='6f6d0835ddff68020f1491c403b958fade22841f')
+        result = self.check(self.manifest_change('storageSDK', sdk))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('storage SDK source does not match the reviewed release', result.stderr)
+
     def test_missing_sdk_source_and_drifted_kit_are_rejected(self):
         support = json.loads((ROOT / 'docs/compatibility.json').read_text())
         cases = (

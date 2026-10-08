@@ -10,6 +10,8 @@ OC 的兼容承诺限于已有通过记录的版本、部署和操作。API 能�
 
 S3 操作使用独立发布的 `github.com/soulteary/otterio-sdk/v7 v7.3.1`，发布源码为 `c11549d350d8d1f7474bc26037616e912f344c15`，并采用已发布的 kits `crc64nvme v1.1.2`、`md5-simd v1.1.3`。清单中的 `storageSDK` 与 `otterioKits` 分别记录这些依赖。旧字段 `otterioSDK` 继续记录服务端 / 管理模块版本，保留已有验收及发布身份读取器的兼容性；该字段不是独立 S3 SDK 的版本。
 
+发布边界检查将 SDK 版本和完整源码 SHA，与 `buildscripts/verify-release-boundaries.py` 中独立固定、已经审查的标签与源码映射比较。SHA 长度正确并不能证明发布身份。升级 SDK 时，必须先核实已发布标签的源码，再与依赖及兼容清单一起更新该映射；检查本身不访问网络。
+
 服务端 / 管理包与集成服务端使用同一固定远程 OtterIO 源码 `6f6d0835ddff68020f1491c403b958fade22841f`，不使用本地替换或兼容补丁。其源码树与原先的 `fed9cc3` pin 一致；此次更新记录正式合并的 main 来源。管理查询桥接、运行时关闭、HTTP API、账户信息和条件写修复已包含在该源码中。旧补丁与旧报告保留为历史证据，不再作为当前环境搭建步骤。任一依赖更新后都必须重跑验收矩阵，见[开发指南](development.md)和 [CLI 迁移说明](../cli-migration.md)。
 
 ## 测试工具覆盖的部署

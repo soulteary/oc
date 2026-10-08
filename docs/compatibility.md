@@ -10,6 +10,8 @@ The current Go toolchain, independent S3 SDK, OtterIO kits, server/admin module 
 
 S3 operations use `github.com/soulteary/otterio-sdk/v7 v7.3.1`, released from `c11549d350d8d1f7474bc26037616e912f344c15`, and published kits `crc64nvme v1.1.2` and `md5-simd v1.1.3`. The manifest's `storageSDK` and `otterioKits` fields identify these dependencies. Its legacy `otterioSDK` field still records the OtterIO server/admin module version so existing acceptance and release identity readers remain compatible; it is not the independent S3 SDK version.
 
+The release-boundary check compares the SDK version and full source SHA with a reviewed tag-to-source mapping fixed independently in `buildscripts/verify-release-boundaries.py`. A full-length SHA alone does not establish release identity. An SDK upgrade must verify the published tag's source and update that mapping together with the dependency and compatibility manifest; the check runs without network access.
+
 Server/admin packages and the integration server use the same pinned remote OtterIO source, `6f6d0835ddff68020f1491c403b958fade22841f`, without local replacements or compatibility patches. Its tree matches the former `fed9cc3` pin; the update records the merged main source. The management query bridge, runtime/shutdown, HTTP API, account information and conditional-write fixes are included in that source. The old patch files and earlier reports are retained as historical evidence, not current setup instructions. Upgrading either dependency requires rerunning the recorded matrix. See [development](development.md) and [CLI migration](cli-migration.md).
 
 ## Deployments exercised by the test harness
