@@ -463,6 +463,9 @@ def differences(expected, actual, approved_changes=None):
         new_case = comparison_view(new.get(case_id))
         if approved_changes and case_id in approved_changes:
             change = dict(approved_changes[case_id])
+            platform_before = change.get("fields_before_by_platform", {}).get(actual["platform_family"])
+            if platform_before is not None:
+                change["fields_before"] = platform_before
             platform_fields = change.get("fields_after_by_platform", {}).get(actual["platform_family"])
             if platform_fields is not None:
                 change["fields_after"] = platform_fields
