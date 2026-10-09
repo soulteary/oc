@@ -24,7 +24,7 @@ diff --git a/cmd/admin-iam-bindings.go b/cmd/admin-iam-bindings.go
 new file mode 100644
 --- /dev/null
 +++ b/cmd/admin-iam-bindings.go
-@@ -0,0 +1,457 @@
+@@ -0,0 +1,461 @@
 +// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
 +
 +package cmd
@@ -82,10 +82,14 @@ new file mode 100644
 +// locks cannot implement a distributed compare-and-swap against asynchronous
 +// peers or shared etcd. Legacy readers and writers remain compatible.
 +func iamBindingSupported() bool {
-+	if globalIAMSys == nil || !globalIAMSys.Initialized() || globalIsDistErasure || globalEtcdClient != nil || globalIAMSys.usersSysType != OtterIOUsersSysType {
++	return iamBindingSupportedFor(globalIAMSys, globalIsDistErasure, globalEtcdClient != nil)
++}
++
++func iamBindingSupportedFor(sys *IAMSys, distributed, externalStore bool) bool {
++	if sys == nil || !sys.Initialized() || distributed || externalStore || sys.usersSysType != OtterIOUsersSysType {
 +		return false
 +	}
-+	_, ok := globalIAMSys.store.(*IAMObjectStore)
++	_, ok := sys.store.(*IAMObjectStore)
 +	return ok
 +}
 +
@@ -486,7 +490,7 @@ diff --git a/cmd/admin-iam-bindings_test.go b/cmd/admin-iam-bindings_test.go
 new file mode 100644
 --- /dev/null
 +++ b/cmd/admin-iam-bindings_test.go
-@@ -0,0 +1,319 @@
+@@ -0,0 +1,326 @@
 +// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
 +
 +package cmd
@@ -650,15 +654,22 @@ new file mode 100644
 +	if recorder.Code != 400 && recorder.Code != 403 {
 +		t.Fatalf("unsigned condition accepted: %d %s", recorder.Code, recorder.Body.String())
 +	}
-+	globalIsDistErasure = true
-+	request, err = buildAdminRequest(query, http.MethodGet, "/iam-policy-bindings", 0, bytes.NewReader(nil))
-+	if err != nil {
-+		t.Fatal(err)
++	// Check topology eligibility without changing the mode of the live erasure
++	// backend: its background workers also consult globalIsDistErasure.
++	if !iamBindingSupportedFor(globalIAMSys, false, false) {
++		t.Fatal("native single-writer store did not advertise CAS")
 +	}
-+	recorder = httptest.NewRecorder()
-+	bed.router.ServeHTTP(recorder, request)
-+	if recorder.Code != 501 || recorder.Header().Get(iamBindingCapability) != "" {
-+		t.Fatalf("distributed process lock advertised as CAS: %d %s", recorder.Code, recorder.Body.String())
++	for _, topology := range []struct {
++		name                       string
++		distributed, externalStore bool
++	}{
++		{"distributed", true, false},
++		{"etcd", false, true},
++		{"distributed-etcd", true, true},
++	} {
++		if iamBindingSupportedFor(globalIAMSys, topology.distributed, topology.externalStore) {
++			t.Fatalf("%s process lock advertised as CAS", topology.name)
++		}
 +	}
 +}
 +

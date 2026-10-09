@@ -21,7 +21,7 @@ runs:
         oc_go_version="$(go env GOVERSION)"
         printf 'modules=%s\nbuild=%s\nversion=%s\n' "$oc_modules_cache" "$oc_build_cache" "$oc_go_version" >> "$GITHUB_OUTPUT"
     - name: Cache downloaded modules
-      uses: actions/cache@v5
+      uses: actions/cache@v6.1.0
       with:
         path: ${{ steps.paths.outputs.modules }}
         key: oc-go-modules-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.version }}-${{ hashFiles(inputs.dependency-files) }}
@@ -31,7 +31,7 @@ runs:
     # snapshots without uploading another large cache for every branch update.
     - name: Restore and update main compiler snapshot
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: actions/cache@v5
+      uses: actions/cache@v6.1.0
       with:
         path: ${{ steps.paths.outputs.build }}
         key: oc-go-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.version }}-${{ inputs.build-scope }}-${{ hashFiles(inputs.dependency-files) }}-${{ github.sha }}
@@ -40,7 +40,7 @@ runs:
           oc-go-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.version }}-${{ inputs.build-scope }}-
     - name: Restore compiler snapshot for checks
       if: github.event_name != 'push' || github.ref != 'refs/heads/main'
-      uses: actions/cache/restore@v5
+      uses: actions/cache/restore@v6.1.0
       with:
         path: ${{ steps.paths.outputs.build }}
         key: oc-go-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.version }}-${{ inputs.build-scope }}-${{ hashFiles(inputs.dependency-files) }}-${{ github.sha }}

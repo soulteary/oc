@@ -32,10 +32,10 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
 
       - name: Set up Go ${{ matrix.go-version }} on ${{ matrix.os }}
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ matrix.go-version }}
           cache: false
@@ -124,7 +124,7 @@ jobs:
 
       - name: Lint on Linux
         if: matrix.os == 'ubuntu-latest'
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.14.0
           args: --timeout=5m
@@ -134,8 +134,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -157,8 +157,8 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         cgo: ['0', '1']
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -376,7 +376,7 @@ jobs:
             --output "$RUNNER_TEMP/console-combined-lifecycle-integration.json"
       - name: Upload compatibility results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: core-integration-${{ matrix.os }}-cgo-${{ matrix.cgo }}
           path: |
@@ -398,8 +398,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -416,7 +416,7 @@ jobs:
           go mod verify
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/oc" .
           python3 buildscripts/generate-sbom.py --binary "$RUNNER_TEMP/oc" --output "$RUNNER_TEMP/oc.cdx.json" --require-clean
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: oc-compiled-module-inventory
           path: ${{ runner.temp }}/oc.cdx.json
@@ -426,8 +426,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: false

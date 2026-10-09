@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "goToolchain": "1.27.2",
-  "otterioSDK": "v0.0.0-20261008035209-6f6d0835ddff",
-  "otterioSource": "6f6d0835ddff68020f1491c403b958fade22841f",
+  "otterioSDK": "v0.0.0-20261009073502-994de394a941",
+  "otterioSource": "994de394a941661e8eeaf2b1d5d135fbd7334e8e",
   "storageSDK": {
     "module": "github.com/soulteary/otterio-sdk/v7",
     "version": "v7.3.1",
