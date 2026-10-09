@@ -9,7 +9,7 @@ ARG TARGETOS=linux
 ARG TARGETARCH
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags "$(go run buildscripts/gen-ldflags.go)" -o /out/oc .
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.3
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.10
 LABEL org.opencontainers.image.title="OC" \
       org.opencontainers.image.source="https://github.com/soulteary/mc"
 COPY --from=builder /out/oc /usr/bin/oc
