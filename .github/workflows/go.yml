@@ -212,27 +212,46 @@ jobs:
       - name: Verify ports, TLS, permissions, streams and performance budgets
         run: |
           python3 buildscripts/test-core-integration.py --oc "$RUNNER_TEMP/oc" --otterio "$RUNNER_TEMP/otterio" --extended --stability --soak-seconds 30 --report "$RUNNER_TEMP/core-integration.json" --artifacts-dir "$RUNNER_TEMP/core-evidence"
+      - name: Verify console reads and object writes on the current pinned server
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio" --writes \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --output "$RUNNER_TEMP/console-current-integration.json"
+      - name: Prepare the fixed legacy console protocol fixture
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          # Protocol patches target this historical source, independently of
+          # the current client dependency and native server regressions above.
+          fixture=$(go mod download -json github.com/soulteary/otterio@v0.0.0-20261008035209-6f6d0835ddff | python3 -c 'import json,sys; print(json.load(sys.stdin)["Dir"])')
+          cp -R "$fixture" "$RUNNER_TEMP/otterio-console-legacy-source"
+          chmod -R u+w "$RUNNER_TEMP/otterio-console-legacy-source"
+          cd "$RUNNER_TEMP/otterio-console-legacy-source"
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio-console-legacy" .
       - name: Verify the local read-only console
         run: |
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
-            --server "$RUNNER_TEMP/otterio" \
-            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server "$RUNNER_TEMP/otterio-console-legacy" \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --settings-legacy \
             --output "$RUNNER_TEMP/console-integration.json"
       - name: Verify opt-in console writes and cancellation
         run: |
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
-            --server "$RUNNER_TEMP/otterio" --writes \
-            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server "$RUNNER_TEMP/otterio-console-legacy" --writes \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --output "$RUNNER_TEMP/console-write-integration.json"
-      - name: Verify new console features safely downgrade on the pinned server
+      - name: Verify new console features safely downgrade on the fixed legacy server
         run: |
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
-            --server "$RUNNER_TEMP/otterio" --features --features-legacy \
-            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server "$RUNNER_TEMP/otterio-console-legacy" --features --features-legacy \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --output "$RUNNER_TEMP/console-features-legacy-integration.json"
       - name: Build the standalone console base protocol
         env:
@@ -240,7 +259,7 @@ jobs:
           CGO_ENABLED: ${{ matrix.cgo }}
         run: |
           # Keep the unpatched pin and each protocol composition independent.
-          cp -R "$RUNNER_TEMP/otterio-source" "$RUNNER_TEMP/otterio-console-base-source"
+          cp -R "$RUNNER_TEMP/otterio-console-legacy-source" "$RUNNER_TEMP/otterio-console-base-source"
           cd "$RUNNER_TEMP/otterio-console-base-source"
           git apply --check "$GITHUB_WORKSPACE/buildscripts/console-server-base.patch"
           git apply "$GITHUB_WORKSPACE/buildscripts/console-server-base.patch"
@@ -254,7 +273,7 @@ jobs:
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio-console-base" --settings --settings-base \
-            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --server-patch buildscripts/console-server-base.patch \
             --output "$RUNNER_TEMP/console-base-settings-integration.json"
       - name: Verify object writes against the standalone base
@@ -262,7 +281,7 @@ jobs:
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio-console-base" --writes \
-            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --server-patch buildscripts/console-server-base.patch \
             --output "$RUNNER_TEMP/console-base-object-integration.json"
       - name: Build base with version authorization and conditional IAM
@@ -287,7 +306,7 @@ jobs:
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio-console-features" --features --version-copy \
-            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --server-patch buildscripts/console-server-base.patch \
             --server-patch buildscripts/console-features-server.patch \
             --server-patch buildscripts/console-iam-bindings.patch \
@@ -317,7 +336,7 @@ jobs:
           python3 buildscripts/test-lifecycle-transition-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio-lifecycle-storage" \
-            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --server-patch buildscripts/console-server-base.patch \
             --server-patch buildscripts/lifecycle-storage.patch \
             --server-patch buildscripts/lifecycle-storage-hardening.patch \
@@ -343,7 +362,7 @@ jobs:
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio-console-combined" --features --version-copy \
-            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --server-patch buildscripts/console-server-base.patch \
             --server-patch buildscripts/lifecycle-storage.patch \
             --server-patch buildscripts/lifecycle-storage-hardening.patch \
@@ -355,7 +374,7 @@ jobs:
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio-console-combined" --settings --writes \
-            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --server-patch buildscripts/console-server-base.patch \
             --server-patch buildscripts/lifecycle-storage.patch \
             --server-patch buildscripts/lifecycle-storage-hardening.patch \
@@ -367,7 +386,7 @@ jobs:
           python3 buildscripts/test-lifecycle-transition-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio-console-combined" \
-            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --server-patch buildscripts/console-server-base.patch \
             --server-patch buildscripts/lifecycle-storage.patch \
             --server-patch buildscripts/lifecycle-storage-hardening.patch \
@@ -382,6 +401,7 @@ jobs:
           path: |
             ${{ runner.temp }}/core-integration.json
             ${{ runner.temp }}/core-evidence/
+            ${{ runner.temp }}/console-current-integration.json
             ${{ runner.temp }}/console-integration.json
             ${{ runner.temp }}/console-write-integration.json
             ${{ runner.temp }}/console-base-settings-integration.json
