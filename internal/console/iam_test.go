@@ -127,6 +127,39 @@ func TestIAMReadsAndMutationGuards(t *testing.T) {
 	}
 }
 
+type iamAcknowledgementWriter struct {
+	*httptest.ResponseRecorder
+	onWrite func()
+}
+
+func (w *iamAcknowledgementWriter) Write(body []byte) (int, error) {
+	w.onWrite()
+	return w.ResponseRecorder.Write(body)
+}
+
+func TestIAMResumesReadsBeforeAcknowledgement(t *testing.T) {
+	for _, denied := range []bool{false, true} {
+		s, b, cookie, reply := iamServer(t, true)
+		if denied {
+			b.action = func(context.Context, consoleapi.IAMActionRequest) (consoleapi.IAMActionResult, error) {
+				return consoleapi.IAMActionResult{}, &consoleapi.Error{Status: 403, Code: "AccessDenied", Message: "Denied."}
+			}
+		}
+		w := &iamAcknowledgementWriter{ResponseRecorder: httptest.NewRecorder(), onWrite: func() {
+			read := jobRequest(s, http.MethodGet, "/api/iam/service-accounts?user=alice", "", cookie, "")
+			if read.Code != http.StatusOK {
+				t.Fatalf("read during acknowledgement: %d %s", read.Code, read.Body.String())
+			}
+		}}
+		r := testRequest(http.MethodPost, "/api/iam/actions", `{"action":"user.disable","user":"alice","confirmTarget":"alice"}`, cookie)
+		r.Header.Set("X-CSRF-Token", reply.CSRFToken)
+		s.ServeHTTP(w, r)
+		if len(s.writeSlots) != 0 {
+			t.Fatal("write slots leaked")
+		}
+	}
+}
+
 func TestIAMRetiresOnlyAfterSuccessOrUnknownAndReservesAllWrites(t *testing.T) {
 	for _, test := range []struct {
 		name    string

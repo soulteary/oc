@@ -107,12 +107,20 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 	if !s.startSettingsWrite(w, sess, true) {
 		return
 	}
-	defer s.finishSettingsWrite(true)
+	writePending := true
+	finishWrite := func() {
+		if writePending {
+			s.finishSettingsWrite(true)
+			writePending = false
+		}
+	}
+	defer finishWrite()
 	result, err := backend.IAMAction(r.Context(), args)
 	args.SecretKey = ""
 	if err != nil {
 		var apiError *consoleapi.Error
 		if errors.As(err, &apiError) && apiError != nil && apiError.Code != "outcome_unknown" {
+			finishWrite()
 			writeBackendError(w, apiError)
 			return
 		}
@@ -128,6 +136,10 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 	}
 	if result.RestartRequired {
 		defer s.Close()
+	} else {
+		// Responses are flushed before the handler returns. Resume requests
+		// before acknowledging a change that keeps the selected identity valid.
+		finishWrite()
 	}
 	writeJSON(w, 200, result)
 }
