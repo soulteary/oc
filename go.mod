@@ -19,11 +19,11 @@ require (
 	github.com/rjeczalik/notify v0.9.3
 	github.com/rs/xid v1.6.0
 	github.com/shirou/gopsutil/v3 v3.24.5
-	github.com/soulteary/otterio v0.0.0-20261009073502-994de394a941
-	github.com/soulteary/otterio-sdk/v7 v7.3.1
+	github.com/soulteary/otterio v0.0.0-20261009091443-bcc238bc4c2c
+	github.com/soulteary/otterio-sdk/v7 v7.3.2
 	github.com/urfave/cli/v3 v3.14.0
 	golang.org/x/net v0.60.0
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.46.0
 	golang.org/x/text v0.42.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -67,8 +67,8 @@ require (
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/secure-io/sio-go v0.3.1 // indirect
 	github.com/shoenig/go-m1cpu v0.2.4 // indirect
-	github.com/soulteary/otterio-kits/crc64nvme v1.1.2 // indirect
-	github.com/soulteary/otterio-kits/md5-simd v1.1.3 // indirect
+	github.com/soulteary/otterio-kits/crc64nvme v1.1.3 // indirect
+	github.com/soulteary/otterio-kits/md5-simd v1.2.0 // indirect
 	github.com/tinylib/msgp v1.6.5 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
