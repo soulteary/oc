@@ -23,12 +23,11 @@ import (
 
 var subnetHealthSubcommands = []*cli.Command{
 	adminSubnetHealthCmd,
-	// adminSubnetRegister to be added
 }
 
 var adminSubnetCmd = &cli.Command{
 	Name:            "subnet",
-	Usage:           "local health reports (SUBNET uploads disabled)",
+	Usage:           "legacy namespace for local health reports; use oc admin report",
 	Action:          commandAction(mainAdminSubnet),
 	Before:          commandBefore(setGlobalsFromContext),
 	Flags:           globalFlags,
@@ -46,14 +45,25 @@ func mainAdminSubnet(ctx *cli.Command) error {
 // Deprecated - to be removed in a future release
 // mainAdminSubnet is the handle for "mc admin subnet" command.
 func mainAdminOBD(ctx *cli.Command) error {
-	color.Yellow("Deprecated - please use 'oc admin subnet health'")
+	color.Yellow("Deprecated - please use 'oc admin report'")
 	return nil
 }
 
+var adminReportCmd = &cli.Command{
+	Name:               "report",
+	Usage:              "generate a local health report",
+	Action:             commandAction(mainAdminHealth),
+	Before:             commandBefore(setGlobalsFromContext),
+	OnUsageError:       onUsageError,
+	Flags:              append(adminHealthFlags, globalFlags...),
+	CustomHelpTemplate: adminSubnetHealthCmd.CustomHelpTemplate,
+}
+
+// Preserve the old deprecated health/obd entry point without changing its behavior.
 var adminHealthCmd = &cli.Command{
 	Name:               "health",
 	Aliases:            []string{"obd"},
-	Usage:              "Deprecated - please use 'oc admin subnet health'",
+	Usage:              "Deprecated - please use 'oc admin report'",
 	Action:             commandAction(mainAdminOBD),
 	CustomHelpTemplate: `{{.Usage}}`,
 	Hidden:             true,

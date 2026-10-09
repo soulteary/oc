@@ -60,7 +60,7 @@ The presence of a command does not establish support for a provider or topology.
 - `admin bucket`: manage bucket administrative settings, including quotas and remote targets. ILM target mutations require the matching server's transition protocol and management permissions; see [administration](administration.md#lifecycle-transition-targets).
 - `admin prometheus`: generate metrics scraping configuration.
 - `admin trace`, `admin console`: inspect live request/log streams.
-- `admin profile`, `admin subnet health`: collect diagnostic artifacts. The historical `subnet` command name remains, but SUBNET uploads are disabled.
+- `admin profile`, `admin report`: collect diagnostic artifacts. The historical `admin subnet health` command remains as a legacy compatibility entry point; uploads are disabled.
 - `admin top`, `admin kms`: deployment-dependent lock/KMS operations.
 - `admin heal`: a deprecated entry point; inspect its help and deployment requirements before use.
 

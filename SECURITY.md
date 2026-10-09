@@ -50,7 +50,7 @@ Use the [OC GitHub releases](https://github.com/soulteary/oc/releases) and the r
 
 Checksums and image digests detect content changes relative to the values you trust. They are not release signatures and do not independently authenticate a publisher. A checksum downloaded with the artifact still depends on the security of the publication source. The current release workflow does not supply a cryptographic signing verification procedure; do not describe a checksum or OCI label as a verified signature. See [releasing](docs/releasing.md) for publication checks.
 
-`oc update` is disabled and exits with status 1 without checking a remote version, downloading a replacement or modifying the executable. The inherited automatic MinIO update check is disabled. SUBNET report uploads are removed; `admin subnet health` only produces local output and rejects legacy upload flags. Upgrade by installing a reviewed OC release and verifying it using the installation instructions.
+`oc update` is disabled and exits with status 1 without checking a remote version, downloading a replacement or modifying the executable. The inherited automatic MinIO update check is disabled. SUBNET report uploads are removed; `admin report` (with `admin subnet health` retained as a legacy alias) only produces local output and rejects legacy upload flags. Upgrade by installing a reviewed OC release and verifying it using the installation instructions.
 
 ## Dependency and deployment limits
 

@@ -60,7 +60,7 @@ OC 支持在命令前填写全局参数，许多子命令也会列出通用参�
 - `admin bucket`：管理桶配额、远程目标等设置。修改 ILM 目标需要配套服务端的转换协议及管理权限，见[管理指南](administration.md#生命周期转换目标)。
 - `admin prometheus`：生成监控抓取配置。
 - `admin trace`、`admin console`：查看实时请求和日志流。
-- `admin profile`、`admin subnet health`：收集诊断文件；保留历史 `subnet` 名称，但 SUBNET 上传已禁用。
+- `admin profile`、`admin report`：收集诊断文件；历史 `admin subnet health` 保留为旧版兼容入口，上传已禁用。
 - `admin top`、`admin kms`：依赖部署条件的锁查询、KMS 操作。
 - `admin heal`：已经标注弃用，使用前核对帮助和部署前提。
 

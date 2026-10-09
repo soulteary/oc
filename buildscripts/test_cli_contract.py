@@ -16,6 +16,36 @@ from unittest.mock import Mock
 import cli_contract
 
 
+class ReviewedHelpAdditionTests(unittest.TestCase):
+    def fixture(self):
+        case = {"id": "help/admin/subnet/health", "argv": ["admin", "subnet", "health", "--help"],
+                "stdout": "oc admin subnet health TARGET", "stderr": "", "exit_code": 0,
+                "side_effects": []}
+        expected = {"cases": [case]}
+        addition = {"reason": "canonical report name", "source_case": case["id"],
+                    "id": "help/admin/report", "argv": ["admin", "report", "--help"],
+                    "stdout_replacements": [["oc admin subnet health", "oc admin report"]]}
+        return expected, addition
+
+    def test_addition_preserves_archived_case_and_error_contract(self):
+        expected, addition = self.fixture()
+        extended = cli_contract.with_reviewed_help_additions(expected, [addition])
+        self.assertEqual(len(expected["cases"]), 1)
+        self.assertEqual(extended["cases"][0], expected["cases"][0])
+        self.assertEqual(extended["cases"][1]["stdout"], "oc admin report TARGET")
+        for field in ("stderr", "exit_code", "side_effects"):
+            self.assertEqual(extended["cases"][1][field], expected["cases"][0][field])
+
+    def test_addition_cannot_replace_existing_case_or_add_execution_waiver(self):
+        expected, addition = self.fixture()
+        for changed in (dict(addition, id=addition["source_case"]),
+                        dict(addition, argv=["admin", "report"]),
+                        dict(addition, source_case="missing"),
+                        dict(addition, stdout_replacements=[["wrong source", "report"]])):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                cli_contract.with_reviewed_help_additions(expected, [changed])
+
+
 class CLIContractRunnerTests(unittest.TestCase):
     def baseline_identity_fixture(self, project="otterio"):
         module = "github.com/soulteary/otterio" if project == "otterio" else "github.com/soulteary/mc"

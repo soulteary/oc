@@ -448,6 +448,28 @@ def capture(binary):
                      [run_case(binary, project, case) for case in manifest["cases"]]}
 
 
+def with_reviewed_help_additions(expected, additions):
+    """Derive explicitly reviewed new help cases without altering the archived baseline."""
+    existing = {case["id"]: case for case in expected["cases"]}
+    extra = []
+    for addition in additions:
+        source = existing.get(addition.get("source_case"))
+        case_id = addition.get("id", "")
+        argv = addition.get("argv", [])
+        if (not addition.get("reason") or source is None or
+                not source["id"].startswith("help/") or case_id in existing or
+                case_id != "help/" + "/".join(argv[:-1]) or not argv or argv[-1] != "--help"):
+            raise ValueError("invalid reviewed help addition")
+        case = dict(source, id=case_id, argv=argv)
+        for before, after in addition.get("stdout_replacements", []):
+            if not before or before not in case["stdout"]:
+                raise ValueError("help addition does not match its archived source")
+            case["stdout"] = case["stdout"].replace(before, after)
+        existing[case_id] = case
+        extra.append(case)
+    return dict(expected, cases=[*expected["cases"], *extra])
+
+
 def differences(expected, actual, approved_changes=None):
     old = {case["id"]: case for case in expected["cases"]}
     new = {case["id"]: case for case in actual["cases"]}
@@ -565,6 +587,7 @@ def main():
         if approvals["source_commit"] != load(baseline_path)["source"]["commit"]:
             parser.error("approved deltas refer to a different archived source")
         approved_changes = approvals["cases"]
+        expected = with_reviewed_help_additions(expected, approvals.get("help_additions", []))
     problems = differences(expected, actual, approved_changes)
     if problems:
         print("\n".join(problems), file=sys.stderr)

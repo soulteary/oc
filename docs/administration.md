@@ -70,7 +70,7 @@ S3 read/write permissions.
 For a local health report, run:
 
 ```sh
-oc admin subnet health --deadline 5m store
+oc admin report --deadline 5m store
 ```
 
 The command queries the configured management endpoint and writes a compressed JSON report in the current directory. It may run drive and network tests, so schedule it with the server operator. The report can contain server configuration and sensitive environment details. Inspect it before sharing. `--json` writes the health report to standard output instead of creating the compressed file. In that mode, inspect the report's `status` (`Success` or `Error`) and `error`; its exit status alone is not proof that every health check passed.

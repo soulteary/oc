@@ -368,6 +368,9 @@ var completeCmds = map[string]complete.Predictor{
 	"/admin/kms/key/status": aliasCompleter,
 
 	"/admin/subnet/health": aliasCompleter,
+	"/admin/report":        aliasCompleter,
+	"/admin/health":        aliasCompleter,
+	"/admin/obd":           aliasCompleter,
 
 	"/alias/set":    nil,
 	"/alias/list":   aliasCompleter,

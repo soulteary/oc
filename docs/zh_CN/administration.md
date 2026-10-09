@@ -64,7 +64,7 @@ oc --json admin info store
 生成本地健康报告：
 
 ```sh
-oc admin subnet health --deadline 5m store
+oc admin report --deadline 5m store
 ```
 
 命令查询管理入口，将压缩 JSON 报告写入当前目录。检查可能包含磁盘和网络测试，执行时间应与服务运维人员协调。报告可能包含服务配置和敏感环境信息，分享前需要检查。使用 `--json` 时直接输出报告，不生成压缩文件。此模式下应检查报告的 `status`（`Success` 或 `Error`）及 `error`，不能仅凭退出码认定所有健康检查通过。

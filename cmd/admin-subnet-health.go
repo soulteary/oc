@@ -76,7 +76,7 @@ FLAGS:
   {{range .VisibleFlags}}{{.}}
   {{end}}
 EXAMPLES:
-  1. Get server information of the 'play' OtterIO server.
+  1. Get server information of the configured OtterIO server.
      {{Prompt}} {{.FullName}} store/
 `,
 }
@@ -84,7 +84,7 @@ EXAMPLES:
 // checkAdminHealthSyntax - validate arguments passed by a user
 func checkAdminHealthSyntax(ctx *cli.Command) {
 	if ctx.Args().Len() == 0 || ctx.Args().Len() > 1 {
-		cli.ShowCommandHelpAndExit(context.Background(), ctx, "health", 1) // last argument is exit code
+		cli.ShowCommandHelpAndExit(context.Background(), ctx, ctx.Name, 1) // last argument is exit code
 	}
 }
 
