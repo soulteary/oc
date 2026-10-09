@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -125,7 +126,9 @@ func TestArchiveReadOnlyProducesPinnedSafeZipAndOneTimeDownload(t *testing.T) {
 		t.Fatal("expected one bounded temporary file")
 	}
 	stat, _ := files[0].Info()
-	if stat.Mode().Perm() != 0600 {
+	// Windows exposes writable files as 0666; Unix permission bits do not
+	// describe its ACLs. Session isolation is checked on every platform below.
+	if runtime.GOOS != "windows" && stat.Mode().Perm() != 0600 {
 		t.Fatal("archive file is not private")
 	}
 	// A second session cannot inspect or consume another session's archive.
