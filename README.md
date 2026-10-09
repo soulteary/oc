@@ -1,18 +1,42 @@
+<div align="center">
+
+[![OC — OtterIO & S3 Command-Line Client](./.github/oc-banner.png)](https://github.com/soulteary/oc)
+
 # OC
 
+**OtterIO & S3 Command-Line Client** — _Copy. Sync. Manage._
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.27.2%2B-00ADD8.svg?logo=go&logoColor=white)](./go.mod)
 [![Go checks](https://github.com/soulteary/oc/actions/workflows/go.yml/badge.svg)](https://github.com/soulteary/oc/actions/workflows/go.yml)
 [![Release](https://github.com/soulteary/oc/actions/workflows/release.yml/badge.svg)](https://github.com/soulteary/oc/actions/workflows/release.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-A command-line client for OtterIO, S3 object storage and local filesystems.
+English · [简体中文](./README_zh_CN.md)
 
-[简体中文](README_zh_CN.md) · [Documentation](docs/README.md) · [Releases](https://github.com/soulteary/oc/releases) · [Contributing](CONTRIBUTING.md)
+[Documentation](./docs/README.md) · [Releases](https://github.com/soulteary/oc/releases) · [Contributing](./CONTRIBUTING.md)
 
-[Current project review — 2026-10-08 (中文)](docs/reviews/2026-10-08-project-status.md) records the source, release, validation and remaining-work boundaries.
+</div>
 
-OC uploads, downloads and inspects objects, synchronizes directories, and manages OtterIO servers. It derives from the Apache-2.0 MinIO Client codebase and retains the upstream notices. OC is an independent community project; it is not affiliated with or endorsed by MinIO, Inc.
+OC is a command-line client for OtterIO, S3 object storage and local filesystems. Upload and download objects, inspect files, synchronize directories, and administer OtterIO servers from your terminal.
 
-[OtterIO](https://github.com/soulteary/otterio) runs the storage server; OC provides its command-line client. To integrate S3 operations into a Go application, use [OtterIO SDK](https://github.com/soulteary/otterio-sdk). The server, client and SDK publish their own releases.
+This README covers installation and your first file transfer. The [documentation index](./docs/README.md) links configuration, everyday usage, migration, administration and development guides.
+
+> [!IMPORTANT]
+> OC is an independent community project derived from the Apache-2.0 MinIO Client codebase. It is **not** affiliated with or endorsed by MinIO, Inc. Original copyright and attribution notices are retained; see [License and attribution](#license-and-attribution).
+
+---
+
+## What is OC
+
+OC brings local files and S3 objects into one command-line workflow:
+
+- **Copy** — upload, download and inspect files with familiar commands such as `cp`, `ls` and `stat`.
+- **Sync** — mirror directories between local filesystems and S3 storage with `mirror`.
+- **Manage** — inspect and administer OtterIO servers with `admin`, or diagnose connections with `doctor`.
+
+[OtterIO](https://github.com/soulteary/otterio) runs the storage server; OC provides its command-line client. To integrate S3 operations into a Go application, use [OtterIO SDK](https://github.com/soulteary/otterio-sdk). The server, client and SDK publish their own releases. See [What OC provides](#what-oc-provides) for features and compatibility boundaries.
+
+---
 
 ## Install
 
@@ -85,7 +109,7 @@ Import accepts configuration version 10, replaces destination aliases after vali
 - [Troubleshoot problems](docs/troubleshooting.md) and [report vulnerabilities privately](SECURITY.md).
 - [Build and test](docs/development.md), [contribute](CONTRIBUTING.md), or [prepare a release](docs/releasing.md).
 
-The [documentation index](docs/README.md) also links the dated implementation and validation records.
+The [documentation index](docs/README.md) also links the dated implementation and validation records. The [2026-10-08 project review (中文)](docs/reviews/2026-10-08-project-status.md) records source, release, validation and remaining-work boundaries.
 
 ## Build from source
 

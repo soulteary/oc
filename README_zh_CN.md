@@ -1,18 +1,42 @@
+<div align="center">
+
+[![OC — OtterIO 与 S3 命令行客户端](./.github/oc-banner.png)](https://github.com/soulteary/oc)
+
 # OC
 
+**OtterIO 与 S3 命令行客户端** — _复制、同步、管理。_
+
+[![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.27.2%2B-00ADD8.svg?logo=go&logoColor=white)](./go.mod)
 [![Go 检查](https://github.com/soulteary/oc/actions/workflows/go.yml/badge.svg)](https://github.com/soulteary/oc/actions/workflows/go.yml)
 [![发布](https://github.com/soulteary/oc/actions/workflows/release.yml/badge.svg)](https://github.com/soulteary/oc/actions/workflows/release.yml)
-[![许可证：Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-用于 OtterIO、S3 对象存储和本地文件系统的命令行客户端。
+[English](./README.md) · 简体中文
 
-[English](README.md) · [文档目录](docs/zh_CN/README.md) · [版本下载](https://github.com/soulteary/oc/releases) · [参与贡献](docs/zh_CN/CONTRIBUTING.md)
+[文档目录](./docs/zh_CN/README.md) · [版本下载](https://github.com/soulteary/oc/releases) · [参与贡献](./docs/zh_CN/CONTRIBUTING.md)
 
-[2026-10-08 项目现状复查](docs/reviews/2026-10-08-project-status.md)记录源码、发行、验证与剩余工作的边界。
+</div>
 
-OC 提供对象上传、下载、查询和目录同步，也可以管理 OtterIO 服务端。项目继承 MinIO Client 的 Apache-2.0 代码，保留原始版权与归属说明。OC 是独立的社区项目，与 MinIO, Inc. 没有隶属或背书关系。
+OC 是用于 OtterIO、S3 对象存储和本地文件系统的命令行客户端。在终端中即可上传、下载和查询对象，同步目录，以及管理 OtterIO 服务端。
 
-[OtterIO](https://github.com/soulteary/otterio) 运行存储服务，OC 提供命令行客户端。Go 应用需要集成 S3 操作时，使用 [OtterIO SDK](https://github.com/soulteary/otterio-sdk)。服务端、客户端和 SDK 各自发布版本。
+本文介绍安装和首次文件传输。[文档目录](./docs/zh_CN/README.md)提供配置、常用操作、迁移、管理和开发指南。
+
+> [!IMPORTANT]
+> OC 是继承 MinIO Client Apache-2.0 代码的独立社区项目，与 MinIO, Inc. **没有隶属或背书关系**。项目保留原始版权与归属说明，详见[许可证与归属](#许可证与归属)。
+
+---
+
+## 什么是 OC
+
+OC 通过一套命令操作本地文件与 S3 对象：
+
+- **复制** — 使用 `cp`、`ls`、`stat` 等命令上传、下载和查询文件。
+- **同步** — 使用 `mirror` 在本地文件系统与 S3 存储之间同步目录。
+- **管理** — 使用 `admin` 查询和管理 OtterIO 服务端，使用 `doctor` 诊断连接。
+
+[OtterIO](https://github.com/soulteary/otterio) 运行存储服务，OC 提供命令行客户端。Go 应用需要集成 S3 操作时，使用 [OtterIO SDK](https://github.com/soulteary/otterio-sdk)。服务端、客户端和 SDK 各自发布版本。完整功能与兼容范围见[主要功能](#主要功能)。
+
+---
 
 ## 安装
 
@@ -83,7 +107,7 @@ oc --json doctor store
 - [排查故障](docs/zh_CN/troubleshooting.md)，或[私下报告安全问题](docs/zh_CN/security.md)。
 - [构建与测试](docs/zh_CN/development.md)、[参与贡献](docs/zh_CN/CONTRIBUTING.md)，或[准备发布](docs/zh_CN/releasing.md)。
 
-[文档目录](docs/zh_CN/README.md)也提供各阶段实现及验证记录的入口。
+[文档目录](docs/zh_CN/README.md)也提供各阶段实现及验证记录的入口。 [2026-10-08 项目现状复查](docs/reviews/2026-10-08-project-status.md)记录源码、发行、验证与剩余工作的边界。
 
 ## 从源码构建
 
