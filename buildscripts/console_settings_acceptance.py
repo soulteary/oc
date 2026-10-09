@@ -1,4 +1,5 @@
 """P3 acceptance on owned temporary accounts and storage, without retries."""
+import base64
 import hashlib
 import json
 import secrets
@@ -8,7 +9,8 @@ import xml.etree.ElementTree as ET
 
 
 def verify_settings(root, bucket, cli, readonly, session, viewer, start_console, browser, stop,
-                    credentials, endpoint, access, secret, context, signed_request, checks, legacy=False):
+                    credentials, endpoint, access, secret, context, signed_request, checks, legacy=False,
+                    base_protocol=False):
     processes = []
 
     def console(alias):
@@ -143,6 +145,10 @@ def verify_settings(root, bucket, cli, readonly, session, viewer, start_console,
         for action in ('<Expiration><Days>36500</Days></Expiration>',
                        '<NoncurrentVersionExpiration><NoncurrentDays>36500</NoncurrentDays></NoncurrentVersionExpiration>'):
             tagged = '<LifecycleConfiguration' + xml_header + '><Rule><ID>tagged-disabled</ID><Status>Disabled</Status><Filter>' + tag_filter + '</Filter>' + action + '</Rule></LifecycleConfiguration>'
+            if base_protocol:
+                save(writer, headers, configured, tagged, expected=400)
+                assert get(readonly, 'lifecycle')['revision'] == configured['revision']
+                continue
             configured = save(writer, headers, configured, tagged)
             assert ET.fromstring(configured['document']).findtext('{*}Rule/{*}Filter/{*}Tag/{*}Key') == 'environment + 世界'
             assert get(readonly, 'lifecycle')['revision'] == configured['revision']
@@ -150,10 +156,29 @@ def verify_settings(root, bucket, cli, readonly, session, viewer, start_console,
         save(writer, headers, configured, marker, expected=400)
         assert get(readonly, 'lifecycle')['revision'] == configured['revision']
         noncurrent_transition = '<LifecycleConfiguration' + xml_header + '><Rule><Status>Disabled</Status><Filter>' + tag_filter + '</Filter><NoncurrentVersionTransition><NoncurrentDays>36500</NoncurrentDays><StorageClass>archive</StorageClass></NoncurrentVersionTransition></Rule></LifecycleConfiguration>'
-        save(writer, headers, configured, noncurrent_transition, expected=404)
+        save(writer, headers, configured, noncurrent_transition, expected=400 if base_protocol else 404)
         assert get(readonly, 'lifecycle')['revision'] == configured['revision']
+        if base_protocol:
+            for transition in ('<Transition><Days>36500</Days><StorageClass>archive</StorageClass></Transition>',
+                               '<NoncurrentVersionTransition><NoncurrentDays>36500</NoncurrentDays><StorageClass>archive</StorageClass></NoncurrentVersionTransition>'):
+                document = '<LifecycleConfiguration' + xml_header + '><Rule><Status>Disabled</Status><Filter><Prefix>never-expire/</Prefix></Filter>' + transition + '</Rule></LifecycleConfiguration>'
+                save(writer, headers, configured, document, expected=400)
+                assert get(readonly, 'lifecycle')['revision'] == configured['revision']
+            # Base-only CAS must not claim the corrected runtime semantics.
+            # Existing unconditional S3 documents remain readable verbatim in
+            # the editor. All test rules stay disabled, so no data is expired.
+            legacy_body = tagged.encode()
+            status, legacy_reply, _ = signed_request(endpoint, 'PUT', '/' + bucket + '/', legacy_body,
+                access, secret, context, query='lifecycle=', extra_headers={
+                    'Content-Type': 'application/xml',
+                    'Content-MD5': base64.b64encode(hashlib.md5(legacy_body).digest()).decode()})
+            assert status == 200, {'status': status, 'code': ET.fromstring(legacy_reply).findtext('{*}Code')}
+            configured = get(readonly, 'lifecycle')
+            assert ET.fromstring(configured['document']).findtext('{*}Rule/{*}Filter/{*}Tag/{*}Key') == 'environment + 世界'
+            checks.append('base protocol rejects conditional tag/transition edits without commit while preserving reads of disabled legacy S3 lifecycle documents')
         assert not save(writer, headers, configured, remove=True)['exists']
-        checks.append('P3 tagged lifecycle expiration preserves Unicode filters; tagged delete markers and unconfigured noncurrent targets rejected without commit')
+        if not base_protocol:
+            checks.append('P3 tagged lifecycle expiration preserves Unicode filters; tagged delete markers and unconfigured noncurrent targets rejected without commit')
         checks.append('P3 version/lifecycle independent revisions, conflict, actual saved XML round trip and unsupported fields rejected without commit')
 
         # The restricted account may self-rotate, but cannot edit bucket policy.
@@ -257,7 +282,7 @@ def verify_settings(root, bucket, cli, readonly, session, viewer, start_console,
             checks.append('P3 own secret rotation acknowledged before process exit, old key rejected, new group policy intact, local alias unchanged')
         finally:
             cfg_path.write_bytes(original_cfg)
-        return {'profile': 'v1-protected-settings', 'rotationShutdownSeconds': shutdown_seconds}
+        return {'profile': 'v1-base-protected-settings' if base_protocol else 'v1-protected-settings', 'rotationShutdownSeconds': shutdown_seconds}
     finally:
         for process in reversed(processes):
             stop(process)

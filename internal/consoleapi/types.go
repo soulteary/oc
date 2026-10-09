@@ -1,7 +1,8 @@
 // Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
 
-// Package consoleapi defines the small, storage-only boundary used by the local
-// console. It deliberately has no filesystem, CLI flags, or credential fields.
+// Package consoleapi defines the storage boundary used by the local console,
+// without filesystem access or CLI configuration. Existing credentials never
+// cross it; generated IAM credentials are returned only by their creation call.
 package consoleapi
 
 import (

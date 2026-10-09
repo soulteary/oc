@@ -15,6 +15,7 @@
         <div class="topbar-right">
           <span id="session-mode" class="readonly">● Read-only</span>
           <div id="session-actions" class="session-actions" hidden>
+            <button id="open-iam" class="button quiet" type="button" hidden>Access management</button>
             <button id="open-account" class="button quiet" type="button">Account</button>
             <button id="refresh" class="button quiet" type="button">Refresh</button>
             <button id="logout" class="button quiet" type="button">Log out</button>
@@ -42,6 +43,7 @@
         <div class="browser-layout">
           <aside class="bucket-panel" aria-labelledby="buckets-title">
             <div class="panel-heading"><h2 id="buckets-title">Buckets</h2><span id="bucket-count" class="count">0</span></div>
+            <button id="open-create-bucket" class="button quiet sidebar-action" type="button" hidden>Create bucket</button>
             <p id="bucket-status" class="panel-status" role="status" aria-live="polite"></p>
             <nav id="bucket-list" class="bucket-list" aria-label="Choose a bucket"></nav>
             <div class="sidebar-footer"><span class="eyebrow">ONE ALIAS · ONE SESSION</span><p>Only the alias selected at startup is available here.</p></div>
@@ -50,7 +52,7 @@
           <section class="objects-panel" aria-labelledby="objects-title">
             <div class="object-heading">
               <div><div class="eyebrow">OBJECT BROWSER</div><h2 id="objects-title">Choose a bucket</h2><p id="bucket-created" class="subtle"></p></div>
-              <div class="object-controls"><button id="open-settings" class="button quiet" type="button">Bucket settings</button><button id="parent-prefix" class="button quiet" type="button" disabled><span aria-hidden="true">↑</span> Parent</button></div>
+              <div class="object-controls"><button id="open-delete-bucket" class="button danger-quiet" type="button" hidden>Delete bucket</button><button id="open-versions" class="button quiet" type="button" hidden>Version history</button><button id="open-settings" class="button quiet" type="button">Bucket settings</button><button id="parent-prefix" class="button quiet" type="button" disabled><span aria-hidden="true">↑</span> Parent</button></div>
             </div>
             <form id="prefix-form" class="prefix-form">
               <label for="prefix-input">Prefix</label>
@@ -61,6 +63,7 @@
               <span id="selection-count" class="subtle">No objects selected</span>
               <p class="write-help">Writes enabled for this local session. Each object operation is checked by the storage server.</p>
             </div>
+            <div id="read-toolbar" class="write-toolbar" hidden><div class="write-actions"><button id="archive-selected" class="button quiet" type="button" disabled>Download selected as ZIP</button><button id="archive-prefix" class="button quiet" type="button" disabled>Download this prefix as ZIP</button><button id="open-current-archive" class="button quiet" type="button" hidden>ZIP task</button></div><span id="archive-selection-count" class="subtle">No objects selected</span></div>
             <p id="objects-status" class="objects-status" role="status" aria-live="polite"></p>
             <div id="objects-empty" class="empty-state"><span class="empty-symbol" aria-hidden="true">□</span><h3 id="empty-title">Select a bucket</h3><p id="empty-description">Browse its prefixes and download objects.</p><button id="objects-retry" class="button quiet" type="button" hidden>Try again</button></div>
             <div id="objects-table-wrap" class="table-wrap" hidden>
@@ -175,6 +178,64 @@
       <p id="delete-status" class="notice" role="status" aria-live="polite"></p>
       <p class="help">This operation does not undo itself if interrupted. Individual objects can be denied or fail even when a plan succeeds.</p>
       <div class="dialog-footer"><button id="confirm-delete" class="button danger" type="button" disabled>Delete planned objects</button></div>
+    </dialog>
+
+    <dialog id="bucket-dialog" class="action-dialog" aria-labelledby="bucket-action-title">
+      <form id="bucket-action-form">
+        <div class="dialog-heading"><h2 id="bucket-action-title">Create bucket</h2><button id="close-bucket-action" class="button quiet" type="button">Close</button></div>
+        <p id="bucket-action-help" class="dialog-description"></p>
+        <label for="bucket-action-name">Exact bucket name</label><input id="bucket-action-name" type="text" autocomplete="off" spellcheck="false" required>
+        <div id="bucket-confirm-field" hidden><label for="bucket-action-confirm">Type the bucket name to confirm deletion</label><input id="bucket-action-confirm" type="text" autocomplete="off" spellcheck="false"></div>
+        <p id="bucket-action-status" class="notice" role="status" aria-live="polite"></p>
+        <div class="dialog-footer"><button id="submit-bucket-action" class="button primary" type="submit">Create private bucket</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="versions-dialog" class="action-dialog wide-dialog" aria-labelledby="versions-title">
+      <div class="dialog-heading"><h2 id="versions-title">Object version history</h2><button id="close-versions" class="button quiet" type="button">Close</button></div>
+      <p class="dialog-description">Choose an exact version to download, share, or include in a ZIP. Delete markers have no downloadable content. Historical versions are never removed here.</p>
+      <form id="versions-form" class="settings-load-form"><div><label for="versions-bucket">Bucket</label><input id="versions-bucket" autocomplete="off" spellcheck="false" required></div><div><label for="versions-key">Exact object key</label><input id="versions-key" autocomplete="off" spellcheck="false" required></div><button id="load-versions" class="button quiet" type="submit">Read versions</button></form>
+      <p id="versions-status" class="notice" role="status" aria-live="polite"></p><div id="versions-list" class="record-list"></div><div class="dialog-footer"><button id="more-versions" class="button quiet" type="button" hidden>Load more versions</button></div>
+    </dialog>
+
+    <dialog id="share-dialog" class="action-dialog" aria-labelledby="share-title">
+      <form id="share-form">
+        <div class="dialog-heading"><h2 id="share-title">Share a download</h2><button id="close-share" class="button quiet" type="button">Close</button></div>
+        <p id="share-scope" class="scope-key"></p><p class="dialog-description">Anyone with this link can download until it expires. The storage address must be reachable by the recipient. A link cannot be individually revoked here.</p>
+        <label for="share-expiry">Valid for</label><select id="share-expiry"><option value="3600">1 hour</option><option value="900">15 minutes</option><option value="86400">1 day</option><option value="604800">7 days</option></select>
+        <label for="share-name">Download filename (optional)</label><input id="share-name" type="text" autocomplete="off" spellcheck="false">
+        <p id="share-status" class="notice" role="status" aria-live="polite"></p>
+        <div id="share-result" hidden><label for="share-url">Download link</label><textarea id="share-url" rows="4" readonly autocomplete="off" spellcheck="false"></textarea><p id="share-expires" class="help"></p><button id="copy-share" class="button quiet" type="button">Copy link</button></div>
+        <div class="dialog-footer"><button id="create-share" class="button primary" type="submit">Create download link</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="archive-dialog" class="action-dialog wide-dialog" aria-labelledby="archive-title">
+      <div class="dialog-heading"><h2 id="archive-title">Download as ZIP</h2><button id="close-archive" class="button quiet" type="button">Close</button></div>
+      <p id="archive-scope" class="scope-key"></p><p class="dialog-description">OC prepares a complete ZIP before download. <span id="archive-limit-help">Up to 1,000 objects and 5 GiB are supported.</span> The ZIP includes a manifest of original keys and versions. If any object fails, no download is offered. Closing this window keeps preparation running; use ZIP task to return. Prepared files expire automatically.</p>
+      <ol id="archive-items" class="scope-items"></ol><p id="archive-status" class="notice" role="status" aria-live="polite"></p><progress id="archive-progress" class="task-progress" hidden></progress>
+      <div class="dialog-footer settings-actions"><button id="retry-archive-status" class="button quiet" type="button" hidden>Check ZIP status</button><button id="cancel-archive" class="button quiet" type="button" hidden>Cancel preparation</button><button id="start-archive" class="button primary" type="button">Prepare ZIP</button><a id="download-archive" class="button primary" target="_blank" rel="noopener" hidden>Download ZIP ↓</a></div>
+    </dialog>
+
+    <dialog id="iam-dialog" class="action-dialog wide-dialog" aria-labelledby="iam-title">
+      <div class="dialog-heading"><h2 id="iam-title">Access management</h2><button id="close-iam" class="button quiet" type="button">Close</button></div>
+      <p class="dialog-description">Manage users, groups, and service accounts with the current identity. Storage checks each permission. Secret keys are displayed once and cleared when you close this window.</p>
+      <form id="iam-list-form" class="settings-load-form"><div><label for="iam-kind">View</label><select id="iam-kind"><option value="users">Users</option><option value="groups">Groups</option><option value="service-accounts">Service accounts</option><option value="policies">Policies</option></select></div><div id="iam-owner-field" hidden><label for="iam-owner">Parent user</label><input id="iam-owner" type="text" autocomplete="off" spellcheck="false"></div><button id="refresh-iam" class="button quiet" type="submit">Refresh list</button></form>
+      <p id="iam-status" class="notice" role="status" aria-live="polite"></p><div id="iam-list" class="record-list"></div>
+      <form id="iam-action-form" class="management-form" hidden>
+        <h3>Make a change</h3><label for="iam-action">Action</label><select id="iam-action"></select><p id="iam-action-help" class="help"></p><div id="iam-fields" class="management-fields"></div>
+        <div id="iam-binding-controls" hidden><button id="load-iam-bindings" class="button quiet" type="button">Read current policy bindings</button><p id="iam-binding-scope" class="scope-line"></p><p id="iam-binding-status" class="notice" role="status" aria-live="polite"></p><div id="iam-binding-read-confirmation" class="secret-confirmation" hidden><p id="iam-binding-read-warning" class="help"></p><div class="dialog-footer settings-actions"><button id="cancel-iam-bindings-read" class="button quiet" type="button">Keep draft</button><button id="confirm-iam-bindings-read" class="button primary" type="button">Read and replace draft</button></div></div></div>
+        <label for="iam-confirm">Type the target name or access key to confirm</label><input id="iam-confirm" autocomplete="off" spellcheck="false" required>
+        <p id="iam-action-status" class="notice" role="status" aria-live="polite"></p><div class="dialog-footer"><button id="submit-iam-action" class="button danger" type="submit">Apply this change</button></div>
+      </form>
+      <div id="iam-secret-result" class="secret-confirmation" hidden><h3>Save this new credential now</h3><p class="help">This is the only display of the returned secret. Keep it in a secure place.</p><label for="iam-result-access">Access key</label><input id="iam-result-access" readonly autocomplete="off" spellcheck="false"><label for="iam-result-secret">Secret key</label><input id="iam-result-secret" type="password" readonly autocomplete="off" spellcheck="false"><button id="reveal-iam-secret" class="button quiet" type="button">Show secret</button><button id="dismiss-iam-secret" class="button quiet" type="button">I saved it — clear credential</button></div>
+    </dialog>
+
+    <dialog id="stopped-credential-dialog" class="action-dialog" aria-labelledby="stopped-credential-title" aria-describedby="stopped-credential-help">
+      <div class="dialog-heading"><h2 id="stopped-credential-title">Save the new credential</h2><button id="close-stopped-credential" class="button quiet" type="button">Close</button></div>
+      <p id="stopped-credential-help" class="dialog-description">Storage confirmed the change and stopped this console connection. Save this new credential now; it will be cleared when you close this window or leave the page. Verify your selected identity and restart OC console before continuing.</p>
+      <div class="stopped-credential-fields"><label for="stopped-result-access">Access key</label><input id="stopped-result-access" readonly autocomplete="off" spellcheck="false"><label for="stopped-result-secret">Secret key</label><input id="stopped-result-secret" type="password" readonly autocomplete="off" spellcheck="false"></div>
+      <div class="dialog-footer settings-actions"><button id="reveal-stopped-secret" class="button quiet" type="button">Show secret</button><button id="dismiss-stopped-secret" class="button primary" type="button">I saved it — clear credential</button></div>
     </dialog>
   </body>
 </html>

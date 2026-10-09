@@ -4,7 +4,17 @@
 
 ## 接入方式
 
-OC 继续使用固定的独立 SDK 和服务端依赖，没有修改 `go.mod`、`go.sum` 或模块缓存。固定服务端 `6f6d0835ddff68020f1491c403b958fade22841f` 尚不包含新运行时；需要构建本次 OtterIO 源码，或在该版本的源码副本应用 [配套补丁](../buildscripts/console-server-p3.patch)。补丁可应用不代表协议已发布或已更新 OC 的服务端 pin。
+OC 继续使用固定的独立 SDK 和服务端依赖，没有修改 `go.mod`、`go.sum` 或模块缓存。固定服务端 `6f6d0835ddff68020f1491c403b958fade22841f` 尚不包含新运行时；可使用已包含 P3 的 OtterIO 当前源码 HEAD，或在固定版本的独立源码副本先应用
+[基础协议](../buildscripts/console-server-base.patch)，再应用
+[生命周期存储](../buildscripts/lifecycle-storage.patch)，再应用必带的
+[生命周期存储加固](../buildscripts/lifecycle-storage-hardening.patch)。基础协议独立提供设置比较交换和自身改密；
+存储core补丁追加转换、恢复、目标索引和删除保护；hardening保留HEAD80已合入的
+12个storage-class snapshot、覆盖quorum和tier元数据保护源码/测试文件。
+它让配置更新与Snapshot读取共享锁；普通旧元数据不足读quorum时仍可按写quorum覆盖，
+但任何可读的partial tier引用都会阻止覆盖。RenameData按版本保留目标引用和删除intent，
+允许同源恢复与pending→complete，并修复取消磁盘monitor和测试配置恢复。
+旧 `console-server-p3.patch` 冻结为历史快照，
+不再是当前部署入口。补丁可应用不代表协议已发布或已更新 OC 的服务端 pin。
 
 在 CLI 注册有 label 的 ILM 目标，再在 OC 生命周期编辑器保存完整 XML。当前和非当前版本可以使用不同目标；同一桶内 label 不区分大小写且唯一。
 
@@ -61,15 +71,37 @@ CLI 的 ILM 添加、编辑、移除会先发送签名的只读管理请求，�
 
 ## 验证与重现
 
-当前构建、补丁等价性、测试结果和未验收项见 [最终验证记录](lifecycle-transition-verification.json)。[独立进程验收](lifecycle-transition-integration-results.json)使用临时四盘源端和独立四盘归档端，实际扫描器完成转换；覆盖 HTTP 与独立管理端口 TLS、规则删除、重启、指定版本恢复、远端不可用、精确删除、目标保护及凭据轮换。加密/压缩多段与故障注入由真实 erasure 的定向 race 测试覆盖。
+旧 monolithic 构建、补丁等价性和测试结果见 [历史验证记录](lifecycle-transition-verification.json)。原 [独立进程验收](lifecycle-transition-integration-results.json)使用临时四盘源端和独立四盘归档端，实际扫描器完成转换；覆盖 HTTP 与独立管理端口 TLS、规则删除、重启、指定版本恢复、远端不可用、精确删除、目标保护及凭据轮换。加密/压缩多段与故障注入由真实 erasure 的定向 race 测试覆盖。
 
 ```sh
 python3 buildscripts/test-lifecycle-transition-integration.py \
   --cli /path/to/oc --console /path/to/oc-console \
-  --server /path/to/otterio-with-p3 \
+  --server /path/to/otterio-with-lifecycle-storage \
   --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
-  --server-patch buildscripts/console-server-p3.patch \
+  --server-patch buildscripts/console-server-base.patch \
+  --server-patch buildscripts/lifecycle-storage.patch \
+  --server-patch buildscripts/lifecycle-storage-hardening.patch \
   --output /path/to/lifecycle-transition-integration-results.json
 ```
 
-工作流加入相同验收。历史 P3 报告和本轮中间失败保留原始二进制及补丁摘要，不能当作当前构建的通过证据。未运行完整 OtterIO 测试、真实分布式集群、外部提供者、磁盘耗尽、长期 soak 或远程 CI；平台交叉构建不代表目标平台原生运行通过。
+当前工作流分别构建base、base + versions + IAM、base + storage + hardening和
+五层完整组合；两个生命周期程序各自调用同一独立源端/归档端harness并单独归档。
+2026-10-09 macOS arm64的[硬化三层进程报告](lifecycle-storage-integration-results.json)
+在HTTP/TLS各9组通过。旧[core-only报告](lifecycle-storage-core-results.json)保留原
+二进制的HTTP/TLS各9组通过身份；[完整五层组合报告](console-combined-lifecycle-results.json)同样在独立归档端的HTTP/TLS各9组通过。
+
+OtterIO `docs/console-server-split-results.json` 的逐字等价只比较固定pin的base + storage
+core与冻结P3。`docs/console-server-hardening-results.json` 另验证必带hardening后的
+独立build及cmd、lifecycle、storageclass native race；最终组合对“current + IAM”
+projection的Go/根module等价见 `docs/console-hardening-equivalence.json`，不包含嵌套
+Mint module差异，也不把缺独立IAM的实际current称为完整组合。
+
+runtime报告的 `serverPatches` 保存真实应用顺序。三层部署采用base、storage、hardening；
+完整真实程序采用base、storage、versions、IAM、hardening，而CI先加hardening。版本
+native证明核对两顺序内容相同。所有runtime记录程序buildInfo和传递helper摘要；模块
+副本服务端来源仍是声明值，不能由缺VCS的程序推导Git revision。最终汇总为OtterIO
+`docs/console-server-acceptance-results.json`，五个独立profile均已通过。
+
+历史P3、core-only报告和原中间失败保留原二进制与补丁摘要，不能移作当前三层部署
+的通过证据。完整OtterIO测试、分布式、外部提供者、磁盘耗尽、长期soak及远程CI
+仍需独立结果；交叉编译不代表目标平台原生运行通过。

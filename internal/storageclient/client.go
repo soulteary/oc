@@ -24,6 +24,7 @@ import (
 
 type Config struct {
 	S3URL, AdminURL, AccessKey, SecretKey, SessionToken string
+	ShareURL                                            string
 	API, Path, AppName, AppVersion                      string
 	RootCAs, AdminRootCAs                               *x509.CertPool
 }
@@ -33,6 +34,8 @@ type Client struct {
 	admin               *madmin.AdminClient
 	adminEndpoint       string
 	s3Endpoint          string
+	shareEndpoint       string
+	shareSecure         bool
 	s3Options           minio.Options
 	appName, appVersion string
 	s3Transport         *http.Transport
@@ -52,6 +55,13 @@ func New(cfg Config) (*Client, error) {
 		cfg.AdminURL = s3URL.String()
 	}
 	adminURL, err := clienttransport.ValidateAdminEndpoint(cfg.AdminURL)
+	if err != nil {
+		return nil, configError()
+	}
+	if cfg.ShareURL == "" {
+		cfg.ShareURL = s3URL.String()
+	}
+	shareURL, err := clienttransport.ValidateAdminEndpoint(cfg.ShareURL)
 	if err != nil {
 		return nil, configError()
 	}
@@ -78,6 +88,7 @@ func New(cfg Config) (*Client, error) {
 	}
 	client := &Client{
 		s3Endpoint: s3URL.Host, appName: cfg.AppName, appVersion: cfg.AppVersion,
+		shareEndpoint: shareURL.Host, shareSecure: shareURL.Scheme == "https",
 		adminEndpoint:   adminURL.String(),
 		s3Transport:     clienttransport.New(cfg.RootCAs),
 		adminTransport:  clienttransport.New(cfg.AdminRootCAs),

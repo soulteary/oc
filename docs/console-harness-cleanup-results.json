@@ -1,0 +1,424 @@
+{
+  "dateUTC": "2026-10-09T04:15:56.610705+00:00",
+  "status": "passed",
+  "artifactDirectory": "/private/tmp/console-harness-cleanup-dsso6b4i",
+  "source": "6f6d0835ddff68020f1491c403b958fade22841f",
+  "patches": [
+    {
+      "name": "console-server-base.patch",
+      "sha256": "8cf08e797c2d5fff2aff0fd78202bc9e94d03ecd609f26e171fc62c7b6d58d18"
+    },
+    {
+      "name": "lifecycle-storage.patch",
+      "sha256": "7fc7e76a3a67968d1b3f3ac61c4a38c82c698ba3e1fd3aa6020cf07089167539"
+    }
+  ],
+  "binaries": [
+    {
+      "path": "/private/tmp/oc-console-features-oc",
+      "sha256": "5409c82bbb8ec8a7e88fdf7bc4c187760c7caacf3d800f152d4d003355a41842"
+    },
+    {
+      "path": "/private/tmp/oc-console-features-console",
+      "sha256": "cff76bbedb99c38f2a7175f642506c67eddb646e1adf77073957e96f1b5489c5"
+    },
+    {
+      "path": "/private/tmp/oc-console-server-storage",
+      "sha256": "7b2a9a16e5f3e6a8960f8b69de95e6ae0d5251fac309da3977671c4397759e1c"
+    }
+  ],
+  "checks": [
+    {
+      "name": "test-console-integration.py missing binary replaces stale passed report",
+      "harnessSHA256": "861b07d809ae10415fefea1f8c61edc1129ab94d8f42c85a92021c49465fcc00",
+      "status": "passed",
+      "exitCode": 1,
+      "reportStatus": "failed",
+      "oldSuccessMarkerRemoved": true,
+      "reportPath": "/private/tmp/console-harness-cleanup-dsso6b4i/test-console-integration.py.preflight.json",
+      "logPath": "/private/tmp/console-harness-cleanup-dsso6b4i/test-console-integration.py.preflight.log"
+    },
+    {
+      "name": "test-lifecycle-transition-integration.py missing binary replaces stale passed report",
+      "harnessSHA256": "7bec08fd6d85bb19347588b28534797e0318f3632400369e967b1481f21ba4fd",
+      "status": "passed",
+      "exitCode": 1,
+      "reportStatus": "failed",
+      "oldSuccessMarkerRemoved": true,
+      "reportPath": "/private/tmp/console-harness-cleanup-dsso6b4i/test-lifecycle-transition-integration.py.preflight.json",
+      "logPath": "/private/tmp/console-harness-cleanup-dsso6b4i/test-lifecycle-transition-integration.py.preflight.log"
+    },
+    {
+      "name": "test-console-integration.py SIGTERM cleanup after OC console and distinct service startup",
+      "harnessSHA256": "861b07d809ae10415fefea1f8c61edc1129ab94d8f42c85a92021c49465fcc00",
+      "status": "passed",
+      "signalSentUTC": "2026-10-09T04:30:38.219262+00:00",
+      "exitCode": 1,
+      "reportStatus": "interrupted",
+      "scenarioStatuses": [
+        "interrupted"
+      ],
+      "liveChildrenAtSignal": [
+        {
+          "pid": 72656,
+          "binary": "(oc-console-featu)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "fixtureDirectories": []
+        },
+        {
+          "pid": 72626,
+          "binary": "/private/tmp/oc-console-server-storage",
+          "role": "server",
+          "address": "127.0.0.1:60915",
+          "certs": "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-console-real-2fyqcfp7/s3-certs",
+          "fixtureDirectories": [
+            "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-console-real-2fyqcfp7"
+          ]
+        },
+        {
+          "pid": 72651,
+          "binary": "/private/tmp/oc-console-features-console",
+          "role": "oc-console",
+          "address": "127.0.0.1:0",
+          "certs": null,
+          "fixtureDirectories": [
+            "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-console-real-2fyqcfp7"
+          ]
+        },
+        {
+          "pid": 72629,
+          "binary": "/private/tmp/oc-console-server-storage",
+          "role": "server",
+          "address": "127.0.0.1:60915",
+          "certs": "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-console-real-2fyqcfp7/s3-certs",
+          "fixtureDirectories": [
+            "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-console-real-2fyqcfp7"
+          ]
+        }
+      ],
+      "observedChildren": [
+        {
+          "pid": 72622,
+          "binary": "(go)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72626,
+          "binary": "(oc-console-serve)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72629,
+          "binary": "(oc-console-serve)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72647,
+          "binary": "/private/tmp/oc-console-features-oc",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72651,
+          "binary": "/private/tmp/oc-console-features-console",
+          "role": "oc-console",
+          "address": "127.0.0.1:0",
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72656,
+          "binary": "(oc-console-featu)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        }
+      ],
+      "fixtures": [
+        {
+          "path": "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-console-real-2fyqcfp7",
+          "removed": true
+        }
+      ],
+      "postRunFixtureProcessCount": 0,
+      "reportPath": "/private/tmp/console-harness-cleanup-e6z8xwjk/test-console-integration.py.interrupted.json",
+      "logPath": "/private/tmp/console-harness-cleanup-e6z8xwjk/test-console-integration.py.interrupted.log"
+    },
+    {
+      "name": "test-lifecycle-transition-integration.py SIGTERM cleanup after OC console and distinct service startup",
+      "harnessSHA256": "7bec08fd6d85bb19347588b28534797e0318f3632400369e967b1481f21ba4fd",
+      "status": "passed",
+      "signalSentUTC": "2026-10-09T04:30:39.874290+00:00",
+      "exitCode": 1,
+      "reportStatus": "interrupted",
+      "scenarioStatuses": [
+        "interrupted"
+      ],
+      "liveChildrenAtSignal": [
+        {
+          "pid": 72674,
+          "binary": "/private/tmp/oc-console-server-storage",
+          "role": "tier-server",
+          "address": "127.0.0.1:60976",
+          "certs": "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-y99hvmux/tier-certs",
+          "fixtureDirectories": [
+            "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-y99hvmux"
+          ]
+        },
+        {
+          "pid": 72677,
+          "binary": "/private/tmp/oc-console-server-storage",
+          "role": "source-server",
+          "address": "127.0.0.1:60975",
+          "certs": "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-y99hvmux/source-certs",
+          "fixtureDirectories": [
+            "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-y99hvmux"
+          ]
+        },
+        {
+          "pid": 72680,
+          "binary": "/private/tmp/oc-console-server-storage",
+          "role": "source-server",
+          "address": "127.0.0.1:60975",
+          "certs": "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-y99hvmux/source-certs",
+          "fixtureDirectories": [
+            "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-y99hvmux"
+          ]
+        },
+        {
+          "pid": 72714,
+          "binary": "/private/tmp/oc-console-features-console",
+          "role": "oc-console",
+          "address": "127.0.0.1:0",
+          "certs": null,
+          "fixtureDirectories": [
+            "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-y99hvmux"
+          ]
+        },
+        {
+          "pid": 72671,
+          "binary": "/private/tmp/oc-console-server-storage",
+          "role": "tier-server",
+          "address": "127.0.0.1:60976",
+          "certs": "/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-y99hvmux/tier-certs",
+          "fixtureDirectories": [
+            "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-y99hvmux"
+          ]
+        }
+      ],
+      "observedChildren": [
+        {
+          "pid": 72671,
+          "binary": "<defunct>",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72674,
+          "binary": "(oc-console-serve)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72677,
+          "binary": "(oc-console-serve)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72679,
+          "binary": "(ioreg)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72680,
+          "binary": "(oc-console-serve)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72683,
+          "binary": "/private/tmp/oc-console-features-oc",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72692,
+          "binary": "(oc-console-featu)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72694,
+          "binary": "(ioreg)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72697,
+          "binary": "(oc-console-featu)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72699,
+          "binary": "(ioreg)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72703,
+          "binary": "(oc-console-featu)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72707,
+          "binary": "/private/tmp/oc-console-features-oc",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72708,
+          "binary": "(ioreg)",
+          "role": "other",
+          "address": null,
+          "certs": null,
+          "exited": true
+        },
+        {
+          "pid": 72714,
+          "binary": "/private/tmp/oc-console-features-console",
+          "role": "oc-console",
+          "address": "127.0.0.1:0",
+          "certs": null,
+          "exited": true
+        }
+      ],
+      "fixtures": [
+        {
+          "path": "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-y99hvmux",
+          "removed": true
+        }
+      ],
+      "postRunFixtureProcessCount": 0,
+      "reportPath": "/private/tmp/console-harness-cleanup-e6z8xwjk/test-lifecycle-transition-integration.py.interrupted.json",
+      "logPath": "/private/tmp/console-harness-cleanup-e6z8xwjk/test-lifecycle-transition-integration.py.interrupted.log"
+    }
+  ],
+  "strictVerificationStatus": "passed",
+  "evidenceBoundary": "Missing-binary preflight and strict SIGTERM checks passed. OC console startup was observed; lifecycle also observed distinct source and tier instances. All observed descendants exited and temporary fixture directories were removed without forced cleanup.",
+  "strictControllerPath": "/private/tmp/verify-console-harness-cleanup-strict.py",
+  "supersededEarlyStartupChecks": [
+    {
+      "name": "test-console-integration.py SIGTERM cleanup after two runtime children",
+      "harnessSHA256": "861b07d809ae10415fefea1f8c61edc1129ab94d8f42c85a92021c49465fcc00",
+      "status": "passed",
+      "signalSentUTC": "2026-10-09T04:15:58.043056+00:00",
+      "exitCode": 1,
+      "reportStatus": "interrupted",
+      "scenarioStatuses": [
+        "interrupted"
+      ],
+      "observedChildren": [
+        {
+          "pid": 67969,
+          "binary": "/private/tmp/oc-console-server-storage",
+          "exited": true
+        },
+        {
+          "pid": 67971,
+          "binary": "/private/tmp/oc-console-server-storage",
+          "exited": true
+        }
+      ],
+      "fixtures": [
+        {
+          "path": "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-console-real-01dbpvcr",
+          "removed": true
+        }
+      ],
+      "reportPath": "/private/tmp/console-harness-cleanup-dsso6b4i/test-console-integration.py.interrupted.json",
+      "logPath": "/private/tmp/console-harness-cleanup-dsso6b4i/test-console-integration.py.interrupted.log"
+    },
+    {
+      "name": "test-lifecycle-transition-integration.py SIGTERM cleanup after two runtime children",
+      "harnessSHA256": "7bec08fd6d85bb19347588b28534797e0318f3632400369e967b1481f21ba4fd",
+      "status": "passed",
+      "signalSentUTC": "2026-10-09T04:15:59.492810+00:00",
+      "exitCode": 1,
+      "reportStatus": "interrupted",
+      "scenarioStatuses": [
+        "interrupted"
+      ],
+      "observedChildren": [
+        {
+          "pid": 67990,
+          "binary": "/private/tmp/oc-console-server-storage",
+          "exited": true
+        },
+        {
+          "pid": 67993,
+          "binary": "/private/tmp/oc-console-server-storage",
+          "exited": true
+        }
+      ],
+      "fixtures": [
+        {
+          "path": "/private/var/folders/g8/0v6103r55c39jfs_ngl4fgbh0000gn/T/oc-tier-acceptance-498vsq_p",
+          "removed": true
+        }
+      ],
+      "reportPath": "/private/tmp/console-harness-cleanup-dsso6b4i/test-lifecycle-transition-integration.py.interrupted.json",
+      "logPath": "/private/tmp/console-harness-cleanup-dsso6b4i/test-lifecycle-transition-integration.py.interrupted.log"
+    }
+  ],
+  "supersededEarlyStartupEvidenceBoundary": "Earlier trigger counted server reexec PIDs and did not demonstrate OC console cleanup.",
+  "strictArtifactDirectory": "/private/tmp/console-harness-cleanup-e6z8xwjk",
+  "strictTrigger": "Console requires live server plus OC console startup URL; lifecycle requires separate source/tier endpoints and fixture paths plus OC console startup URL.",
+  "strictController": {
+    "path": "/private/tmp/verify-console-harness-cleanup-strict.py",
+    "sha256": "e071e789ce24bed3c5d778cc1843b000886c53d794038a58ffaae0563dc7e60b",
+    "forcedCleanupUsed": false
+  },
+  "strictVerificationUTC": "2026-10-09T04:44:51.512579+00:00"
+}

@@ -1,0 +1,937 @@
+diff --git a/cmd/config/storageclass/storage-class.go b/cmd/config/storageclass/storage-class.go
+--- a/cmd/config/storageclass/storage-class.go
++++ b/cmd/config/storageclass/storage-class.go
+@@ -239,7 +239,7 @@
+ //
+ //	is returned, the caller is expected to choose the right parity
+ //	at that point.
+-func (sCfg Config) GetParityForSC(sc string) (parity int) {
++func (sCfg *Config) GetParityForSC(sc string) (parity int) {
+ 	ConfigLock.RLock()
+ 	defer ConfigLock.RUnlock()
+ 	switch strings.TrimSpace(sc) {
+@@ -255,7 +255,7 @@
+ }
+ 
+ // Update update storage-class with new config
+-func (sCfg Config) Update(newCfg Config) {
++func (sCfg *Config) Update(newCfg Config) {
+ 	ConfigLock.Lock()
+ 	defer ConfigLock.Unlock()
+ 	sCfg.RRS = newCfg.RRS
+@@ -264,10 +264,17 @@
+ }
+ 
+ // GetDMA - returns DMA configuration.
+-func (sCfg Config) GetDMA() string {
++func (sCfg *Config) GetDMA() string {
+ 	ConfigLock.RLock()
+ 	defer ConfigLock.RUnlock()
+ 	return sCfg.DMA
++}
++
++// Snapshot returns a copy of the storage-class configuration under the read lock.
++func (sCfg *Config) Snapshot() Config {
++	ConfigLock.RLock()
++	defer ConfigLock.RUnlock()
++	return *sCfg
+ }
+ 
+ // Enabled returns if etcd is enabled.
+diff --git a/cmd/config/storageclass/storage-class_test.go b/cmd/config/storageclass/storage-class_test.go
+--- a/cmd/config/storageclass/storage-class_test.go
++++ b/cmd/config/storageclass/storage-class_test.go
+@@ -19,8 +19,80 @@
+ import (
+ 	"errors"
+ 	"reflect"
++	"sync"
+ 	"testing"
+ )
++
++func TestConfigUpdateChangesReceiver(t *testing.T) {
++	var cfg Config
++	next := Config{Standard: StorageClass{Parity: 6}, RRS: StorageClass{Parity: 3}, DMA: DMAReadWrite}
++	cfg.Update(next)
++	if got := cfg.GetDMA(); got != next.DMA {
++		t.Fatalf("Update did not change DMA: got %q, want %q", got, next.DMA)
++	}
++	if got := cfg.GetParityForSC(STANDARD); got != next.Standard.Parity {
++		t.Fatalf("Update did not change standard parity: got %d, want %d", got, next.Standard.Parity)
++	}
++	if got := cfg.GetParityForSC(RRS); got != next.RRS.Parity {
++		t.Fatalf("Update did not change RRS parity: got %d, want %d", got, next.RRS.Parity)
++	}
++	cfg.Update(Config{})
++	if cfg.GetDMA() != "" || cfg.GetParityForSC(STANDARD) != 0 || cfg.GetParityForSC(RRS) != defaultRRSParity {
++		t.Fatal("Update did not restore the default configuration")
++	}
++}
++
++func TestConfigSnapshotIsIndependent(t *testing.T) {
++	cfg := Config{DMA: DMAWrite}
++	snapshot := cfg.Snapshot()
++	snapshot.DMA = DMAReadWrite
++	if got := cfg.GetDMA(); got != DMAWrite {
++		t.Fatalf("Changing a snapshot changed the configuration: %q", got)
++	}
++}
++
++func TestConfigConcurrentReadUpdate(t *testing.T) {
++	configs := [2]Config{
++		{Standard: StorageClass{Parity: 4}, RRS: StorageClass{Parity: 2}, DMA: DMAWrite},
++		{Standard: StorageClass{Parity: 6}, RRS: StorageClass{Parity: 3}, DMA: DMAReadWrite},
++	}
++	cfg := configs[0]
++	var wg sync.WaitGroup
++	start := make(chan struct{})
++	for i := 0; i < 2; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			<-start
++			for j := 0; j < 1000; j++ {
++				cfg.Update(configs[j%len(configs)])
++			}
++		}()
++	}
++	for i := 0; i < 4; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			<-start
++			for j := 0; j < 1000; j++ {
++				if got := cfg.GetDMA(); got != DMAWrite && got != DMAReadWrite {
++					t.Errorf("Unexpected DMA: %q", got)
++				}
++				if got := cfg.GetParityForSC(STANDARD); got != 4 && got != 6 {
++					t.Errorf("Unexpected standard parity: %d", got)
++				}
++				if got := cfg.GetParityForSC(RRS); got != 2 && got != 3 {
++					t.Errorf("Unexpected RRS parity: %d", got)
++				}
++				if got := cfg.Snapshot(); got != configs[0] && got != configs[1] {
++					t.Errorf("Snapshot contains a partial update: %+v", got)
++				}
++			}
++		}()
++	}
++	close(start)
++	wg.Wait()
++}
+ 
+ func TestParseStorageClass(t *testing.T) {
+ 	tests := []struct {
+diff --git a/cmd/erasure-healing-common_test.go b/cmd/erasure-healing-common_test.go
+--- a/cmd/erasure-healing-common_test.go
++++ b/cmd/erasure-healing-common_test.go
+@@ -353,13 +353,15 @@
+ 		t.Fatalf("Failed to make a bucket %v", err)
+ 	}
+ 
+-	object := "object"
+ 	data := bytes.Repeat([]byte("a"), smallFileThreshold/2)
+ 	z := obj.(*erasureServerPools)
+ 	erasureDisks := z.serverPools[0].sets[0].getDisks()
+ 	for i, test := range testCases {
+ 		test := test
+ 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
++			// Each case deliberately leaves conflicting or corrupt metadata.
++			// Start with a new object instead of overwriting the previous case.
++			object := fmt.Sprintf("object-%d", i)
+ 			_, err = obj.PutObject(ctx, bucket, object, mustGetPutObjReader(t, bytes.NewReader(data), int64(len(data)), "", ""), ObjectOptions{})
+ 			if err != nil {
+ 				t.Fatalf("Failed to putObject %v", err)
+diff --git a/cmd/erasure-object-overwrite-read-error_test.go b/cmd/erasure-object-overwrite-read-error_test.go
+new file mode 100644
+--- /dev/null
++++ b/cmd/erasure-object-overwrite-read-error_test.go
+@@ -0,0 +1,170 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"fmt"
++	"sync/atomic"
++	"testing"
++
++	"github.com/soulteary/otterio/pkg/bucket/lifecycle"
++	"github.com/soulteary/otterio/pkg/madmin"
++)
++
++type overwriteReadErrorDisk struct {
++	StorageAPI
++	bucket, key string
++	readFailed  atomic.Bool
++	renamed     atomic.Bool
++}
++
++func (d *overwriteReadErrorDisk) ReadVersion(ctx context.Context, bucket, key, versionID string, readData bool) (FileInfo, error) {
++	if bucket == d.bucket && key == d.key && d.readFailed.CompareAndSwap(false, true) {
++		return FileInfo{}, errFaultyDisk
++	}
++	return d.StorageAPI.ReadVersion(ctx, bucket, key, versionID, readData)
++}
++
++func (d *overwriteReadErrorDisk) RenameData(ctx context.Context, srcVolume, srcPath string, fi FileInfo, dstVolume, dstPath string) error {
++	if dstVolume == d.bucket && dstPath == d.key {
++		d.renamed.Store(true)
++	}
++	return d.StorageAPI.RenameData(ctx, srcVolume, srcPath, fi, dstVolume, dstPath)
++}
++
++func TestErasurePutObjectReadErrorPreservesTransitionReference(t *testing.T) {
++	skipIfWindowsErasureExec(t)
++	ctx := context.Background()
++	obj, roots, err := prepareErasure(ctx, 4)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer removeRoots(roots)
++	defer obj.Shutdown(ctx)
++	const bucket = "overwrite-read-error"
++	if err = obj.MakeBucketWithLocation(ctx, bucket, BucketOptions{}); err != nil {
++		t.Fatal(err)
++	}
++	backend := obj.(*erasureServerPools).serverPools[0].sets[0]
++	disks := backend.getDisks()
++	for _, target := range []struct {
++		key  string
++		opts ObjectOptions
++	}{
++		{key: "null"},
++		{key: "suspended-null", opts: ObjectOptions{VersionSuspended: true}},
++		{key: "named", opts: ObjectOptions{Versioned: true, VersionID: mustGetUUID()}},
++	} {
++		t.Run(target.key, func(t *testing.T) {
++			original := []byte("source with one durable remote recovery record")
++			if _, err := backend.PutObject(ctx, bucket, target.key, mustGetPutObjReader(t, bytes.NewReader(original), int64(len(original)), "", ""), target.opts); err != nil {
++				t.Fatal(err)
++			}
++			metadata, readErrs := readAllFileInfo(ctx, disks, bucket, target.key, target.opts.VersionID, true)
++			for i := range metadata {
++				if readErrs[i] != nil {
++					t.Fatal(readErrs[i])
++				}
++				metadata[i].Metadata["split"] = fmt.Sprint(i)
++			}
++			metadata[0].TransitionStatus = lifecycle.TransitionPending
++			metadata[0].Metadata[ReservedMetadataPrefixLower+"transition-status"] = lifecycle.TransitionPending
++			if err := setTransitionedObject(metadata[0].Metadata, transitionStorageReference()); err != nil {
++				t.Fatal(err)
++			}
++			if _, err := writeUniqueFileInfo(ctx, disks, bucket, target.key, metadata, len(disks)); err != nil {
++				t.Fatal(err)
++			}
++			if _, err := backend.getObjectInfo(ctx, bucket, target.key, ObjectOptions{VersionID: target.opts.VersionID}); !errors.Is(err, errErasureReadQuorum) {
++				t.Fatalf("fixture must lack an old metadata read quorum: %v", err)
++			}
++			before, err := disks[0].ReadAll(ctx, bucket, pathJoin(target.key, xlStorageFormatFile))
++			if err != nil {
++				t.Fatal(err)
++			}
++			transient := &overwriteReadErrorDisk{StorageAPI: disks[0], bucket: bucket, key: target.key}
++			wrapped := append([]StorageAPI(nil), disks...)
++			wrapped[0] = transient
++			faulty := *backend
++			faulty.getDisks = func() []StorageAPI { return wrapped }
++			// Exercise healing explicitly after checking the upload's disk state.
++			faulty.mrfOpCh = nil
++			replacement := []byte("replacement on the three ordinary disks")
++			if _, err := faulty.PutObject(ctx, bucket, target.key, mustGetPutObjReader(t, bytes.NewReader(replacement), int64(len(replacement)), "", ""), target.opts); err != nil {
++				t.Fatalf("three ordinary disks must still satisfy write quorum: %v", err)
++			}
++			if !transient.readFailed.Load() || !transient.renamed.Load() {
++				t.Fatal("fixture must fail the safety read and then attempt a recovered rename")
++			}
++			assertReferenceUnchanged := func() {
++				t.Helper()
++				after, readErr := disks[0].ReadAll(ctx, bucket, pathJoin(target.key, xlStorageFormatFile))
++				if readErr != nil || !bytes.Equal(before, after) {
++					t.Fatalf("the only transition recovery metadata was overwritten: %v", readErr)
++				}
++			}
++			assertReferenceUnchanged()
++			if _, err := backend.HealObject(ctx, bucket, target.key, target.opts.VersionID, madmin.HealOpts{}); err == nil {
++				t.Fatal("healing must refuse to discard the retained remote recovery record")
++			}
++			assertReferenceUnchanged()
++		})
++	}
++}
++
++func TestXLStorageHealsPendingTransitionMetadata(t *testing.T) {
++	skipIfWindowsErasureExec(t)
++	ctx := context.Background()
++	obj, roots, err := prepareErasure(ctx, 4)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer removeRoots(roots)
++	defer obj.Shutdown(ctx)
++	const bucket, key = "heal-pending-transition", "source"
++	if err = obj.MakeBucketWithLocation(ctx, bucket, BucketOptions{}); err != nil {
++		t.Fatal(err)
++	}
++	backend := obj.(*erasureServerPools).serverPools[0].sets[0]
++	disks := backend.getDisks()
++	original := bytes.Repeat([]byte("pending transition source."), 1<<16)
++	if _, err = backend.PutObject(ctx, bucket, key, mustGetPutObjReader(t, bytes.NewReader(original), int64(len(original)), "", ""), ObjectOptions{}); err != nil {
++		t.Fatal(err)
++	}
++	metadata, readErrs := readAllFileInfo(ctx, disks, bucket, key, "", false)
++	for i := range metadata {
++		if readErrs[i] != nil {
++			t.Fatal(readErrs[i])
++		}
++		metadata[i].TransitionStatus = lifecycle.TransitionPending
++		metadata[i].Metadata[ReservedMetadataPrefixLower+"transition-status"] = lifecycle.TransitionPending
++		if err := setTransitionedObject(metadata[i].Metadata, transitionStorageReference()); err != nil {
++			t.Fatal(err)
++		}
++		metadata[i].Metadata[transitionDeleteIntentKey] = metadata[i].Metadata[transitionReferenceKey]
++	}
++	if _, err := writeUniqueFileInfo(ctx, disks, bucket, key, metadata, len(disks)); err != nil {
++		t.Fatal(err)
++	}
++	if err := disks[0].Delete(ctx, bucket, pathJoin(key, metadata[0].DataDir, "part.1"), false); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := backend.HealObject(ctx, bucket, key, "", madmin.HealOpts{ScanMode: madmin.HealNormalScan}); err != nil {
++		t.Fatalf("same-source healing must preserve the transition and repair its shard: %v", err)
++	}
++	for i, disk := range disks {
++		fi, readErr := disk.ReadVersion(ctx, bucket, key, "", false)
++		if readErr != nil || fi.TransitionStatus != lifecycle.TransitionPending ||
++			fi.Metadata[transitionReferenceKey] != metadata[i].Metadata[transitionReferenceKey] ||
++			fi.Metadata[transitionDeleteIntentKey] != metadata[i].Metadata[transitionDeleteIntentKey] {
++			t.Fatalf("healing lost disk %d's transition state, destination or intent: %+v / %v", i, fi, readErr)
++		}
++	}
++	var got bytes.Buffer
++	if err := backend.getObject(ctx, bucket, key, 0, int64(len(original)), &got, ObjectOptions{}); err != nil || !bytes.Equal(got.Bytes(), original) {
++		t.Fatalf("healing changed the source bytes: %d / %v", got.Len(), err)
++	}
++}
+diff --git a/cmd/erasure-object-overwrite_test.go b/cmd/erasure-object-overwrite_test.go
+new file mode 100644
+--- /dev/null
++++ b/cmd/erasure-object-overwrite_test.go
+@@ -0,0 +1,159 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"testing"
++	"time"
++
++	"github.com/soulteary/otterio/pkg/bucket/lifecycle"
++)
++
++func TestErasurePutObjectOverwritesInconsistentLocalMetadata(t *testing.T) {
++	skipIfWindowsErasureExec(t)
++	ctx := context.Background()
++	obj, roots, err := prepareErasure(ctx, 4)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer removeRoots(roots)
++	defer obj.Shutdown(ctx)
++	const bucket = "overwrite-local"
++	if err = obj.MakeBucketWithLocation(ctx, bucket, BucketOptions{}); err != nil {
++		t.Fatal(err)
++	}
++	disks := obj.(*erasureServerPools).serverPools[0].sets[0].getDisks()
++	for _, target := range erasureOverwriteTargets() {
++		for _, split := range []string{"modtime", "metadata"} {
++			t.Run(target.name+"/"+split, func(t *testing.T) {
++				key := target.name + "/" + split
++				original := []byte("old inline object")
++				if _, err := obj.PutObject(ctx, bucket, key, mustGetPutObjReader(t, bytes.NewReader(original), int64(len(original)), "", ""), target.opts); err != nil {
++					t.Fatal(err)
++				}
++				metadata, readErrs := readAllFileInfo(ctx, disks, bucket, key, target.opts.VersionID, true)
++				for i := range metadata {
++					if readErrs[i] != nil {
++						t.Fatal(readErrs[i])
++					}
++					if split == "modtime" {
++						metadata[i].ModTime = metadata[i].ModTime.Add(time.Duration(i) * time.Second)
++					} else {
++						metadata[i].Metadata["split"] = fmt.Sprint(i)
++					}
++				}
++				if _, err := writeUniqueFileInfo(ctx, disks, bucket, key, metadata, len(disks)); err != nil {
++					t.Fatal(err)
++				}
++				if _, err := obj.GetObjectInfo(ctx, bucket, key, ObjectOptions{VersionID: target.opts.VersionID}); !errors.Is(err, errErasureReadQuorum) {
++					t.Fatalf("split fixture must lack read quorum: %v", err)
++				}
++
++				replacement := []byte("replacement succeeds at write quorum")
++				if _, err := obj.PutObject(ctx, bucket, key, mustGetPutObjReader(t, bytes.NewReader(replacement), int64(len(replacement)), "", ""), target.opts); err != nil {
++					t.Fatalf("healthy writes required the old metadata's read quorum: %v", err)
++				}
++				reader, err := obj.GetObjectNInfo(ctx, bucket, key, nil, http.Header{}, readLock, ObjectOptions{VersionID: target.opts.VersionID})
++				if err != nil {
++					t.Fatal(err)
++				}
++				got, err := io.ReadAll(reader)
++				reader.Close()
++				if err != nil || !bytes.Equal(got, replacement) {
++					t.Fatalf("replacement was not readable: %q / %v", got, err)
++				}
++			})
++		}
++	}
++}
++
++func TestErasurePutObjectPreservesPartialTransitionMetadata(t *testing.T) {
++	skipIfWindowsErasureExec(t)
++	ctx := context.Background()
++	obj, roots, err := prepareErasure(ctx, 4)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer removeRoots(roots)
++	defer obj.Shutdown(ctx)
++	const bucket = "overwrite-transition"
++	if err = obj.MakeBucketWithLocation(ctx, bucket, BucketOptions{}); err != nil {
++		t.Fatal(err)
++	}
++	disks := obj.(*erasureServerPools).serverPools[0].sets[0].getDisks()
++	for _, target := range erasureOverwriteTargets() {
++		for _, status := range []string{lifecycle.TransitionPending, lifecycle.TransitionComplete} {
++			for _, references := range []int{1, 2} {
++				t.Run(fmt.Sprintf("%s/%s/%d-disks", target.name, status, references), func(t *testing.T) {
++					key := fmt.Sprintf("%s/%s/%d", target.name, status, references)
++					original := []byte("retain the transition's recovery record")
++					if _, err := obj.PutObject(ctx, bucket, key, mustGetPutObjReader(t, bytes.NewReader(original), int64(len(original)), "", ""), target.opts); err != nil {
++						t.Fatal(err)
++					}
++					metadata, readErrs := readAllFileInfo(ctx, disks, bucket, key, target.opts.VersionID, true)
++					for i := range metadata {
++						if readErrs[i] != nil {
++							t.Fatal(readErrs[i])
++						}
++						// No snapshot reaches read quorum, including the disks that
++						// retain the only reference to the remote destination.
++						metadata[i].Metadata["split"] = fmt.Sprint(i)
++						if i < references {
++							metadata[i].TransitionStatus = status
++							metadata[i].Metadata[ReservedMetadataPrefixLower+"transition-status"] = status
++							if err := setTransitionedObject(metadata[i].Metadata, transitionStorageReference()); err != nil {
++								t.Fatal(err)
++							}
++						}
++					}
++					if _, err := writeUniqueFileInfo(ctx, disks, bucket, key, metadata, len(disks)); err != nil {
++						t.Fatal(err)
++					}
++					if _, err := obj.GetObjectInfo(ctx, bucket, key, ObjectOptions{VersionID: target.opts.VersionID}); !errors.Is(err, errErasureReadQuorum) {
++						t.Fatalf("partial transition fixture must lack read quorum: %v", err)
++					}
++					before := make([][]byte, len(disks))
++					for i, disk := range disks {
++						before[i], err = disk.ReadAll(ctx, bucket, pathJoin(key, xlStorageFormatFile))
++						if err != nil {
++							t.Fatal(err)
++						}
++					}
++
++					replacement := []byte("must not overwrite the remote reference")
++					_, err := obj.PutObject(ctx, bucket, key, mustGetPutObjReader(t, bytes.NewReader(replacement), int64(len(replacement)), "", ""), target.opts)
++					var blocked NotImplemented
++					if !errors.As(err, &blocked) {
++						t.Fatalf("partial transition overwrite must be refused: %v", err)
++					}
++					for i, disk := range disks {
++						after, err := disk.ReadAll(ctx, bucket, pathJoin(key, xlStorageFormatFile))
++						if err != nil || !bytes.Equal(before[i], after) {
++							t.Fatalf("refused overwrite changed disk %d metadata: %v", i, err)
++						}
++					}
++				})
++			}
++		}
++	}
++}
++
++func erasureOverwriteTargets() []struct {
++	name string
++	opts ObjectOptions
++} {
++	return []struct {
++		name string
++		opts ObjectOptions
++	}{
++		{name: "null"},
++		{name: "suspended-null", opts: ObjectOptions{VersionSuspended: true}},
++		{name: "named", opts: ObjectOptions{Versioned: true, VersionID: mustGetUUID()}},
++	}
++}
+diff --git a/cmd/erasure-object.go b/cmd/erasure-object.go
+--- a/cmd/erasure-object.go
++++ b/cmd/erasure-object.go
+@@ -812,16 +812,19 @@
+ 	} else if !opts.Versioned || opts.VersionID != "" {
+ 		// Never overwrite the only durable reference to a tiered object. An
+ 		// explicit deletion cleans its remote object before removing metadata.
++		// Inspect every readable copy without requiring read quorum: ordinary
++		// uploads may replace inconsistent local metadata, while even a partial
++		// transition commit must keep its recovery reference. renameData below
++		// remains responsible for enforcing write quorum.
+ 		versionID := opts.VersionID
+ 		if opts.VersionSuspended && versionID == "" {
+ 			versionID = nullVersionID
+ 		}
+-		current, readErr := er.getObjectInfo(ctx, bucket, object, ObjectOptions{VersionID: versionID, NoLock: true})
+-		if readErr == nil && current.TransitionStatus != "" {
+-			return ObjectInfo{}, NotImplemented{}
+-		}
+-		if readErr != nil && !isErrObjectNotFound(readErr) && !isErrVersionNotFound(readErr) {
+-			return ObjectInfo{}, readErr
++		current, readErrs := readAllFileInfo(ctx, storageDisks, bucket, object, versionID, false)
++		for i, fi := range current {
++			if readErrs[i] == nil && !fi.Deleted && fi.TransitionStatus != "" {
++				return ObjectInfo{}, NotImplemented{}
++			}
+ 		}
+ 	}
+ 
+diff --git a/cmd/erasure-object_test.go b/cmd/erasure-object_test.go
+--- a/cmd/erasure-object_test.go
++++ b/cmd/erasure-object_test.go
+@@ -22,7 +22,6 @@
+ 	crand "crypto/rand"
+ 	"errors"
+ 	"io"
+-	"os"
+ 	"strconv"
+ 	"testing"
+ 
+@@ -138,10 +137,12 @@
+ 		if err != nil {
+ 			t.Fatal("Unable to initialize 'Erasure' object layer.", err)
+ 		}
+-		// Remove all dirs.
+-		for _, dir := range fsDirs {
+-			defer os.RemoveAll(dir)
+-		}
++		t.Cleanup(func() {
++			if err := obj.Shutdown(context.Background()); err != nil {
++				t.Errorf("Unable to shut down 'Erasure' object layer: %v", err)
++			}
++			removeRoots(fsDirs)
++		})
+ 		z := obj.(*erasureServerPools)
+ 		xl := z.serverPools[0].sets[0]
+ 		objs = append(objs, xl)
+@@ -204,12 +205,12 @@
+ 
+ func TestErasureDeleteObjectDiskNotFound(t *testing.T) {
+ 	skipIfWindowsErasureExec(t)
+-	restoreGlobalStorageClass := globalStorageClass
++	restoreGlobalStorageClass := globalStorageClass.Snapshot()
+ 	defer func() {
+-		globalStorageClass = restoreGlobalStorageClass
++		globalStorageClass.Update(restoreGlobalStorageClass)
+ 	}()
+ 
+-	globalStorageClass = storageclass.Config{}
++	globalStorageClass.Update(storageclass.Config{})
+ 
+ 	ctx, cancel := context.WithCancel(context.Background())
+ 	defer cancel()
+@@ -220,8 +221,12 @@
+ 		t.Fatal(err)
+ 	}
+ 	// Cleanup backend directories
+-	defer obj.Shutdown(context.Background())
+-	defer removeRoots(fsDirs)
++	defer func() {
++		if err := obj.Shutdown(context.Background()); err != nil {
++			t.Errorf("Unable to shut down 'Erasure' object layer: %v", err)
++		}
++		removeRoots(fsDirs)
++	}()
+ 
+ 	z := obj.(*erasureServerPools)
+ 	xl := z.serverPools[0].sets[0]
+@@ -580,12 +585,12 @@
+ }
+ 
+ func testObjectQuorumFromMeta(obj ObjectLayer, _ string, _ []string, t TestErrHandler) {
+-	restoreGlobalStorageClass := globalStorageClass
++	restoreGlobalStorageClass := globalStorageClass.Snapshot()
+ 	defer func() {
+-		globalStorageClass = restoreGlobalStorageClass
++		globalStorageClass.Update(restoreGlobalStorageClass)
+ 	}()
+ 
+-	globalStorageClass = storageclass.Config{}
++	globalStorageClass.Update(storageclass.Config{})
+ 
+ 	bucket := getRandomBucketName()
+ 
+@@ -614,7 +619,7 @@
+ 	}
+ 
+ 	parts1, errs1 := readAllFileInfo(ctx, erasureDisks, bucket, object1, "", false)
+-	parts1SC := globalStorageClass
++	parts1SC := globalStorageClass.Snapshot()
+ 
+ 	// Object for test case 2 - No StorageClass defined, MetaData in PutObject requesting RRS Class
+ 	object2 := "object2"
+@@ -626,7 +631,7 @@
+ 	}
+ 
+ 	parts2, errs2 := readAllFileInfo(ctx, erasureDisks, bucket, object2, "", false)
+-	parts2SC := globalStorageClass
++	parts2SC := globalStorageClass.Snapshot()
+ 
+ 	// Object for test case 3 - No StorageClass defined, MetaData in PutObject requesting Standard Storage Class
+ 	object3 := "object3"
+@@ -638,17 +643,17 @@
+ 	}
+ 
+ 	parts3, errs3 := readAllFileInfo(ctx, erasureDisks, bucket, object3, "", false)
+-	parts3SC := globalStorageClass
++	parts3SC := globalStorageClass.Snapshot()
+ 
+ 	// Object for test case 4 - Standard StorageClass defined as Parity 6, MetaData in PutObject requesting Standard Storage Class
+ 	object4 := "object4"
+ 	metadata4 := make(map[string]string)
+ 	metadata4["x-amz-storage-class"] = storageclass.STANDARD
+-	globalStorageClass = storageclass.Config{
++	globalStorageClass.Update(storageclass.Config{
+ 		Standard: storageclass.StorageClass{
+ 			Parity: 6,
+ 		},
+-	}
++	})
+ 
+ 	_, err = obj.PutObject(ctx, bucket, object4, mustGetPutObjReader(t, bytes.NewReader(data), int64(len(data)), "", ""), ObjectOptions{UserDefined: metadata4})
+ 	if err != nil {
+@@ -667,11 +672,11 @@
+ 	object5 := "object5"
+ 	metadata5 := make(map[string]string)
+ 	metadata5["x-amz-storage-class"] = storageclass.RRS
+-	globalStorageClass = storageclass.Config{
++	globalStorageClass.Update(storageclass.Config{
+ 		RRS: storageclass.StorageClass{
+ 			Parity: 2,
+ 		},
+-	}
++	})
+ 
+ 	_, err = obj.PutObject(ctx, bucket, object5, mustGetPutObjReader(t, bytes.NewReader(data), int64(len(data)), "", ""), ObjectOptions{UserDefined: metadata5})
+ 	if err != nil {
+@@ -689,11 +694,11 @@
+ 	object6 := "object6"
+ 	metadata6 := make(map[string]string)
+ 	metadata6["x-amz-storage-class"] = storageclass.STANDARD
+-	globalStorageClass = storageclass.Config{
++	globalStorageClass.Update(storageclass.Config{
+ 		RRS: storageclass.StorageClass{
+ 			Parity: 2,
+ 		},
+-	}
++	})
+ 
+ 	_, err = obj.PutObject(ctx, bucket, object6, mustGetPutObjReader(t, bytes.NewReader(data), int64(len(data)), "", ""), ObjectOptions{UserDefined: metadata6})
+ 	if err != nil {
+@@ -712,11 +717,11 @@
+ 	object7 := "object7"
+ 	metadata7 := make(map[string]string)
+ 	metadata7["x-amz-storage-class"] = storageclass.STANDARD
+-	globalStorageClass = storageclass.Config{
++	globalStorageClass.Update(storageclass.Config{
+ 		Standard: storageclass.StorageClass{
+ 			Parity: 5,
+ 		},
+-	}
++	})
+ 
+ 	_, err = obj.PutObject(ctx, bucket, object7, mustGetPutObjReader(t, bytes.NewReader(data), int64(len(data)), "", ""), ObjectOptions{UserDefined: metadata7})
+ 	if err != nil {
+@@ -749,7 +754,7 @@
+ 	for _, tt := range tests {
+ 		tt := tt
+ 		t.(*testing.T).Run("", func(t *testing.T) {
+-			globalStorageClass = tt.storageClassCfg
++			globalStorageClass.Update(tt.storageClassCfg)
+ 			actualReadQuorum, actualWriteQuorum, err := objectQuorumFromMeta(ctx, tt.parts, tt.errs, getDefaultParityBlocks(len(erasureDisks)))
+ 			if tt.expectedError != nil && err == nil {
+ 				t.Errorf("Expected %s, got %s", tt.expectedError, err)
+diff --git a/cmd/erasure-sets.go b/cmd/erasure-sets.go
+--- a/cmd/erasure-sets.go
++++ b/cmd/erasure-sets.go
+@@ -287,19 +287,30 @@
+ func (s *erasureSets) monitorAndConnectEndpoints(ctx context.Context, monitorInterval time.Duration) {
+ 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+ 
+-	time.Sleep(time.Duration(r.Float64() * float64(time.Second)))
++	monitor := time.NewTimer(time.Duration(r.Float64() * float64(time.Second)))
++	defer monitor.Stop()
++	select {
++	case <-ctx.Done():
++		return
++	case <-monitor.C:
++	}
++	if ctx.Err() != nil {
++		return
++	}
+ 
+ 	// Pre-emptively connect the disks if possible.
+ 	s.connectDisks()
+ 
+-	monitor := time.NewTimer(monitorInterval)
+-	defer monitor.Stop()
++	monitor.Reset(monitorInterval)
+ 
+ 	for {
+ 		select {
+ 		case <-ctx.Done():
+ 			return
+ 		case <-monitor.C:
++			if ctx.Err() != nil {
++				return
++			}
+ 			// Reset the timer once fired for required interval.
+ 			monitor.Reset(monitorInterval)
+ 
+diff --git a/cmd/erasure-sets_test.go b/cmd/erasure-sets_test.go
+--- a/cmd/erasure-sets_test.go
++++ b/cmd/erasure-sets_test.go
+@@ -21,11 +21,37 @@
+ 	"os"
+ 	"path/filepath"
+ 	"testing"
++	"time"
+ 
+ 	"github.com/google/uuid"
+ )
+ 
+ var testUUID = uuid.MustParse("f5c58c61-7175-4018-ab5e-a94fe9c2de4e")
++
++type monitorAccessDisk struct {
++	StorageAPI
++	accesses int
++}
++
++func (d *monitorAccessDisk) IsOnline() bool {
++	d.accesses++
++	return false
++}
++
++func TestMonitorAndConnectEndpointsCanceled(t *testing.T) {
++	disk := &monitorAccessDisk{}
++	sets := &erasureSets{
++		setCount:      1,
++		setDriveCount: 1,
++		erasureDisks:  [][]StorageAPI{{disk}},
++	}
++	ctx, cancel := context.WithCancel(context.Background())
++	cancel()
++	sets.monitorAndConnectEndpoints(ctx, time.Second)
++	if disk.accesses != 0 {
++		t.Fatalf("Canceled monitor accessed disks %d times", disk.accesses)
++	}
++}
+ 
+ func BenchmarkCrcHash(b *testing.B) {
+ 	cases := []struct {
+diff --git a/cmd/transition-storage_test.go b/cmd/transition-storage_test.go
+--- a/cmd/transition-storage_test.go
++++ b/cmd/transition-storage_test.go
+@@ -488,6 +488,87 @@
+ 	return d.StorageAPI.DeleteVersion(ctx, volume, object, fi, force)
+ }
+ 
++func TestTransitionStorageOverwriteMetadataQuorum(t *testing.T) {
++	skipIfWindowsErasureExec(t)
++	ctx := context.Background()
++	obj, roots, err := prepareErasure(ctx, 4)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer removeRoots(roots)
++	defer obj.Shutdown(ctx)
++	const bucket = "transition-overwrite-quorum"
++	if err = obj.MakeBucketWithLocation(ctx, bucket, BucketOptions{}); err != nil {
++		t.Fatal(err)
++	}
++	disks := obj.(*erasureServerPools).serverPools[0].sets[0].getDisks()
++	for _, test := range []struct {
++		name   string
++		status string
++	}{
++		{name: "pending", status: lifecycle.TransitionPending},
++		{name: "complete", status: lifecycle.TransitionComplete},
++	} {
++		t.Run(test.name, func(t *testing.T) {
++			data := []byte("retain original inline source")
++			source, err := obj.PutObject(ctx, bucket, test.name, mustGetPutObjReader(t, bytes.NewReader(data), int64(len(data)), "", ""), ObjectOptions{})
++			if err != nil {
++				t.Fatal(err)
++			}
++			source, err = obj.PutObjectMetadata(ctx, bucket, test.name, ObjectOptions{TransitionStatus: test.status, TransitionedObject: transitionStorageReference()})
++			if err != nil {
++				t.Fatal(err)
++			}
++			pristine, errs := readAllFileInfo(ctx, disks, bucket, test.name, "", true)
++			pristineBytes := make([][]byte, len(disks))
++			before := make([][]byte, len(disks))
++			for i, disk := range disks {
++				if errs[i] != nil {
++					t.Fatal(errs[i])
++				}
++				pristineBytes[i], err = disk.ReadAll(ctx, bucket, pathJoin(test.name, xlStorageFormatFile))
++				if err != nil {
++					t.Fatal(err)
++				}
++				// Every disk can write, but no two agree on the old snapshot.
++				// A successful write would discard an untrusted tier reference.
++				conflict := pristine[i]
++				conflict.Metadata = cloneMSS(conflict.Metadata)
++				conflict.Metadata["snapshot"] = fmt.Sprintf("disk-%d", i)
++				if err = disk.UpdateMetadata(ctx, bucket, test.name, conflict); err != nil {
++					t.Fatal(err)
++				}
++				before[i], err = disk.ReadAll(ctx, bucket, pathJoin(test.name, xlStorageFormatFile))
++				if err != nil {
++					t.Fatal(err)
++				}
++			}
++			if _, err = obj.GetObjectInfo(ctx, bucket, test.name, ObjectOptions{}); !errors.Is(err, errErasureReadQuorum) {
++				t.Fatalf("conflicting fixture retained metadata quorum: %v", err)
++			}
++			replacement := []byte("replacement")
++			_, err = obj.PutObject(ctx, bucket, test.name, mustGetPutObjReader(t, bytes.NewReader(replacement), int64(len(replacement)), "", ""), ObjectOptions{})
++			var blocked NotImplemented
++			if !errors.As(err, &blocked) {
++				t.Fatalf("tiered overwrite without metadata quorum was not refused: %v", err)
++			}
++			for i, disk := range disks {
++				after, readErr := disk.ReadAll(ctx, bucket, pathJoin(test.name, xlStorageFormatFile))
++				if readErr != nil || !bytes.Equal(before[i], after) {
++					t.Fatalf("rejected overwrite changed disk %d metadata or inline data: %v", i, readErr)
++				}
++				if err = disk.WriteAll(ctx, bucket, pathJoin(test.name, xlStorageFormatFile), pristineBytes[i]); err != nil {
++					t.Fatal(err)
++				}
++			}
++			retained, err := obj.GetObjectInfo(ctx, bucket, test.name, ObjectOptions{})
++			if err != nil || retained.ETag != source.ETag || retained.TransitionStatus != source.TransitionStatus || !reflect.DeepEqual(retained.TransitionedObject, source.TransitionedObject) {
++				t.Fatalf("rejected overwrite lost the source identity or tier reference: %+v / %v", retained, err)
++			}
++		})
++	}
++}
++
+ func TestTransitionStorageErasureRestoreAndCAS(t *testing.T) {
+ 	skipIfWindowsErasureExec(t)
+ 	ctx := context.Background()
+diff --git a/cmd/xl-storage.go b/cmd/xl-storage.go
+--- a/cmd/xl-storage.go
++++ b/cmd/xl-storage.go
+@@ -2133,6 +2133,35 @@
+ 		}
+ 	}
+ 
++	// Check the version that AddVersion will replace, rather than the latest
++	// version. A failed earlier ReadVersion must not let an upload or heal erase
++	// the only durable destination or deletion intent of a tiered object.
++	versionID := fi.VersionID
++	if versionID == "" {
++		versionID = nullVersionID
++	}
++	previous, previousErr := xlMeta.ToFileInfo(dstVolume, dstPath, versionID)
++	if previousErr != nil && previousErr != errFileNotFound && previousErr != errFileVersionNotFound {
++		return previousErr
++	}
++	if previousErr == nil && !previous.Deleted && previous.TransitionStatus != "" {
++		sameDestination := previous.Metadata[transitionReferenceKey] == fi.Metadata[transitionReferenceKey]
++		oldRef, newRef := parseTransitionedObject(previous.Metadata), parseTransitionedObject(fi.Metadata)
++		if oldRef != nil && newRef != nil {
++			sameRemoteVersion := oldRef.VersionID == newRef.VersionID ||
++				(previous.TransitionStatus == lifecycle.TransitionPending && fi.TransitionStatus == lifecycle.TransitionComplete && oldRef.VersionID == "")
++			sameDestination = oldRef.ARN == newRef.ARN && oldRef.Key == newRef.Key &&
++				oldRef.StorageClass == newRef.StorageClass && sameRemoteVersion
++		}
++		previousInfo := previous.ToObjectInfo(dstVolume, dstPath)
++		intent := previous.Metadata[transitionDeleteIntentKey]
++		if fi.TransitionStatus == "" || !sameDestination ||
++			(intent != "" && intent != fi.Metadata[transitionDeleteIntentKey]) ||
++			!sameTransitionSource(fi.ToObjectInfo(dstVolume, dstPath), &previousInfo) {
++			return errMethodNotAllowed
++		}
++	}
++
+ 	if legacyPreserved {
+ 		// Preserve all the legacy data, could be slow, but at max there can be 10,000 parts.
+ 		currentDataPath := pathJoin(dstVolumeDir, dstPath)
+@@ -2172,6 +2201,15 @@
+ 		}
+ 	}
+ 
++	if fi.TransitionStatus != "" {
++		// Reads expose the status separately from Metadata. Persist it during
++		// healing without changing metadata maps shared by other disk writers.
++		fi.Metadata = cloneMSS(fi.Metadata)
++		if fi.Metadata == nil {
++			fi.Metadata = make(map[string]string)
++		}
++		fi.Metadata[ReservedMetadataPrefixLower+"transition-status"] = fi.TransitionStatus
++	}
+ 	if err = xlMeta.AddVersion(fi); err != nil {
+ 		return err
+ 	}
+diff --git a/cmd/xl-storage_test.go b/cmd/xl-storage_test.go
+--- a/cmd/xl-storage_test.go
++++ b/cmd/xl-storage_test.go
+@@ -1042,6 +1042,12 @@
+ 
+ // TestXLStorageReadFile - TestXLStorages xlStorage.ReadFile with wide range of cases and asserts the result and error response.
+ func TestXLStorageReadFile(t *testing.T) {
++	restoreGlobalStorageClass := globalStorageClass.Snapshot()
++	defer globalStorageClass.Update(restoreGlobalStorageClass)
++	storageClassCfg := restoreGlobalStorageClass
++	storageClassCfg.DMA = storageclass.DMAWrite
++	globalStorageClass.Update(storageClassCfg)
++
+ 	// create xlStorage test setup
+ 	xlStorage, path, err := newXLStorageTestSetup()
+ 	if err != nil {
+@@ -1152,7 +1158,8 @@
+ 	for l := 0; l < 2; l++ {
+ 		// 1st loop tests with dma=write, 2nd loop tests with dma=read-write.
+ 		if l == 1 {
+-			globalStorageClass.DMA = storageclass.DMAReadWrite
++			storageClassCfg.DMA = storageclass.DMAReadWrite
++			globalStorageClass.Update(storageClassCfg)
+ 		}
+ 		// Following block validates all ReadFile test cases.
+ 		for i, testCase := range testCases {
+@@ -1212,7 +1219,8 @@
+ 	}
+ 
+ 	// Reset the flag.
+-	globalStorageClass.DMA = storageclass.DMAWrite
++	storageClassCfg.DMA = storageclass.DMAWrite
++	globalStorageClass.Update(storageClassCfg)
+ 
+ 	// TestXLStorage for permission denied.
+ 	if runtime.GOOS != globalWindowsOSName {

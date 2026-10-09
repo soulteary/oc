@@ -20,9 +20,11 @@ import (
 )
 
 type options struct {
-	configDir, alias, address, s3CA, adminURL, adminCA string
-	allowWrites                                        bool
-	maxUploadSize                                      int64
+	configDir, alias, address, s3CA, adminURL, adminCA, shareURL, archiveDir string
+	allowWrites                                                              bool
+	allowSharing                                                             bool
+	maxUploadSize                                                            int64
+	maxArchiveSize                                                           int64
 }
 
 type aliasConfig struct {
@@ -101,6 +103,7 @@ func loadClientConfig(opts options, getenv func(string) string) (storageclient.C
 		AccessKey: selected.AccessKey, SecretKey: selected.SecretKey, SessionToken: selected.SessionToken,
 		API: selected.API, Path: selected.Path, AppName: "oc-console", AppVersion: version,
 	}
+	result.ShareURL = adminSetting(opts.shareURL, "OC_SHARE_URL", opts.alias, "", "", getenv)
 	result.RootCAs, err = certs.GetRootCAs(filepath.Join(opts.configDir, "certs", "CAs"))
 	if err != nil {
 		return storageclient.Config{}, errors.New("cannot load OC certificates from certs/CAs")

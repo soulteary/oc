@@ -19,14 +19,19 @@ not reserve a tag or publish archives or images.
   confirmation. Canceled transfers attempt cleanup of their own multipart
   uploads, and uncertain commits or failed cleanup remain visible.
 - Read complete bucket policy JSON and versioning/lifecycle XML in the console.
-  With `--allow-writes` and the matching P3 server protocol, review and apply
+  With `--allow-writes` and the matching console base protocol, review and apply
   revision-protected replacements, remove policy/lifecycle configurations, and
   rotate the selected native IAM user's secret. Rotation retires local sessions
   and requires updating the alias in the terminal before restarting.
+- Add confirmed bucket creation/empty-bucket deletion, native IAM user/group/
+  service-account management, historical version selection, ZIP downloads and
+  opt-in presigned sharing to the source-built console. Protected version and
+  IAM operations require their matching server protocols. See
+  [feature scope and validation](docs/console-features.md).
 - Add labeled ILM destinations to `oc admin bucket remote` and require the
   native lifecycle-transition capability before adding, editing or removing an
-  ILM target. The matching optional server patch implements current/noncurrent
-  transitions, persistent destination references and version-specific S3
+  ILM target. The matching base/storage/hardening patches implement current and
+  noncurrent transitions, persistent destination references and version-specific S3
   restore on single-node, single-pool erasure. See [runtime scope and evidence](docs/lifecycle-transition.md).
 - Migrate OC and its server/admin dependency to urfave/cli v3.14.0. Preserve
   command scope, environment and list parsing, help, completion, initialization,
@@ -77,17 +82,32 @@ Back up configuration before importing from mc. Use verified OC release assets
 and check `oc --version`; MinIO self-update and SUBNET upload remain disabled.
 
 The experimental console is built with `make build-console`. The current CLI
-archives and container workflow do not package it. Keep it on literal loopback
-for a single operator; it does not replace the existing OtterIO Web console or
-provide OIDC, centralized deployment, IAM user/group/service-account management,
-object version selection or restore buttons.
+archives, GHCR images and container workflow do not package it. A dedicated
+console image and macOS Podman Compose deployment have not been delivered;
+macOS users can run the native console against mapped S3/admin ports. Keep it on
+literal loopback for a single operator. It provides the five console features
+described above; OIDC, centralized deployment and historical restore/permanent
+deletion buttons remain outside this implementation.
 Default create-only uploads require the recorded server capability. Ordinary
 S3 operations and OtterIO administrative operations have different compatibility
 requirements; no blanket historical-server or third-party S3 claim is added.
 
-The pinned OtterIO server does not contain the P3 settings, own-credentials or
-lifecycle-transition protocols. They require the [optional server patch](buildscripts/console-server-p3.patch)
-and its [separate validation](docs/lifecycle-transition-verification.json).
+The fixed OtterIO pin does not contain the optional console protocols. On a
+clean writable copy of that pin, apply [console base](buildscripts/console-server-base.patch)
+for protected settings and own credentials. The five-feature server adds
+[version authorization](buildscripts/console-features-server.patch), then
+[conditional IAM](buildscripts/console-iam-bindings.patch). Lifecycle deployment
+instead requires base, [lifecycle storage](buildscripts/lifecycle-storage.patch)
+and mandatory [lifecycle hardening](buildscripts/lifecycle-storage-hardening.patch);
+the full composition adds versions and IAM after those three layers. See
+[separate source builds and validation](docs/development.md#reproduce-the-optional-console-protocol-fixture).
+The old `console-server-p3.patch` is frozen historical evidence and must not be
+used as a current deployment input or combined with the new exports. Current
+OtterIO HEAD80 already contains P3 and lifecycle hardening, while its working
+source has separate authorization repairs; it lacks the independent conditional
+IAM protocol. Do not reapply the fixed-pin export stack there. Building OC does
+not upgrade the server, and the five-feature IAM proof uses independent patched
+builds rather than that current checkout.
 Older servers retain configuration reads while protected mutations remain
 disabled. Returning to the old UI does not undo saved rules, credentials or
 transitioned data; a server with new transition references cannot be downgraded
@@ -126,12 +146,15 @@ establish native runtime acceptance on every target. See the
   不覆盖已有对象。缺少该保证的服务端会拒绝默认上传；替换需要单独确认。
   取消时清理本次创建的分片上传，提交结果未确认或清理失败会明确显示。
 - 控制台读取完整桶策略 JSON、版本及生命周期 XML。显式开启 `--allow-writes` 且服务端
-  具备配套 P3 协议时，可以复核并提交受 revision 保护的完整配置替换、删除策略或
+  具备配套基础协议时，可以复核并提交受 revision 保护的完整配置替换、删除策略或
   生命周期配置，以及修改当前原生 IAM 用户的 secret。改密会撤销本机会话，需要在
   终端更新别名后重新启动。
+- 源码构建的控制台增加确认后创建桶/删除空桶、原生 IAM 用户/组/服务账号管理、
+  历史版本选择、ZIP 下载和显式开启的预签名分享。受保护的版本及 IAM 操作还需
+  服务端提供相应协议，见[功能范围与验收](docs/console-features.md)。
 - `oc admin bucket remote` 增加带 label 的 ILM 目标；添加、编辑及删除 ILM 目标前
-  必须确认服务端的原生转换能力。配套可选服务端补丁在单节点、单 pool erasure 上
-  实现当前/非当前版本转换、持久化目标引用和指定版本的 S3 恢复，见
+  必须确认服务端的原生转换能力。配套 base/storage/hardening 补丁在单节点、单 pool
+  erasure 上实现当前/非当前版本转换、持久化目标引用和指定版本的 S3 恢复，见
   [执行边界与验证](docs/lifecycle-transition.md)。
 - OC 与服务端 / 管理包依赖迁移到 urfave/cli v3.14.0，用冻结的旧程序合同保留参数
   作用域、环境与列表解析、帮助、补全、初始化、输出流及信号清理。修复 health 用法
@@ -168,15 +191,25 @@ SDK 提取和独立发布已经完成；通知流投递修复仍延期，实时�
 导入 mc 配置前先备份。使用经过验证的 OC 发布附件并检查 `oc --version`；
 MinIO 自更新与 SUBNET 上传保持禁用。
 
-实验控制台通过 `make build-console` 构建，当前 CLI 归档和容器工作流不打包该程序。
-仅供一个操作员在回环 IP 地址使用，不取代现有 OtterIO Web 控制台；
-尚不提供 OIDC、集中部署、IAM 用户/组/服务账号管理、对象版本选择或恢复按钮。
+实验控制台通过 `make build-console` 构建，当前 CLI 归档、GHCR 镜像和容器工作流不打包
+该程序。独立控制台镜像与 macOS Podman Compose 部署尚未交付；macOS 当前可使用
+原生程序连接已映射的 S3/Admin 端口。控制台仅供一个操作员在回环 IP 地址使用，
+已具备上述五项功能；OIDC、集中部署和历史恢复/永久删除按钮仍未实现。
 默认不覆盖上传要求服务端具备记录的条件写能力。普通 S3 操作与 OtterIO 管理操作有各自的兼容要求，
 本次没有扩大为全部历史服务端或第三方 S3 均兼容的承诺。
 
-固定 OtterIO 服务端尚未包含 P3 桶配置、自身凭据及生命周期转换协议；这些能力需要
-[可选服务端补丁](buildscripts/console-server-p3.patch)，并按[独立验证记录](docs/lifecycle-transition-verification.json)
-确认范围。旧服务端保留配置读取，受保护修改继续禁用。退回原 UI 不会撤销已保存规则、
+固定 OtterIO pin 尚未包含可选控制台协议。在该 pin 的干净可写副本上，先应用
+[基础协议](buildscripts/console-server-base.patch)提供保护性设置与自身改密；五功能服务端
+继续应用[版本授权](buildscripts/console-features-server.patch)和
+[条件 IAM](buildscripts/console-iam-bindings.patch)。生命周期部署使用 base、
+[生命周期存储](buildscripts/lifecycle-storage.patch)和必带的
+[存储加固](buildscripts/lifecycle-storage-hardening.patch)；完整组合再追加 versions 与 IAM。
+源码独立构建和验证步骤见[开发指南](docs/zh_CN/development.md#复现可选控制台协议环境)。
+旧 `console-server-p3.patch` 仅保留为冻结历史证据，不再作为当前部署输入，也不与新导出
+补丁混用。当前 OtterIO HEAD80 已包含 P3 与生命周期加固，工作区另有授权修复，
+尚未加入独立条件 IAM 协议；不要在该工作区重新应用固定 pin 的整套导出补丁。
+构建 OC 不会升级服务端，五功能 IAM 证明来自独立补丁构建，而非当前 OtterIO 工作区。
+旧服务端保留配置读取，受保护修改继续禁用。退回原 UI 不会撤销已保存规则、
 secret 或转换数据；存在新转换引用时，不能直接降级到不理解该引用的服务端。
 
 本 PR 合并后，只能从干净且与远程同步的 main 创建发布，并要求 **Go** 和

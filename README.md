@@ -53,9 +53,13 @@ With OtterIO's `--console-address ":9001"`, port 9000 serves S3 and port 9001 se
 - OtterIO administration: server information, users, groups, policies, service accounts, metrics configuration and diagnostics.
 - Separate S3 and management endpoints, including independently configured management CA trust.
 - Explicit configuration import from mc, JSON output and credential-free `doctor` diagnostics.
-- An optional local Web console for browsing, downloads and explicitly enabled object writes; protected bucket settings and own IAM secret rotation require the matching server protocols.
+- An optional local Web console with bucket management, IAM administration, historical-version selection, ZIP downloads and opt-in presigned sharing; protected settings, version authorization and conditional policy bindings require matching server protocols.
 
 [Compatibility and validation scope](docs/compatibility.md) distinguish tested operations from features that need provider or deployment acceptance. The pinned OtterIO source includes the core CLI compatibility fixes, so the core fixture needs no additional server patches. Protected console settings, own IAM rotation and the new ILM target/transition protocol require the separate [optional server patch](docs/lifecycle-transition.md); these protocols are absent from the current server pin. Distributed deployments, external KMS/notification targets and arbitrary third-party S3 services are not covered by the recorded acceptance matrix.
+
+Historical-version authorization and safe console IAM creation, secret rotation and policy binding replacement use the additional [feature server patches](docs/console-features.md). Unsupported servers retain available reads and refuse these protected operations.
+
+The [current authorization review and report links](docs/console-features.md#本轮授权复核) distinguish this revision from historical console evidence.
 
 ## Migrate from mc
 
@@ -76,7 +80,7 @@ Import accepts configuration version 10, replaces destination aliases after vali
 - [Try OC with a local OtterIO server](docs/quickstart.md): start the server, configure both endpoints, and verify an upload and download.
 - [Configure endpoints and TLS](docs/configuration.md), [transfer and synchronize](docs/usage.md), or [look up commands](docs/commands.md).
 - [Administer OtterIO](docs/administration.md) and [check compatibility](docs/compatibility.md).
-- [Build the experimental local Web console](docs/console.md): one alias, local sessions, object writes and protected settings. It is source-built separately and is not included in CLI archives or containers.
+- [Build the experimental local Web console](docs/console.md): one alias, local sessions, bucket/object/IAM management, ZIP and sharing. It is source-built separately and is not included in CLI archives or containers.
 - [Configure lifecycle destinations and review transition limits](docs/lifecycle-transition.md).
 - [Troubleshoot problems](docs/troubleshooting.md) and [report vulnerabilities privately](SECURITY.md).
 - [Build and test](docs/development.md), [contribute](CONTRIBUTING.md), or [prepare a release](docs/releasing.md).

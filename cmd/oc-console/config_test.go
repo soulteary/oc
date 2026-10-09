@@ -105,6 +105,31 @@ func TestConfigurationErrorsDoNotDiscloseCredentials(t *testing.T) {
 	}
 }
 
+func TestShareURLFlagAndEnvironmentPrecedence(t *testing.T) {
+	dir, original := fixtureConfig(t)
+	env := map[string]string{"OC_SHARE_URL": "https://global.example", "OC_SHARE_URL_store": "https://alias.example"}
+	getenv := func(key string) string { return env[key] }
+	opts := options{configDir: dir, alias: "store", shareURL: "https://flag.example"}
+	for _, want := range []string{"https://flag.example", "https://alias.example", "https://global.example", ""} {
+		cfg, err := loadClientConfig(opts, getenv)
+		if err != nil || cfg.ShareURL != want {
+			t.Fatalf("share URL precedence: got %q want %q error %v", cfg.ShareURL, want, err)
+		}
+		switch want {
+		case "https://flag.example":
+			opts.shareURL = ""
+		case "https://alias.example":
+			delete(env, "OC_SHARE_URL_store")
+		case "https://global.example":
+			delete(env, "OC_SHARE_URL")
+		}
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	if err != nil || !bytes.Equal(original, after) {
+		t.Fatal("share URL changed alias configuration")
+	}
+}
+
 func writeTestCA(t *testing.T, dir, name string) string {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)

@@ -43,7 +43,11 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags.StringVar(&opts.s3CA, "s3-ca", "", "S3 PEM CA file, replacing certs/CAs custom trust")
 	flags.StringVar(&opts.adminURL, "admin-url", "", "independent OtterIO management root URL")
 	flags.StringVar(&opts.adminCA, "admin-ca", "", "independent management PEM CA file")
-	flags.BoolVar(&opts.allowWrites, "allow-writes", false, "enable explicitly confirmed object writes, bucket settings and own IAM secret changes")
+	flags.BoolVar(&opts.allowWrites, "allow-writes", false, "enable explicitly confirmed object writes, bucket management/settings and IAM changes")
+	flags.BoolVar(&opts.allowSharing, "allow-sharing", false, "enable explicitly requested time-limited download links")
+	flags.StringVar(&opts.shareURL, "share-url", "", "S3 root URL reachable by download-link recipients")
+	flags.StringVar(&opts.archiveDir, "archive-dir", "", "temporary directory for complete ZIP downloads (default system temporary directory)")
+	flags.Int64Var(&opts.maxArchiveSize, "max-archive-size", 5<<30, "maximum source bytes in one archive (1 to 5368709120)")
 	flags.Int64Var(&opts.maxUploadSize, "max-upload-size", 1<<30, "maximum file size in bytes (1 to 5368709120)")
 	showVersion := flags.Bool("version", false, "print version and exit")
 	flags.Usage = func() {
@@ -65,6 +69,12 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	}
 	if opts.maxUploadSize < 1 || opts.maxUploadSize > 5<<30 {
 		return errors.New("--max-upload-size must be between 1 and 5368709120 bytes")
+	}
+	if opts.maxArchiveSize < 1 || opts.maxArchiveSize > 5<<30 {
+		return errors.New("--max-archive-size must be between 1 and 5368709120 bytes")
+	}
+	if opts.allowSharing && opts.shareURL == "" && os.Getenv("OC_SHARE_URL") == "" && os.Getenv("OC_SHARE_URL_"+opts.alias) == "" {
+		return errors.New("--allow-sharing requires --share-url or OC_SHARE_URL for recipients")
 	}
 	if err := validateListenAddress(opts.address); err != nil {
 		return err
@@ -100,6 +110,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 		Backend: backend, Alias: opts.alias, BaseURL: baseURL,
 		LoginCode: loginCode, SessionTTL: 30 * time.Minute,
 		AllowWrites: opts.allowWrites, MaxUploadSize: opts.maxUploadSize,
+		AllowSharing: opts.allowSharing, MaxArchiveSize: opts.maxArchiveSize, ArchiveDir: opts.archiveDir,
 	})
 	if err != nil {
 		return errors.New("cannot initialize the console")
@@ -126,7 +137,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 		}
 	case <-ctx.Done():
 	case <-handler.Done():
-		_, _ = fmt.Fprintln(output, "The account secret changed or its outcome is uncertain. Update the selected alias credentials in your terminal and restart OC console.")
+		_, _ = fmt.Fprintln(output, "The selected identity changed or an IAM outcome is uncertain. Verify its permissions and credentials in your terminal, update the alias if needed, and restart OC console.")
 	}
 	// Every exit path cancels sessions before draining HTTP and waits for owned
 	// multipart cleanup before closing transports, including a failed Shutdown.

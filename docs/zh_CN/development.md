@@ -120,15 +120,28 @@ python3 buildscripts/test-core-integration.py \
 
 ## 复现可选控制台协议环境
 
-固定服务端支持控制台浏览与对象写入，但还没有包含保护性桶配置、自身 IAM 改密和新的生命周期转换协议。`requiredServerPatches: []` 描述核心基线；单独的 `consoleSettingsProtocol.optionalServerPatch` 记录显式启用的测试环境，不代表已发布服务端依赖或协议。
+固定服务端源码仍为 `6f6d0835ddff68020f1491c403b958fade22841f`，尚未包含 P3。OtterIO 当前源码 HEAD 已包含 P3，必须单独记录身份；下面导出补丁只应用于固定 pin，不能再应用到该开发工作区。`requiredServerPatches: []` 仍描述未补丁核心基线。
 
-保持同一个 shell，沿用上面准备的 `OC_INTEGRATION` 目录。先构建控制台，检查未应用补丁的服务端能够安全降级桶设置，并保留对象写入：
+当前验收用四份独立源码副本和程序：
+
+- `console-server-base.patch`：保护性桶设置、自身 IAM 改密和元数据事务。CAS 生命周期仅接受前缀到期和非当前版本到期，拒绝转换、标签过滤和到期删除标记规则；GET 保留已有完整配置，普通无条件 S3 写入保留 pin 行为。
+- base + `console-features-server.patch` + `console-iam-bindings.patch`：优先验收五功能，并实际请求 GET/HEAD、CopyObject 和 UploadPartCopy 验证版本授权；无需生命周期存储层。
+- base + `lifecycle-storage.patch` + 必带 `lifecycle-storage-hardening.patch`：独立归档端上的转换与恢复运行时验收。存储层追加解码标签/非当前过滤、删除标记扫描、持久引用和删除保护。
+- base + storage + hardening + versions + IAM：另一份程序上的五功能、保护性设置和对象写组合回归。
+
+`console-server-p3.patch` 冻结为历史证据，不与新 base/storage/hardening 一起应用。旧报告保留原补丁和程序摘要，不能推导拆分 profile 已通过。当前状态见[五功能记录](../console-features.md)、[生命周期范围](../lifecycle-transition.md)与[兼容清单](../compatibility.json)中的 `consoleServerAcceptance`。
+
+保持同一个 shell，沿用前文的 `OC_INTEGRATION` 目录，保留原固定源码，分别构建并验收四种组合：
 
 ```sh
 set -eu
 go build -mod=readonly -trimpath -o "$OC_INTEGRATION/oc-console" ./cmd/oc-console
 OC_SERVER_SOURCE="$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')"
-OC_P3_PATCH="$PWD/buildscripts/console-server-p3.patch"
+OC_BASE_PATCH="$PWD/buildscripts/console-server-base.patch"
+OC_STORAGE_PATCH="$PWD/buildscripts/lifecycle-storage.patch"
+OC_HARDENING_PATCH="$PWD/buildscripts/lifecycle-storage-hardening.patch"
+OC_VERSIONS_PATCH="$PWD/buildscripts/console-features-server.patch"
+OC_IAM_PATCH="$PWD/buildscripts/console-iam-bindings.patch"
 python3 buildscripts/test-console-integration.py \
   --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
   --server "$OC_INTEGRATION/otterio" --server-source "$OC_SERVER_SOURCE" \
@@ -136,46 +149,111 @@ python3 buildscripts/test-console-integration.py \
 python3 buildscripts/test-console-integration.py \
   --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
   --server "$OC_INTEGRATION/otterio" --server-source "$OC_SERVER_SOURCE" \
-  --writes --output "$OC_INTEGRATION/console-writes.json"
-```
+  --features --features-legacy --output "$OC_INTEGRATION/console-features-legacy.json"
 
-保留这份源码和程序。在另一份可写源码副本中应用可选补丁，执行工作流中的协议回归检查，并输出独立命名的服务端程序：
-
-```sh
-cp -R "$OC_INTEGRATION/otterio-source" "$OC_INTEGRATION/otterio-p3-source"
+cp -R "$OC_INTEGRATION/otterio-source" "$OC_INTEGRATION/otterio-base-source"
 (
-  cd "$OC_INTEGRATION/otterio-p3-source"
-  git apply --check "$OC_P3_PATCH"
-  git apply "$OC_P3_PATCH"
-  go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestBucketTarget|TestTransition|TestXLStorageInline|TestLifecycleTransition|TestLifecycleQueues|TestScannerLifecycle|TestExpiry|TestParseRestore|TestRestoreRequest|TestBeginRestore|TestRestoredVersion|TestPutObjectExpiry' -count=1
-  go test -mod=readonly ./pkg/bucket/lifecycle -count=1
+  cd "$OC_INTEGRATION/otterio-base-source"
+  git apply --check "$OC_BASE_PATCH"
+  git apply "$OC_BASE_PATCH"
+  go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestConfiguration|TestFiber|TestGetBucket|TestPutBucket|TestDeleteBucket|TestAccountInfo|TestBucketMetadata' -count=1
   if [ "$CGO_ENABLED" = 1 ]; then
-    go test -mod=readonly -race ./pkg/bucket/lifecycle -count=1
+    go test -mod=readonly -race ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestConfiguration|TestFiber|TestGetBucket|TestPutBucket|TestDeleteBucket|TestAccountInfo|TestBucketMetadata' -count=1
   fi
-  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-p3" .
+  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-base" .
 )
 python3 buildscripts/test-console-integration.py \
   --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
-  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
-  --server-patch "$OC_P3_PATCH" --settings \
-  --output "$OC_INTEGRATION/console-settings.json"
+  --server "$OC_INTEGRATION/otterio-base" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --settings --settings-base \
+  --output "$OC_INTEGRATION/console-base-settings.json"
 python3 buildscripts/test-console-integration.py \
   --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
-  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
-  --server-patch "$OC_P3_PATCH" --writes \
-  --output "$OC_INTEGRATION/console-p3-object-regression.json"
+  --server "$OC_INTEGRATION/otterio-base" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --writes \
+  --output "$OC_INTEGRATION/console-base-objects.json"
+
+cp -R "$OC_INTEGRATION/otterio-base-source" "$OC_INTEGRATION/otterio-features-source"
+(
+  cd "$OC_INTEGRATION/otterio-features-source"
+  git apply "$OC_VERSIONS_PATCH"
+  git apply "$OC_IAM_PATCH"
+  go test -mod=readonly ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+  if [ "$CGO_ENABLED" = 1 ]; then
+    go test -mod=readonly -race ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+  fi
+  go test -mod=readonly ./pkg/iam/policy ./pkg/bucket/policy -count=1
+  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-features" .
+)
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-features" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --server-patch "$OC_VERSIONS_PATCH" \
+  --server-patch "$OC_IAM_PATCH" --features --version-copy \
+  --output "$OC_INTEGRATION/console-base-features.json"
+
+cp -R "$OC_INTEGRATION/otterio-base-source" "$OC_INTEGRATION/otterio-storage-source"
+(
+  cd "$OC_INTEGRATION/otterio-storage-source"
+  git apply --check "$OC_STORAGE_PATCH"
+  git apply "$OC_STORAGE_PATCH"
+  git apply --check "$OC_HARDENING_PATCH"
+  git apply "$OC_HARDENING_PATCH"
+  go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestConfiguration|TestFiber|TestGetBucket|TestPutBucket|TestDeleteBucket|TestAccountInfo|TestBucketMetadata|TestBucketTarget|TestTransition|TestXLStorageInline|TestLifecycleTransition|TestLifecycleQueues|TestScannerLifecycle|TestExpiry|TestParseRestore|TestRestoreRequest|TestBeginRestore|TestRestoredVersion|TestPutObjectExpiry|TestFindFileInfoInQuorum|TestXLV2FormatData|TestErasureDeleteObjectBasic|TestErasureDeleteObjectsErasureSet' -count=1
+  go test -mod=readonly ./pkg/bucket/lifecycle ./cmd/config/storageclass -count=1
+  go test -mod=readonly ./cmd -run 'TestErasurePutObject|TestXLStorageReadFile|TestXLStorageHealsPendingTransitionMetadata|TestMonitorAndConnectEndpointsCanceled|TestPutObjectNoQuorum|TestObjectQuorumFromMeta|TestDisksWithAllParts' -count=1
+  if [ "$CGO_ENABLED" = 1 ]; then
+    go test -mod=readonly -race ./pkg/bucket/lifecycle ./cmd/config/storageclass -count=1
+    go test -mod=readonly -race ./cmd -run 'TestErasurePutObject|TestXLStorageReadFile|TestXLStorageHealsPendingTransitionMetadata|TestMonitorAndConnectEndpointsCanceled|TestPutObjectNoQuorum|TestObjectQuorumFromMeta|TestDisksWithAllParts' -count=1
+  fi
+  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-storage" .
+)
 python3 buildscripts/test-lifecycle-transition-integration.py \
   --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
-  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
-  --server-patch "$OC_P3_PATCH" \
-  --output "$OC_INTEGRATION/lifecycle-transition.json"
+  --server "$OC_INTEGRATION/otterio-storage" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --server-patch "$OC_STORAGE_PATCH" \
+  --server-patch "$OC_HARDENING_PATCH" \
+  --output "$OC_INTEGRATION/lifecycle-storage.json"
+
+cp -R "$OC_INTEGRATION/otterio-storage-source" "$OC_INTEGRATION/otterio-combined-source"
+(
+  cd "$OC_INTEGRATION/otterio-combined-source"
+  git apply "$OC_VERSIONS_PATCH"
+  git apply "$OC_IAM_PATCH"
+  go test -mod=readonly ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+  if [ "$CGO_ENABLED" = 1 ]; then
+    go test -mod=readonly -race ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+  fi
+  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-combined" .
+)
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-combined" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --server-patch "$OC_STORAGE_PATCH" \
+  --server-patch "$OC_HARDENING_PATCH" \
+  --server-patch "$OC_VERSIONS_PATCH" --server-patch "$OC_IAM_PATCH" \
+  --features --version-copy --output "$OC_INTEGRATION/console-combined-features.json"
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-combined" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --server-patch "$OC_STORAGE_PATCH" \
+  --server-patch "$OC_HARDENING_PATCH" \
+  --server-patch "$OC_VERSIONS_PATCH" --server-patch "$OC_IAM_PATCH" \
+  --settings --writes --output "$OC_INTEGRATION/console-combined-settings-objects.json"
+python3 buildscripts/test-lifecycle-transition-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-combined" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --server-patch "$OC_STORAGE_PATCH" \
+  --server-patch "$OC_HARDENING_PATCH" \
+  --server-patch "$OC_VERSIONS_PATCH" --server-patch "$OC_IAM_PATCH" \
+  --output "$OC_INTEGRATION/console-combined-lifecycle.json"
 ```
 
-这些命令沿用工作流的控制台默认场景（`single-http`、`dual-http`、`dual-tls`）和生命周期默认场景（`single-http`、`dual-tls`）。生命周期环境启动独立的临时四盘源端和目标端，不验证外部 S3 服务商。准确本机证据与未验收项见[第三阶段](../console-phase-three.md)、[生命周期转换范围](../lifecycle-transition.md)及其[验证记录](../lifecycle-transition-verification.json)。应用补丁不会扩大未应用补丁的发行版兼容承诺；审查结果时保留两条服务端基线的报告与补丁身份。
+控制台场景为 `single-http`、`dual-http`、`dual-tls`；生命周期场景为 `single-http`、`dual-tls`，使用独立临时四盘源端与目标端。这不证明外部提供者或分布式验收通过。对应竞态 CI 变体使用 `CGO_ENABLED=1`。生命周期报告接受重复 `--server-patch`，在 `serverPatches` 中逐项记录真实三层或五层补丁。每份报告记录源码、实际补丁摘要、二进制和脚本身份；base 设置/对象、必带hardening的lifecycle、独立/完整五功能与copy、完整设置/对象已有本地通过报告；完整组合lifecycle和最终汇总也已通过。[Go 工作流](../../.github/workflows/go.yml)记录独立步骤与归档名称。
 
 ## 理解 CI 的覆盖范围
 
-Go 工作流在 Linux、macOS、Windows 上运行单元、竞态、控制台前端和辅助程序测试；Linux 另有 lint、交叉编译，Linux/macOS 运行 vet。Linux/macOS 服务端矩阵分别启用和关闭 cgo：先对未应用补丁的固定服务端检查核心与 CLI 操作、控制台浏览、设置安全降级和对象写入，再应用可选 P3 补丁、构建另一个服务端，检查保护性设置、自身 IAM 改密、对象写回归及生命周期执行与恢复。上传步骤在失败后仍执行，保留此前已经生成的报告。
+Go 工作流在 Linux、macOS、Windows 上运行单元、竞态、控制台前端和辅助程序测试；Linux 另有 lint、交叉编译，Linux/macOS 运行 vet。Linux/macOS 服务端矩阵分别启用和关闭 cgo：先对未应用补丁的固定服务端检查核心与 CLI 操作、控制台浏览、设置安全降级和对象写入，随后独立构建基础设置/对象服务端、base + versions + IAM 五功能服务端、base + storage + hardening 运行时服务端和完整组合回归服务端。两个五功能组合均实际检查CopyObject与UploadPartCopy的版本授权；两个生命周期组合调用相同独立归档端harness，分别保存报告。上传步骤在失败后仍执行，保留此前已经生成的报告。
 
 独立的 [CLI 兼容工作流](../../.github/workflows/cli-compat.yml)在 Linux、macOS、Windows 上分别构建固定基线与候选程序，比较命令契约。Go 工作流还检查发行边界、编译依赖清单和可达漏洞。[CodeQL](../../.github/workflows/codeql.yml)另行构建 Go 程序进行分析。
 

@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import signal
 import ssl
 import subprocess
 import tempfile
@@ -345,19 +346,41 @@ def main():
     parser.add_argument('--console', required=True)
     parser.add_argument('--server', required=True)
     parser.add_argument('--server-source', required=True)
-    parser.add_argument('--server-patch', required=True)
+    parser.add_argument('--server-patch', required=True, action='append',
+                        help='Applied server patch in application order; repeat for each layer')
     parser.add_argument('--output', required=True)
     parser.add_argument('--scenarios', default='single-http,dual-tls')
     args = parser.parse_args()
+    names = args.scenarios.split(',')
+    if any(name not in ('single-http', 'dual-http', 'single-tls', 'dual-tls') for name in names):
+        parser.error('unknown scenario')
     report = {'dateUTC': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'status': 'running',
               'scope': 'independent source and tier processes, four-disk erasure, actual scanner, OC protected lifecycle writes',
-              'serverSource': args.server_source, 'serverPatchSHA256': fixture.digest(args.server_patch),
-              'binaries': {name: {'sha256': fixture.digest(path)} for name, path in [('oc', args.cli), ('oc-console', args.console), ('otterio', args.server)]},
-              'harnessSHA256': fixture.digest(__file__), 'scenarios': []}
+              'serverSource': args.server_source,
+              'binaries': {},
+              'scenarios': []}
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     try:
-        for name in args.scenarios.split(','):
+        output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+        report['serverPatches'] = [{'name': Path(path).name, 'sha256': fixture.digest(path)}
+                                  for path in args.server_patch]
+        if len(args.server_patch) == 1:
+            report['serverPatchSHA256'] = report['serverPatches'][0]['sha256']
+        report['binaries'] = {name: {'sha256': fixture.digest(path)} for name, path in
+                              [('oc', args.cli), ('oc-console', args.console), ('otterio', args.server)]}
+        report['harnessSHA256'] = fixture.digest(__file__)
+        report['harnesses'] = [{'name': path.name, 'sha256': fixture.digest(path)} for path in
+                             [Path(__file__), Path(__file__).with_name('test-console-integration.py'),
+                              Path(__file__).with_name('local_http.py')]]
+        sdk_pin = json.loads((Path(__file__).resolve().parents[1] / 'docs' / 'compatibility.json').read_text())['otterioSDK']
+        build_info = {name: json.loads(subprocess.check_output(['go', 'version', '-m', '-json', path], text=True))
+                      for name, path in [('oc', args.cli), ('oc-console', args.console), ('otterio', args.server)]}
+        for name, info in build_info.items():
+            report['binaries'][name]['buildInfo'] = info
+        report['sdkPin'] = sdk_pin
+        report['identityEvidence'] = fixture.verify_binary_identity(build_info, sdk_pin, args.server_source)
+        for name in names:
             record = {}
             report['scenarios'].append(record)
             scenario(args, name, record)
@@ -368,9 +391,15 @@ def main():
             report['scenarios'][-1]['status'] = 'failed'
         report['error'] = str(error)
         raise
+    except BaseException:
+        report['status'] = 'interrupted'
+        if report['scenarios']:
+            report['scenarios'][-1]['status'] = 'interrupted'
+        raise
     finally:
         output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
 
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(SystemExit(1)))
     main()

@@ -36,13 +36,16 @@ const (
 )
 
 type Config struct {
-	Backend       consoleapi.Backend
-	Alias         string
-	BaseURL       string
-	LoginCode     string
-	SessionTTL    time.Duration
-	AllowWrites   bool
-	MaxUploadSize int64
+	Backend        consoleapi.Backend
+	Alias          string
+	BaseURL        string
+	LoginCode      string
+	SessionTTL     time.Duration
+	AllowWrites    bool
+	MaxUploadSize  int64
+	AllowSharing   bool
+	MaxArchiveSize int64
+	ArchiveDir     string
 }
 
 type session struct {
@@ -71,24 +74,29 @@ type Server struct {
 	ttl     time.Duration
 	assets  fs.FS
 
-	mu            sync.Mutex
-	closed        bool
-	rotating      bool
-	sessions      map[[32]byte]*session
-	loginWindow   time.Time
-	loginCount    int
-	apiSlots      chan struct{}
-	downloads     chan struct{}
-	writer        consoleapi.MutationBackend
-	settings      consoleapi.SettingsBackend
-	maxUploadSize int64
-	jobs          map[string]*job
-	writeSlots    chan struct{}
-	planSlots     chan struct{}
-	workers       sync.WaitGroup
-	life          context.Context
-	stopLife      context.CancelFunc
-	streamIdle    time.Duration
+	mu             sync.Mutex
+	closed         bool
+	rotating       bool
+	sessions       map[[32]byte]*session
+	loginWindow    time.Time
+	loginCount     int
+	apiSlots       chan struct{}
+	downloads      chan struct{}
+	writer         consoleapi.MutationBackend
+	settings       consoleapi.SettingsBackend
+	maxUploadSize  int64
+	jobs           map[string]*job
+	writeSlots     chan struct{}
+	planSlots      chan struct{}
+	workers        sync.WaitGroup
+	life           context.Context
+	stopLife       context.CancelFunc
+	streamIdle     time.Duration
+	allowSharing   bool
+	maxArchiveSize int64
+	archiveDir     string
+	archives       map[string]*archiveTask
+	archiveSlots   chan struct{}
 }
 
 func New(cfg Config) (*Server, error) {
@@ -116,6 +124,12 @@ func New(cfg Config) (*Server, error) {
 	if cfg.MaxUploadSize < 0 || cfg.MaxUploadSize > 5<<30 {
 		return nil, errors.New("console upload limit must be between one byte and five GiB")
 	}
+	if cfg.MaxArchiveSize == 0 {
+		cfg.MaxArchiveSize = 5 << 30
+	}
+	if cfg.MaxArchiveSize < 1 || cfg.MaxArchiveSize > 5<<30 {
+		return nil, errors.New("console archive limit must be between one byte and five GiB")
+	}
 	var writer consoleapi.MutationBackend
 	if cfg.AllowWrites {
 		var ok bool
@@ -132,6 +146,7 @@ func New(cfg Config) (*Server, error) {
 		assets: web.FS(), sessions: make(map[[32]byte]*session),
 		apiSlots: make(chan struct{}, 8), downloads: make(chan struct{}, 2),
 		writer: writer, settings: settings, maxUploadSize: cfg.MaxUploadSize, jobs: make(map[string]*job), writeSlots: make(chan struct{}, 2), planSlots: make(chan struct{}, 2), life: life, stopLife: stopLife, streamIdle: 30 * time.Second,
+		allowSharing: cfg.AllowSharing, maxArchiveSize: cfg.MaxArchiveSize, archiveDir: cfg.ArchiveDir, archives: make(map[string]*archiveTask), archiveSlots: make(chan struct{}, 1),
 	}, nil
 }
 
@@ -214,11 +229,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveSettings(w, r)
 		return
 	}
+	if s.isFeatureRoute(r.URL.Path) {
+		s.serveFeatures(w, r)
+		return
+	}
+	if s.isIAMRoute(r.URL.Path) {
+		s.serveIAM(w, r)
+		return
+	}
+	if s.isArchiveRoute(r.URL.Path) {
+		s.serveArchives(w, r)
+		return
+	}
 	method := http.MethodGet
 	switch r.URL.Path {
 	case "/api/logout":
 		method = http.MethodPost
-	case "/api/session", "/api/buckets", "/api/objects", "/api/account", "/api/download":
+	case "/api/session", "/api/buckets", "/api/objects", "/api/account", "/api/download", "/api/capabilities":
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "This console endpoint does not exist.")
 		return
@@ -271,6 +298,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/capabilities":
+		_, buckets := s.backend.(consoleapi.BucketBackend)
+		_, versions := s.backend.(consoleapi.VersionBackend)
+		_, shares := s.backend.(consoleapi.ShareBackend)
+		_, archives := s.backend.(consoleapi.ReferenceBackend)
+		_, iam := s.backend.(consoleapi.IAMBackend)
+		// These describe implemented interfaces and explicit process gates.
+		// Individual reads still discover server protocols and permissions.
+		writeJSON(w, 200, map[string]any{"bucketManagement": buckets, "versions": versions, "sharing": shares && s.allowSharing, "archives": archives, "iam": iam, "iamPolicyBindings": iam, "writesAllowed": s.writer != nil, "maxArchiveSize": s.maxArchiveSize, "maxArchiveObjects": maxPlanKeys})
 	case "/api/buckets":
 		buckets, err := s.backend.ListBuckets(ctx)
 		if err != nil {
@@ -310,7 +346,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, page)
 	case "/api/download":
 		bucket, key := q.Get("bucket"), q.Get("key")
-		if !validBucket(bucket) || key == "" || !validKey(key) || len(q["bucket"]) != 1 || len(q["key"]) != 1 {
+		if !validBucket(bucket) || key == "" || !validKey(key) || len(q["bucket"]) != 1 || len(q["key"]) != 1 || len(q["versionId"]) > 1 || !validVersionID(q.Get("versionId")) || len(q) > 3 {
 			writeError(w, http.StatusBadRequest, "invalid_input", "The bucket or object key is invalid.")
 			return
 		}
@@ -318,7 +354,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer func() { <-s.downloads }()
-		s.download(w, ctx, bucket, key)
+		if versionID := q.Get("versionId"); versionID != "" {
+			s.downloadReference(w, ctx, consoleapi.ObjectRef{Bucket: bucket, Key: key, VersionID: versionID})
+		} else {
+			s.download(w, ctx, bucket, key)
+		}
 	}
 }
 
@@ -455,6 +495,15 @@ func (s *Server) removeSessionLocked(token [32]byte, sess *session) {
 			delete(s.jobs, id)
 		}
 	}
+	for id, task := range s.archives {
+		if task.owner == sess {
+			if task.timer != nil {
+				task.timer.Stop()
+			}
+			s.cancelArchiveLocked(task)
+			delete(s.archives, id)
+		}
+	}
 }
 
 func (s *Server) authenticate(r *http.Request) (*session, [32]byte) {
@@ -551,19 +600,32 @@ func writeSlotError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) download(w http.ResponseWriter, ctx context.Context, bucket, key string) {
+	s.downloadUsing(w, ctx, key, func(ctx context.Context) (consoleapi.Object, error) { return s.backend.OpenObject(ctx, bucket, key) })
+}
+
+func (s *Server) downloadReference(w http.ResponseWriter, ctx context.Context, ref consoleapi.ObjectRef) {
+	reader, ok := s.backend.(consoleapi.ReferenceBackend)
+	if !ok {
+		writeError(w, 501, "versions_unsupported", "This connection does not support version downloads.")
+		return
+	}
+	s.downloadUsing(w, ctx, ref.Key, func(ctx context.Context) (consoleapi.Object, error) { return reader.OpenReference(ctx, ref, "") })
+}
+
+func (s *Server) downloadUsing(w http.ResponseWriter, ctx context.Context, key string, open func(context.Context) (consoleapi.Object, error)) bool {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	object, err := s.backend.OpenObject(ctx, bucket, key)
+	object, err := open(ctx)
 	if err != nil {
 		if object.Body != nil {
 			_ = object.Body.Close()
 		}
 		writeBackendError(w, err)
-		return
+		return false
 	}
 	if object.Body == nil {
 		writeError(w, http.StatusBadGateway, "upstream_error", "Unable to open the object.")
-		return
+		return false
 	}
 	var once sync.Once
 	closeBody := func() { once.Do(func() { _ = object.Body.Close() }) }
@@ -586,7 +648,7 @@ func (s *Server) download(w http.ResponseWriter, ctx context.Context, bucket, ke
 	}()
 	if ctx.Err() != nil {
 		writeError(w, http.StatusRequestTimeout, "request_canceled", "The request was canceled.")
-		return
+		return false
 	}
 	filename := key[strings.LastIndex(key, "/")+1:]
 	filename = strings.Map(func(char rune) rune {
@@ -606,7 +668,10 @@ func (s *Server) download(w http.ResponseWriter, ctx context.Context, bucket, ke
 	w.WriteHeader(http.StatusOK)
 	// Errors after headers are sent terminate the stream; JSON must never be
 	// appended to a partial download. The backend stream is closed on all paths.
-	_, copyErr := io.Copy(writer, readWithIdleTimeout{body: object.Body, idle: s.streamIdle, interrupt: func() { cancel(); closeBody() }})
+	copied, copyErr := io.Copy(writer, readWithIdleTimeout{body: object.Body, idle: s.streamIdle, interrupt: func() { cancel(); closeBody() }})
+	if copyErr == nil && object.Size >= 0 && copied != object.Size {
+		copyErr = io.ErrUnexpectedEOF
+	}
 	if copyErr == nil {
 		// Even an empty object must flush its headers under a write deadline.
 		// This also renews the bound for net/http's final chunk after EOF.
@@ -620,6 +685,7 @@ func (s *Server) download(w http.ResponseWriter, ctx context.Context, bucket, ke
 			panic(http.ErrAbortHandler)
 		}
 	}
+	return copyErr == nil && ctx.Err() == nil
 }
 
 type flushWriter struct {

@@ -1,0 +1,3103 @@
+diff --git a/cmd/admin-self-credentials.go b/cmd/admin-self-credentials.go
+new file mode 100644
+index 0000000..e08138a
+--- /dev/null
++++ b/cmd/admin-self-credentials.go
+@@ -0,0 +1,261 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"crypto/subtle"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"io"
++	"net/http"
++	"strings"
++	"time"
++	"unicode/utf8"
++
++	"github.com/soulteary/otterio/cmd/logger"
++	"github.com/soulteary/otterio/pkg/auth"
++	iampolicy "github.com/soulteary/otterio/pkg/iam/policy"
++	"github.com/soulteary/otterio/pkg/madmin"
++)
++
++const selfCredentialsHeader = "X-Otterio-Self-Credentials"
++
++type selfCredentialsInfo struct {
++	Kind            string `json:"kind"`
++	Status          string `json:"status"`
++	CanRotateSecret bool   `json:"canRotateSecret"`
++}
++
++var errSelfSecretConflict = errors.New("the signed credential has changed")
++
++func selfCredentialsKind(cred auth.Credentials, owner bool, usersType UsersSysType) string {
++	switch {
++	case owner:
++		return "root"
++	case cred.IsServiceAccount():
++		return "service"
++	case cred.IsTemp():
++		return "sts"
++	case usersType != OtterIOUsersSysType:
++		return "directory"
++	default:
++		return "iam"
++	}
++}
++
++func selfSecretArgs(r *http.Request, cred auth.Credentials, claims map[string]interface{}) iampolicy.Args {
++	return iampolicy.Args{
++		AccountName: cred.AccessKey, Groups: cred.Groups, Action: iampolicy.CreateUserAdminAction,
++		ConditionValues: getConditionValues(r, "", cred.AccessKey, claims), Claims: claims, DenyOnly: true,
++	}
++}
++
++// IAM's in-memory lock cannot serialize another node's cache or an external
++// authorization service. Rotation remains disabled in those deployments.
++func selfCredentialsRotationSupported() bool {
++	if globalIsDistErasure || globalEtcdClient != nil || globalPolicyOPA != nil || globalIAMSys == nil {
++		return false
++	}
++	_, ok := globalIAMSys.store.(*IAMObjectStore)
++	return ok
++}
++
++// SelfCredentials exposes only identity class and an advisory rotation hint.
++// PUT performs the authorization again; this response grants no capabilities.
++func (a adminAPIHandlers) SelfCredentials(w http.ResponseWriter, r *http.Request) {
++	ctx := newContext(r, w, "SelfCredentials")
++	defer logger.AuditLog(ctx, w, r, mustGetClaimsFromToken(r))
++	if newObjectLayerFn() == nil || globalNotificationSys == nil || !globalIAMSys.Initialized() {
++		writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(ErrServerNotInitialized), r.URL)
++		return
++	}
++	cred, claims, owner, code := validateAdminSignature(ctx, r, "")
++	if code != ErrNone {
++		writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(code), r.URL)
++		return
++	}
++	w.Header().Set(selfCredentialsHeader, "v1")
++	kind := selfCredentialsKind(cred, owner, globalIAMSys.usersSysType)
++	status := "enabled"
++	if cred.Status == auth.AccountOff {
++		status = "disabled"
++	}
++	args := selfSecretArgs(r, cred, claims)
++	allowed := kind == "iam" && status == "enabled" && selfCredentialsRotationSupported() && globalIAMSys.IsAllowed(args)
++	if r.Method == http.MethodGet {
++		data, _ := json.Marshal(selfCredentialsInfo{Kind: kind, Status: status, CanRotateSecret: allowed})
++		writeSuccessResponseJSON(w, data)
++		return
++	}
++	if r.Method != http.MethodPut || !allowed {
++		writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(ErrAccessDenied), r.URL)
++		return
++	}
++	if len(r.URL.RawQuery) != 0 || r.ContentLength <= 0 || r.ContentLength > 4096 {
++		writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(ErrInvalidRequest), r.URL)
++		return
++	}
++	shaValues := r.Header.Values("X-Amz-Content-Sha256")
++	if len(shaValues) != 1 || len(shaValues[0]) != 64 {
++		writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(ErrContentSHA256Mismatch), r.URL)
++		return
++	}
++	if _, err := hex.DecodeString(shaValues[0]); err != nil {
++		writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(ErrContentSHA256Mismatch), r.URL)
++		return
++	}
++	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
++	defer cancel()
++	// Consume the hash reader through EOF before decryption. Limiting it to
++	// ContentLength can manufacture EOF without checking the underlying digest.
++	encrypted, err := readConfigurationBody(ctx, r, 4096)
++	if err != nil {
++		writeErrorResponseJSON(ctx, w, toAPIError(ctx, err), r.URL)
++		return
++	}
++	if int64(len(encrypted)) != r.ContentLength {
++		writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(ErrInvalidRequest), r.URL)
++		return
++	}
++	// The body is encrypted with the currently signed secret, just like other
++	// admin credential mutations. Never include decrypt/decode details in logs.
++	data, err := madmin.DecryptData(cred.SecretKey, bytes.NewReader(encrypted))
++	if err != nil {
++		writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(ErrAdminConfigBadJSON), r.URL)
++		return
++	}
++	secret, err := decodeSelfCredentialSecret(data)
++	if err != nil {
++		writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(ErrInvalidRequest), r.URL)
++		return
++	}
++	if err = globalIAMSys.RotateSelfSecret(ctx, cred.AccessKey, cred.SecretKey, secret, args); err != nil {
++		if errors.Is(err, errSelfSecretConflict) {
++			writeErrorResponseJSON(ctx, w, APIError{Code: "CredentialConflict", Description: "The credential changed before this request completed.", HTTPStatusCode: http.StatusConflict}, r.URL)
++		} else if errors.Is(err, errInvalidArgument) {
++			writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(ErrInvalidRequest), r.URL)
++		} else if errors.Is(err, errIAMActionNotAllowed) {
++			writeErrorResponseJSON(ctx, w, errorCodes.ToAPIErr(ErrAccessDenied), r.URL)
++		} else {
++			writeErrorResponseJSON(ctx, w, toAdminAPIErr(ctx, err), r.URL)
++		}
++		return
++	}
++	// Persistence has committed. A peer reload failure is an uncertain global
++	// outcome, rather than an invitation to retry with the old secret.
++	for _, peer := range globalNotificationSys.LoadUserWithContext(ctx, cred.AccessKey, false) {
++		if peer.Err != nil {
++			writeErrorResponseJSON(ctx, w, APIError{Code: "CredentialPropagationIncomplete", Description: "The credential was saved, but a peer reload could not be confirmed.", HTTPStatusCode: http.StatusServiceUnavailable}, r.URL)
++			return
++		}
++	}
++	writeSuccessNoContent(w)
++}
++
++func validSelfSecret(secret string) bool {
++	return len(secret) >= 8 && len(secret) <= 128 && utf8.ValidString(secret) && !strings.ContainsAny(secret, "\x00\r\n")
++}
++
++func decodeSelfCredentialSecret(data []byte) (string, error) {
++	if len(data) > 1024 || !validConfigurationJSONEncoding(data) {
++		return "", errInvalidArgument
++	}
++	decoder := json.NewDecoder(bytes.NewReader(data))
++	start, err := decoder.Token()
++	if err != nil || start != json.Delim('{') || !decoder.More() {
++		return "", errInvalidArgument
++	}
++	key, err := decoder.Token()
++	if err != nil || key != "newSecretKey" {
++		return "", errInvalidArgument
++	}
++	var secret string
++	if decoder.Decode(&secret) != nil || decoder.More() {
++		return "", errInvalidArgument
++	}
++	end, err := decoder.Token()
++	if err != nil || end != json.Delim('}') || decoder.Decode(new(interface{})) != io.EOF || !validSelfSecret(secret) {
++		return "", errInvalidArgument
++	}
++	return secret, nil
++}
++
++// RotateSelfSecret compares the authenticated secret under the same lock that
++// protects disable/delete and persistence. Only the secret field is replaced.
++func (sys *IAMSys) RotateSelfSecret(ctx context.Context, accessKey, expected, secret string, args iampolicy.Args) error {
++	if !sys.Initialized() {
++		return errServerNotInitialized
++	}
++	if sys.usersSysType != OtterIOUsersSysType || !selfCredentialsRotationSupported() || accessKey == globalActiveCred.AccessKey || !validSelfSecret(secret) {
++		return errIAMActionNotAllowed
++	}
++	store, ok := sys.store.(*IAMObjectStore)
++	if !ok {
++		return errIAMActionNotAllowed
++	}
++	ticker := time.NewTicker(5 * time.Millisecond)
++	defer ticker.Stop()
++	for !store.TryLock() {
++		select {
++		case <-ctx.Done():
++			return ctx.Err()
++		case <-ticker.C:
++		}
++	}
++	defer store.Unlock()
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	cred, ok := sys.iamUsersMap[accessKey]
++	if !ok {
++		return errNoSuchUser
++	}
++	if cred.IsTemp() || cred.IsServiceAccount() || cred.Status == auth.AccountOff || !cred.IsValid() {
++		return errIAMActionNotAllowed
++	}
++	if subtle.ConstantTimeCompare([]byte(cred.SecretKey), []byte(expected)) != 1 {
++		return errSelfSecretConflict
++	}
++	// Re-evaluate native IAM policy mappings under this same store lock so
++	// revocation between HTTP authorization and persistence cannot be lost.
++	args.AccountName, args.Groups = accessKey, cred.Groups
++	args.Action, args.IsOwner, args.DenyOnly = iampolicy.CreateUserAdminAction, false, true
++	if !sys.selfSecretAllowedLocked(args) {
++		return errIAMActionNotAllowed
++	}
++	if subtle.ConstantTimeCompare([]byte(secret), []byte(expected)) == 1 {
++		return errInvalidArgument
++	}
++	cred.SecretKey = secret
++	if err := sys.store.saveUserIdentity(ctx, accessKey, regularUser, newUserIdentity(cred)); err != nil {
++		return err
++	}
++	sys.iamUsersMap[accessKey] = cred
++	return nil
++}
++
++// Caller holds sys.store's write lock. Calling IsAllowed here would recursively
++// acquire that lock; use its regular-user native policy evaluation directly.
++func (sys *IAMSys) selfSecretAllowedLocked(args iampolicy.Args) bool {
++	policies, err := sys.policyDBGet(args.AccountName, false)
++	if err != nil {
++		return false
++	}
++	for _, group := range args.Groups {
++		groupPolicies, err := sys.policyDBGet(group, true)
++		if err != nil {
++			return false
++		}
++		policies = append(policies, groupPolicies...)
++	}
++	combined := iampolicy.Policy{Version: iampolicy.DefaultVersion}
++	for _, name := range policies {
++		if p, ok := sys.iamPolicyDocsMap[name]; ok {
++			combined.Statements = append(combined.Statements, p.Statements...)
++		}
++	}
++	return len(combined.Statements) != 0 && combined.IsAllowed(args)
++}
+diff --git a/cmd/admin-self-credentials_test.go b/cmd/admin-self-credentials_test.go
+new file mode 100644
+index 0000000..929476d
+--- /dev/null
++++ b/cmd/admin-self-credentials_test.go
+@@ -0,0 +1,331 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"net/http"
++	"net/http/httptest"
++	"reflect"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/soulteary/otterio/cmd/config/policy/opa"
++	xhttp "github.com/soulteary/otterio/cmd/http"
++	"github.com/soulteary/otterio/pkg/auth"
++	iampolicy "github.com/soulteary/otterio/pkg/iam/policy"
++	"github.com/soulteary/otterio/pkg/madmin"
++	etcd "go.etcd.io/etcd/client/v3"
++)
++
++func selfCredentialsFixture(t *testing.T) auth.Credentials {
++	t.Helper()
++	obj, root, err := prepareFS(t)
++	if err != nil {
++		t.Fatal(err)
++	}
++	savedObj, savedIAM, savedNotify, savedCred, savedOPA := newObjectLayerFn(), globalIAMSys, globalNotificationSys, globalActiveCred, globalPolicyOPA
++	t.Cleanup(func() {
++		_ = obj.Shutdown(context.Background())
++		setObjectLayer(savedObj)
++		globalIAMSys, globalNotificationSys, globalActiveCred, globalPolicyOPA = savedIAM, savedNotify, savedCred, savedOPA
++		removeRoots([]string{root})
++	})
++	setObjectLayer(obj)
++	globalNotificationSys = &NotificationSys{}
++	globalPolicyOPA = nil
++	globalActiveCred = auth.Credentials{AccessKey: "self-root", SecretKey: "self-root-secret"}
++	globalIAMSys = NewIAMSys()
++	globalIAMSys.store = newIAMObjectStore(obj)
++	close(globalIAMSys.configLoaded)
++	user := auth.Credentials{AccessKey: "self-user", SecretKey: "self-original-secret", Status: auth.AccountOn, Groups: []string{"retained-group"}}
++	globalIAMSys.iamUsersMap[user.AccessKey] = user
++	globalIAMSys.iamGroupsMap["retained-group"] = GroupInfo{Status: statusEnabled}
++	globalIAMSys.iamPolicyDocsMap["self-readonly"] = iampolicy.ReadOnly
++	globalIAMSys.iamUserPolicyMap[user.AccessKey] = newMappedPolicy("self-readonly")
++	return user
++}
++
++func selfCredentialsRequest(t *testing.T, method string, cred auth.Credentials, document string) *http.Request {
++	t.Helper()
++	var data []byte
++	var err error
++	if document != "" {
++		data, err = madmin.EncryptData(cred.SecretKey, []byte(document))
++		if err != nil {
++			t.Fatal(err)
++		}
++	}
++	headers := map[string]string{}
++	if cred.IsTemp() || cred.IsServiceAccount() {
++		headers[xhttp.AmzSecurityToken] = cred.SessionToken
++	}
++	r, err := newTestSignedRequestV4(method, adminPathPrefix+adminAPIVersionPrefix+"/self-credentials", int64(len(data)), bytes.NewReader(data), cred.AccessKey, cred.SecretKey, headers)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return r
++}
++
++func TestSelfCredentialsHTTPContract(t *testing.T) {
++	user := selfCredentialsFixture(t)
++	api := adminAPIHandlers{}
++	get := func(cred auth.Credentials) *httptest.ResponseRecorder {
++		rec := httptest.NewRecorder()
++		api.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodGet, cred, ""))
++		return rec
++	}
++	info := get(user)
++	if info.Code != 200 || info.Header().Get(selfCredentialsHeader) != "v1" {
++		t.Fatalf("GET=%d %s", info.Code, info.Body.String())
++	}
++	var dto selfCredentialsInfo
++	if err := json.Unmarshal(info.Body.Bytes(), &dto); err != nil {
++		t.Fatal(err)
++	}
++	if dto.Kind != "iam" || dto.Status != "enabled" || !dto.CanRotateSecret {
++		t.Fatalf("GET info=%+v", dto)
++	}
++	for _, secret := range []string{user.AccessKey, user.SecretKey, "Policy", "sessionToken"} {
++		if strings.Contains(info.Body.String(), secret) {
++			t.Fatalf("response exposed private field %q", secret)
++		}
++	}
++	for _, doc := range []string{`{"newSecretKey":"valid-replacement","status":"enabled"}`, `{"NewSecretKey":"valid-replacement"}`, `{"newSecretKey":"one-secret","newSecretKey":"two-secret"}`, `{"newSecretKey":"short"}`, `{"newSecretKey":"valid-replacement"} {}`, `{"newSecretKey":"nul-secret\u0000"}`, `{"newSecretKey":"line-secret\r\n"}`, `{"newSecretKey":"orphan-secret\ud800"}`, `{"newSecretKey":"orphan-secret\udc00"}`, "{\"newSecretKey\":\"raw-secret-\xff\"}", `{"newSecretKey":"` + strings.Repeat("界", 43) + `"}`} {
++		rec := httptest.NewRecorder()
++		api.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodPut, user, doc))
++		if rec.Code != 400 {
++			t.Fatalf("invalid secret document accepted: status=%d", rec.Code)
++		}
++		if globalIAMSys.iamUsersMap[user.AccessKey].SecretKey != user.SecretKey {
++			t.Fatal("invalid secret encoding changed the credential")
++		}
++	}
++	// A valid encrypted envelope with a valid signature over the wrong body
++	// digest must not rotate the key. Admin authentication only wraps a reader.
++	for _, digest := range []string{strings.Repeat("0", 64), "duplicate"} {
++		r := selfCredentialsRequest(t, http.MethodPut, user, `{"newSecretKey":"digest-must-not-save"}`)
++		r.Header.Del("Content-Md5")
++		if digest == "duplicate" {
++			r.Header.Add("X-Amz-Content-Sha256", r.Header.Get("X-Amz-Content-Sha256"))
++		} else {
++			r.Header.Set("X-Amz-Content-Sha256", digest)
++		}
++		if err := signRequestV4(r, user.AccessKey, user.SecretKey); err != nil {
++			t.Fatal(err)
++		}
++		rec := httptest.NewRecorder()
++		api.SelfCredentials(rec, r)
++		if rec.Code != 400 || get(user).Code != 200 || globalIAMSys.iamUsersMap[user.AccessKey].SecretKey != user.SecretKey {
++			t.Fatalf("invalid encrypted-body digest accepted: %d", rec.Code)
++		}
++	}
++	root := get(globalActiveCred)
++	if root.Code != 200 || !strings.Contains(root.Body.String(), `"kind":"root"`) || strings.Contains(root.Body.String(), `"canRotateSecret":true`) {
++		t.Fatalf("root contract: %d %s", root.Code, root.Body.String())
++	}
++	rec := httptest.NewRecorder()
++	api.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodPut, globalActiveCred, `{"newSecretKey":"root-new-secret"}`))
++	if rec.Code != 403 {
++		t.Fatalf("root rotation=%d", rec.Code)
++	}
++	// The deny applies even though regular users have implicit self permission.
++	globalIAMSys.iamPolicyDocsMap["self-denied"] = *parseTestPolicy(t, `{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":["admin:CreateUser"]}]}`)
++	globalIAMSys.iamUserPolicyMap[user.AccessKey] = newMappedPolicy("self-denied")
++	denied := get(user)
++	if denied.Code != 200 || strings.Contains(denied.Body.String(), `"canRotateSecret":true`) {
++		t.Fatal("explicit deny not reflected")
++	}
++	rec = httptest.NewRecorder()
++	api.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodPut, user, `{"newSecretKey":"self-replacement-secret"}`))
++	if rec.Code != 403 {
++		t.Fatalf("denied rotation=%d", rec.Code)
++	}
++	globalIAMSys.iamUserPolicyMap[user.AccessKey] = newMappedPolicy("self-readonly")
++	// Successful rotation has no credentials in its response; old signature dies.
++	rec = httptest.NewRecorder()
++	api.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodPut, user, `{"newSecretKey":"self-replacement-secret"}`))
++	if rec.Code != 204 || rec.Body.Len() != 0 {
++		t.Fatalf("rotation=%d %s", rec.Code, rec.Body.String())
++	}
++	if stale := get(user); stale.Code != 403 {
++		t.Fatalf("old secret still authenticates: %d", stale.Code)
++	}
++	updated := user
++	updated.SecretKey = "self-replacement-secret"
++	if fresh := get(updated); fresh.Code != 200 {
++		t.Fatalf("new secret GET=%d %s", fresh.Code, fresh.Body.String())
++	}
++	globalIAMSys.store.rlock()
++	actual := globalIAMSys.iamUsersMap[user.AccessKey]
++	mapped := globalIAMSys.iamUserPolicyMap[user.AccessKey]
++	globalIAMSys.store.runlock()
++	if !reflect.DeepEqual(actual, updated) || !reflect.DeepEqual(mapped, newMappedPolicy("self-readonly")) {
++		t.Fatal("rotation changed status, groups or policy")
++	}
++}
++
++func TestSelfCredentialsIdentityClasses(t *testing.T) {
++	user := selfCredentialsFixture(t)
++	for _, service := range []bool{false, true} {
++		claims := map[string]interface{}{}
++		if service {
++			claims[parentClaim] = user.AccessKey
++			claims[iamPolicyClaimNameSA()] = "inherited-policy"
++		} else {
++			claims[expClaim] = time.Now().Add(time.Hour).Unix()
++			claims[iamPolicyClaimNameOpenID()] = "self-readonly"
++		}
++		cred, err := auth.GetNewCredentialsWithMetadata(claims, globalActiveCred.SecretKey)
++		if err != nil {
++			t.Fatal(err)
++		}
++		cred.ParentUser = user.AccessKey
++		globalIAMSys.iamUsersMap[cred.AccessKey] = cred
++		if !service {
++			globalIAMSys.iamUserPolicyMap[cred.AccessKey] = newMappedPolicy("self-readonly")
++		}
++		name := "sts"
++		if service {
++			name = "service"
++		}
++		rec := httptest.NewRecorder()
++		adminAPIHandlers{}.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodGet, cred, ""))
++		if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"kind":"`+name+`"`) || strings.Contains(rec.Body.String(), `"canRotateSecret":true`) {
++			t.Fatalf("%s GET=%d %s", name, rec.Code, rec.Body.String())
++		}
++		rec = httptest.NewRecorder()
++		adminAPIHandlers{}.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodPut, cred, `{"newSecretKey":"self-replacement-secret"}`))
++		if rec.Code != 403 {
++			t.Fatalf("%s rotated secret: %d", name, rec.Code)
++		}
++	}
++	globalIAMSys.usersSysType = LDAPUsersSysType
++	rec := httptest.NewRecorder()
++	adminAPIHandlers{}.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodGet, user, ""))
++	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"kind":"directory"`) {
++		t.Fatalf("directory GET=%d %s", rec.Code, rec.Body.String())
++	}
++	rec = httptest.NewRecorder()
++	adminAPIHandlers{}.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodPut, user, `{"newSecretKey":"self-replacement-secret"}`))
++	if rec.Code != 403 {
++		t.Fatal("directory rotated secret")
++	}
++}
++
++func TestSelfCredentialsAtomicRotation(t *testing.T) {
++	user := selfCredentialsFixture(t)
++	var wg sync.WaitGroup
++	errs := make([]error, 2)
++	for i := range errs {
++		wg.Add(1)
++		go func(i int) {
++			defer wg.Done()
++			errs[i] = globalIAMSys.RotateSelfSecret(context.Background(), user.AccessKey, user.SecretKey, "parallel-new-secret", iampolicy.Args{})
++		}(i)
++	}
++	wg.Wait()
++	success := 0
++	for _, err := range errs {
++		if err == nil {
++			success++
++		} else if !errors.Is(err, errSelfSecretConflict) {
++			t.Fatal(err)
++		}
++	}
++	if success != 1 {
++		t.Fatalf("parallel winners=%d", success)
++	}
++	// A concurrently committed disable must never be overwritten by rotation.
++	for range 10 {
++		globalIAMSys.store.lock()
++		globalIAMSys.iamUsersMap[user.AccessKey] = user
++		globalIAMSys.store.unlock()
++		var rotate, disable error
++		wg.Add(2)
++		go func() {
++			defer wg.Done()
++			rotate = globalIAMSys.RotateSelfSecret(context.Background(), user.AccessKey, user.SecretKey, "race-new-secret", iampolicy.Args{})
++		}()
++		go func() { defer wg.Done(); disable = globalIAMSys.SetUserStatus(user.AccessKey, madmin.AccountDisabled) }()
++		wg.Wait()
++		if disable != nil || (rotate != nil && !errors.Is(rotate, errIAMActionNotAllowed)) {
++			t.Fatalf("disable=%v rotate=%v", disable, rotate)
++		}
++		globalIAMSys.store.rlock()
++		status := globalIAMSys.iamUsersMap[user.AccessKey].Status
++		globalIAMSys.store.runlock()
++		if status != auth.AccountOff {
++			t.Fatal("rotation re-enabled concurrently disabled user")
++		}
++	}
++	ctx, cancel := context.WithCancel(context.Background())
++	cancel()
++	if err := globalIAMSys.RotateSelfSecret(ctx, user.AccessKey, user.SecretKey, "after-cancel-secret", iampolicy.Args{}); !errors.Is(err, context.Canceled) {
++		t.Fatalf("canceled mutation=%v", err)
++	}
++	globalIAMSys.store.lock()
++	waitCtx, waitCancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
++	start := time.Now()
++	err := globalIAMSys.RotateSelfSecret(waitCtx, user.AccessKey, user.SecretKey, "while-locked-secret", iampolicy.Args{})
++	waitCancel()
++	globalIAMSys.store.unlock()
++	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > time.Second {
++		t.Fatalf("IAM lock ignored cancellation: %v duration=%v", err, time.Since(start))
++	}
++}
++
++func TestSelfCredentialsRevocationAndUnsupportedTopology(t *testing.T) {
++	user := selfCredentialsFixture(t)
++	if !globalIAMSys.IsAllowed(iampolicy.Args{AccountName: user.AccessKey, Action: iampolicy.CreateUserAdminAction, DenyOnly: true}) {
++		t.Fatal("fixture self permission missing")
++	}
++	globalIAMSys.store.lock()
++	globalIAMSys.iamPolicyDocsMap["revoked"] = *parseTestPolicy(t, `{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":["admin:CreateUser"]}]}`)
++	globalIAMSys.iamUserPolicyMap[user.AccessKey] = newMappedPolicy("revoked")
++	globalIAMSys.store.unlock()
++	if err := globalIAMSys.RotateSelfSecret(context.Background(), user.AccessKey, user.SecretKey, "revocation-new-secret", iampolicy.Args{}); !errors.Is(err, errIAMActionNotAllowed) {
++		t.Fatalf("revoked policy mutation=%v", err)
++	}
++	globalIAMSys.store.lock()
++	globalIAMSys.iamUserPolicyMap[user.AccessKey] = newMappedPolicy("self-readonly")
++	globalIAMSys.store.unlock()
++	savedDist, savedEtcd, savedOPA := globalIsDistErasure, globalEtcdClient, globalPolicyOPA
++	t.Cleanup(func() { globalIsDistErasure, globalEtcdClient, globalPolicyOPA = savedDist, savedEtcd, savedOPA })
++	for _, topology := range []string{"distributed", "etcd", "opa"} {
++		globalIsDistErasure, globalEtcdClient, globalPolicyOPA = false, nil, nil
++		switch topology {
++		case "distributed":
++			globalIsDistErasure = true
++		case "etcd":
++			globalEtcdClient = &etcd.Client{}
++		case "opa":
++			globalPolicyOPA = &opa.Opa{}
++		}
++		rec := httptest.NewRecorder()
++		adminAPIHandlers{}.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodGet, user, ""))
++		if rec.Code != 200 || strings.Contains(rec.Body.String(), `"canRotateSecret":true`) {
++			t.Fatalf("%s GET rotation hint=%d %s", topology, rec.Code, rec.Body.String())
++		}
++		rec = httptest.NewRecorder()
++		adminAPIHandlers{}.SelfCredentials(rec, selfCredentialsRequest(t, http.MethodPut, user, `{"newSecretKey":"topology-new-secret"}`))
++		if rec.Code != 403 {
++			t.Fatalf("%s PUT=%d", topology, rec.Code)
++		}
++		if err := globalIAMSys.RotateSelfSecret(context.Background(), user.AccessKey, user.SecretKey, "topology-new-secret", iampolicy.Args{}); !errors.Is(err, errIAMActionNotAllowed) {
++			t.Fatalf("%s IAM mutation=%v", topology, err)
++		}
++	}
++	globalIsDistErasure, globalEtcdClient, globalPolicyOPA = false, nil, nil
++	globalIAMSys.store.rlock()
++	actual := globalIAMSys.iamUsersMap[user.AccessKey]
++	globalIAMSys.store.runlock()
++	if actual.SecretKey != user.SecretKey {
++		t.Fatal("rejected operation changed persisted secret")
++	}
++}
+diff --git a/cmd/bucket-config-conditional.go b/cmd/bucket-config-conditional.go
+new file mode 100644
+index 0000000..58fda2f
+--- /dev/null
++++ b/cmd/bucket-config-conditional.go
+@@ -0,0 +1,211 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"context"
++	"crypto/sha256"
++	"encoding/hex"
++	"errors"
++	"net/http"
++	"path"
++	"strings"
++	"time"
++)
++
++type bucketConfigCommit struct {
++	revision string
++	exists   bool
++}
++
++var errBucketConfigInvalidState = errors.New("versioning cannot be suspended while object lock or replication is configured")
++
++const (
++	bucketConfigCapabilityHeader = "X-Otterio-Bucket-Config"
++	bucketConfigRevisionHeader   = "X-Otterio-Config-Revision"
++	bucketConfigIfMatchHeader    = "X-Otterio-Config-If-Match"
++	bucketConfigExistsHeader     = "X-Otterio-Config-Exists"
++)
++
++func bucketMetadataTransactionKey(bucket string) string {
++	return path.Join(bucketConfigPrefix, bucket, ".transaction.lock")
++}
++
++func bucketMetadataTransactionSupported(object ObjectLayer) bool {
++	switch object.(type) {
++	case *FSObjects, *erasureServerPools:
++		return true
++	default:
++		return false
++	}
++}
++
++func bucketMetadataErasureBackend(object ObjectLayer) bool {
++	_, ok := object.(*erasureServerPools)
++	return ok
++}
++
++func bucketConfigSupported(file string) bool {
++	if globalIsGateway {
++		return false
++	}
++	switch obj := newObjectLayerFn().(type) {
++	case *FSObjects:
++		return file == bucketPolicyConfig || file == bucketLifecycleConfig
++	case *erasureServerPools:
++		return obj.SinglePool() && (file == bucketPolicyConfig || file == bucketLifecycleConfig || file == bucketVersioningConfig)
++	default:
++		return false
++	}
++}
++
++func bucketConfigKind(file string) string {
++	switch file {
++	case bucketPolicyConfig:
++		return "policy"
++	case bucketLifecycleConfig:
++		return "lifecycle"
++	case bucketVersioningConfig:
++		return "versioning"
++	default:
++		return file
++	}
++}
++
++func bucketConfigBytes(meta BucketMetadata, file string) []byte {
++	switch file {
++	case bucketPolicyConfig:
++		return meta.PolicyConfigJSON
++	case bucketLifecycleConfig:
++		return meta.LifecycleConfigXML
++	case bucketVersioningConfig:
++		return meta.VersioningConfigXML
++	default:
++		return nil
++	}
++}
++
++func bucketConfigRevision(file string, data []byte) string {
++	h := sha256.New()
++	h.Write([]byte(bucketConfigKind(file)))
++	h.Write([]byte{0})
++	h.Write(data)
++	return hex.EncodeToString(h.Sum(nil))
++}
++
++// Called after authentication. Vendor headers are covered by SigV4's mandatory
++// signed-header check, but V2 and anonymous policy grants cannot use this CAS.
++func bucketConfigCondition(r *http.Request, file string) (string, APIErrorCode) {
++	values := r.Header.Values(bucketConfigIfMatchHeader)
++	if len(values) == 0 {
++		return "", ErrNone
++	}
++	if len(values) != 1 || len(values[0]) != 64 || strings.ToLower(values[0]) != values[0] {
++		return "", ErrInvalidRequest
++	}
++	if _, err := hex.DecodeString(values[0]); err != nil {
++		return "", ErrInvalidRequest
++	}
++	if getRequestAuthType(r) != authTypeSigned {
++		return "", ErrAccessDenied
++	}
++	signed, err := parseSignV4(r.Header.Get("Authorization"), "", serviceS3)
++	if err != ErrNone || !contains(signed.SignedHeaders, strings.ToLower(bucketConfigIfMatchHeader)) {
++		return "", ErrUnsignedHeaders
++	}
++	if !bucketConfigSupported(file) {
++		return "", ErrNotImplemented
++	}
++	return values[0], ErrNone
++}
++
++// ReadConfigWithRevision protects a fresh persistent read against legacy migration and
++// updates too. Never calculate a revision from a possibly stale peer cache.
++func (sys *BucketMetadataSys) ReadConfigWithRevision(ctx context.Context, bucket, file string) ([]byte, string, error) {
++	if !bucketConfigSupported(file) {
++		return nil, "", NotImplemented{}
++	}
++	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
++	defer cancel()
++	obj := newObjectLayerFn()
++	lock := obj.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++	ctx, err := lock.GetLock(ctx, newDynamicTimeout(10*time.Second, time.Second))
++	if err != nil {
++		return nil, "", err
++	}
++	defer lock.Unlock()
++	if _, err := obj.GetBucketInfo(ctx, bucket); err != nil {
++		return nil, "", err
++	}
++	meta, err := loadBucketMetadataUnlocked(ctx, obj, bucket)
++	if err != nil {
++		return nil, "", err
++	}
++	sys.Set(bucket, meta)
++	data := append([]byte(nil), bucketConfigBytes(meta, file)...)
++	return data, bucketConfigRevision(file, data), nil
++}
++
++func bucketConfigResponse(w http.ResponseWriter, revision string, exists bool) {
++	w.Header().Set(bucketConfigCapabilityHeader, "v1")
++	w.Header().Set(bucketConfigRevisionHeader, revision)
++	if exists {
++		w.Header().Set(bucketConfigExistsHeader, "true")
++	} else {
++		w.Header().Set(bucketConfigExistsHeader, "false")
++	}
++}
++
++// Authentication and bucket existence have already been checked by the S3
++// handler. Returning false preserves reads on legacy or gateway backends.
++func writeFreshBucketConfiguration(ctx context.Context, w http.ResponseWriter, r *http.Request, bucket, file string) bool {
++	if !bucketConfigSupported(file) {
++		return false
++	}
++	data, revision, err := globalBucketMetadataSys.ReadConfigWithRevision(ctx, bucket, file)
++	if err != nil {
++		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
++		return true
++	}
++	bucketConfigResponse(w, revision, len(data) != 0)
++	if len(data) == 0 {
++		switch file {
++		case bucketPolicyConfig:
++			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrNoSuchBucketPolicy), r.URL, guessIsBrowserReq(r))
++			return true
++		case bucketLifecycleConfig:
++			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrNoSuchLifecycleConfiguration), r.URL, guessIsBrowserReq(r))
++			return true
++		case bucketVersioningConfig:
++			data = []byte(`<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"></VersioningConfiguration>`)
++		}
++	}
++	if file == bucketPolicyConfig {
++		writeSuccessResponseJSON(w, data)
++	} else {
++		writeSuccessResponseXML(w, data)
++	}
++	return true
++}
++
++func updateBucketConfiguration(ctx context.Context, w http.ResponseWriter, r *http.Request, bucket, file string, data []byte) bool {
++	expected, code := bucketConfigCondition(r, file)
++	if code != ErrNone {
++		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(code), r.URL, guessIsBrowserReq(r))
++		return false
++	}
++	var commit bucketConfigCommit
++	if err := globalBucketMetadataSys.update(ctx, bucket, file, data, expected, &commit); err != nil {
++		if errors.Is(err, errBucketConfigInvalidState) {
++			writeErrorResponse(ctx, w, APIError{Code: "InvalidBucketState", Description: errBucketConfigInvalidState.Error(), HTTPStatusCode: http.StatusConflict}, r.URL, guessIsBrowserReq(r))
++		} else {
++			writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
++		}
++		return false
++	}
++	if bucketConfigSupported(file) {
++		bucketConfigResponse(w, commit.revision, commit.exists)
++	}
++
++	return true
++}
+diff --git a/cmd/bucket-config-conditional_test.go b/cmd/bucket-config-conditional_test.go
+new file mode 100644
+index 0000000..fc08424
+--- /dev/null
++++ b/cmd/bucket-config-conditional_test.go
+@@ -0,0 +1,603 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"net/url"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/soulteary/otterio/cmd/rest"
++	"github.com/soulteary/otterio/pkg/auth"
++	xnet "github.com/soulteary/otterio/pkg/net"
++)
++
++type p3PeerRoundTripper func(*http.Request) (*http.Response, error)
++
++func (f p3PeerRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
++
++type p3LegacyDeleteFailure struct {
++	ObjectLayer
++	key     string
++	failure error
++}
++
++func (o p3LegacyDeleteFailure) DeleteObject(ctx context.Context, bucket, object string, opts ObjectOptions) (ObjectInfo, error) {
++	if bucket == otterioMetaBucket && object == o.key {
++		return ObjectInfo{}, o.failure
++	}
++	return o.ObjectLayer.DeleteObject(ctx, bucket, object, opts)
++}
++
++func TestBucketConfigTransactions(t *testing.T) {
++	ExecObjectLayerTest(t, testBucketConfigTransactions)
++}
++
++func testBucketConfigTransactions(obj ObjectLayer, instance string, t TestErrHandler) {
++	savedObject, savedMetadata, savedNotify := newObjectLayerFn(), globalBucketMetadataSys, globalNotificationSys
++	savedIAM, savedOPA := globalIAMSys, globalPolicyOPA
++	savedTargets := globalBucketTargetSys
++	defer func() {
++		setObjectLayer(savedObject)
++		globalBucketMetadataSys, globalNotificationSys = savedMetadata, savedNotify
++		globalIAMSys, globalPolicyOPA = savedIAM, savedOPA
++		globalBucketTargetSys = savedTargets
++	}()
++	setObjectLayer(obj)
++	globalBucketMetadataSys, globalNotificationSys = NewBucketMetadataSys(), &NotificationSys{}
++	globalIAMSys, globalPolicyOPA = NewIAMSys(), nil
++	globalBucketTargetSys = NewBucketTargetSys()
++	globalIAMSys.store = newIAMObjectStore(obj)
++	close(globalIAMSys.configLoaded)
++	ctx := context.Background()
++	const bucket = "config-transactions"
++	if err := obj.MakeBucketWithLocation(ctx, bucket, BucketOptions{}); err != nil {
++		t.Fatal(err)
++	}
++	policyData := func(id string) []byte {
++		return []byte(fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Sid":%q,"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}`, id, bucket))
++	}
++	const lifecycleDoc = `<LifecycleConfiguration><Rule><ID>expire</ID><Filter><Prefix></Prefix></Filter><Status>Enabled</Status><Expiration><Days>2</Days></Expiration></Rule></LifecycleConfiguration>`
++	_, initial, err := globalBucketMetadataSys.ReadConfigWithRevision(ctx, bucket, bucketPolicyConfig)
++	if err != nil {
++		t.Fatal(err)
++	}
++	// All contenders read one revision. Exactly one may commit a different doc.
++	var wg sync.WaitGroup
++	errs := make([]error, 8)
++	for i := range errs {
++		wg.Add(1)
++		go func(i int) {
++			defer wg.Done()
++			errs[i] = globalBucketMetadataSys.UpdateWithContext(ctx, bucket, bucketPolicyConfig, policyData(fmt.Sprint(i)), initial)
++		}(i)
++	}
++	wg.Wait()
++	success := 0
++	for _, err := range errs {
++		if err == nil {
++			success++
++		} else if !isErrPreconditionFailed(err) {
++			t.Fatal(err)
++		}
++	}
++	if success != 1 {
++		t.Fatalf("%s: %d concurrent conditional updates succeeded", instance, success)
++	}
++	// Unconditional legacy updates to different fields share the same lock.
++	for i := range 5 {
++		p := policyData(fmt.Sprint("iteration-", i))
++		var updateErrors [2]error
++		wg.Add(2)
++		go func() {
++			defer wg.Done()
++			updateErrors[0] = globalBucketMetadataSys.Update(bucket, bucketPolicyConfig, p)
++		}()
++		go func() {
++			defer wg.Done()
++			updateErrors[1] = globalBucketMetadataSys.Update(bucket, bucketLifecycleConfig, []byte(lifecycleDoc))
++		}()
++		wg.Wait()
++		for _, err := range updateErrors {
++			if err != nil {
++				t.Fatal(err)
++			}
++		}
++		meta, err := loadBucketMetadata(ctx, obj, bucket)
++		if err != nil || !bytes.Equal(meta.PolicyConfigJSON, p) || string(meta.LifecycleConfigXML) != lifecycleDoc {
++			t.Fatalf("%s: settings were lost during concurrent updates: %v", instance, err)
++		}
++	}
++	request := func(method, query string, data []byte, headers map[string]string) *http.Request {
++		r, err := newTestSignedRequestV4(method, "/"+bucket+"?"+query, int64(len(data)), bytes.NewReader(data), globalActiveCred.AccessKey, globalActiveCred.SecretKey, headers)
++		if err != nil {
++			t.Fatal(err)
++		}
++		return setURLVarsOnRequest(r, map[string]string{"bucket": bucket})
++	}
++	assertACK := func(rec *httptest.ResponseRecorder, file string, exists bool) {
++		_, revision, err := globalBucketMetadataSys.ReadConfigWithRevision(ctx, bucket, file)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if rec.Header().Get(bucketConfigCapabilityHeader) != "v1" || rec.Header().Get(bucketConfigRevisionHeader) != revision || rec.Header().Get(bucketConfigExistsHeader) != fmt.Sprint(exists) {
++			t.Fatalf("%s commit ACK missing or stale: %v expected=%s", file, rec.Header(), revision)
++		}
++	}
++
++	api := objectAPIHandlers{ObjectAPI: func() ObjectLayer { return obj }}
++	// Deliberately stale memory does not influence the document or revision.
++	meta := newBucketMetadata(bucket)
++	meta.PolicyConfigJSON = policyData("stale")
++	globalBucketMetadataSys.Set(bucket, meta)
++	got := httptest.NewRecorder()
++	api.GetBucketPolicyHandler(got, request(http.MethodGet, "policy", nil, nil))
++	raw, revision, err := globalBucketMetadataSys.ReadConfigWithRevision(ctx, bucket, bucketPolicyConfig)
++	if err != nil || got.Code != 200 || !bytes.Equal(got.Body.Bytes(), raw) || got.Header().Get(bucketConfigRevisionHeader) != revision || got.Header().Get(bucketConfigExistsHeader) != "true" {
++		t.Fatalf("%s: fresh GET contract failed: %d %v", instance, got.Code, err)
++	}
++	// A header added after signing must not gain mutation semantics.
++	unsigned := request(http.MethodPut, "policy", policyData("unsigned"), nil)
++	unsigned.Header.Set(bucketConfigIfMatchHeader, revision)
++	rec := httptest.NewRecorder()
++	api.PutBucketPolicyHandler(rec, unsigned)
++	if rec.Code != 400 && rec.Code != 403 {
++		t.Fatalf("unsigned condition accepted: %d", rec.Code)
++	}
++	duplicate := request(http.MethodPut, "policy", policyData("duplicate"), map[string]string{bucketConfigIfMatchHeader: revision})
++	duplicate.Header.Add(bucketConfigIfMatchHeader, revision)
++	if err := signRequestV4(duplicate, globalActiveCred.AccessKey, globalActiveCred.SecretKey); err != nil {
++		t.Fatal(err)
++	}
++	rec = httptest.NewRecorder()
++	api.PutBucketPolicyHandler(rec, duplicate)
++	if rec.Code != 400 {
++		t.Fatalf("duplicate condition accepted: %d", rec.Code)
++	}
++	conflict := request(http.MethodPut, "policy", policyData("old-revision"), map[string]string{bucketConfigIfMatchHeader: initial})
++	rec = httptest.NewRecorder()
++	api.PutBucketPolicyHandler(rec, conflict)
++	if rec.Code != 412 {
++		t.Fatalf("stale revision status=%d body=%s", rec.Code, rec.Body.String())
++	}
++	// A signed conditional DELETE checks revision, then missing GET still has it.
++	rec = httptest.NewRecorder()
++	api.DeleteBucketPolicyHandler(rec, request(http.MethodDelete, "policy", nil, map[string]string{bucketConfigIfMatchHeader: revision}))
++	if rec.Code != 204 {
++		t.Fatalf("conditional DELETE=%d %s", rec.Code, rec.Body.String())
++	}
++	assertACK(rec, bucketPolicyConfig, false)
++	rec = httptest.NewRecorder()
++	api.GetBucketPolicyHandler(rec, request(http.MethodGet, "policy", nil, nil))
++	if rec.Code != 404 || rec.Header().Get(bucketConfigCapabilityHeader) != "v1" || rec.Header().Get(bucketConfigExistsHeader) != "false" || rec.Header().Get(bucketConfigRevisionHeader) != initial {
++		t.Fatalf("missing config contract=%d headers=%v", rec.Code, rec.Header())
++	}
++	rec = httptest.NewRecorder()
++	api.PutBucketPolicyHandler(rec, request(http.MethodPut, "policy", policyData("created-through-http"), map[string]string{bucketConfigIfMatchHeader: initial}))
++	if rec.Code != 204 {
++		t.Fatalf("conditional policy HTTP create=%d %s", rec.Code, rec.Body.String())
++	}
++	assertACK(rec, bucketPolicyConfig, true)
++	// Lifecycle uses the same wire contract for reads, updates and removal.
++	raw, lcRevision, err := globalBucketMetadataSys.ReadConfigWithRevision(ctx, bucket, bucketLifecycleConfig)
++	if err != nil || len(raw) == 0 {
++		t.Fatal("lifecycle fixture missing")
++	}
++	rec = httptest.NewRecorder()
++	api.GetBucketLifecycleHandler(rec, request(http.MethodGet, "lifecycle", nil, nil))
++	if rec.Code != 200 || !bytes.Equal(rec.Body.Bytes(), raw) || rec.Header().Get(bucketConfigRevisionHeader) != lcRevision {
++		t.Fatal("lifecycle read/revision mismatch")
++	}
++	rec = httptest.NewRecorder()
++	api.DeleteBucketLifecycleHandler(rec, request(http.MethodDelete, "lifecycle", nil, map[string]string{bucketConfigIfMatchHeader: lcRevision}))
++	if rec.Code != 204 {
++		t.Fatalf("conditional lifecycle delete=%d", rec.Code)
++	}
++	assertACK(rec, bucketLifecycleConfig, false)
++	rec = httptest.NewRecorder()
++	api.GetBucketLifecycleHandler(rec, request(http.MethodGet, "lifecycle", nil, nil))
++	if rec.Code != 404 || rec.Header().Get(bucketConfigExistsHeader) != "false" || rec.Header().Get(bucketConfigRevisionHeader) != bucketConfigRevision(bucketLifecycleConfig, nil) {
++		t.Fatal("missing lifecycle contract mismatch")
++	}
++	rec = httptest.NewRecorder()
++	api.PutBucketLifecycleHandler(rec, request(http.MethodPut, "lifecycle", []byte(lifecycleDoc), map[string]string{bucketConfigIfMatchHeader: bucketConfigRevision(bucketLifecycleConfig, nil)}))
++	if rec.Code != 200 {
++		t.Fatalf("conditional lifecycle PUT=%d %s", rec.Code, rec.Body.String())
++	}
++	assertACK(rec, bucketLifecycleConfig, true)
++	// Unsupported fields must not be acknowledged after legacy decoders drop
++	// them, and malformed envelopes must not change persistent state or cache.
++	assertRejected := func(file, query string, handler http.HandlerFunc, data []byte, mutate func(*http.Request)) {
++		before, revision, err := globalBucketMetadataSys.ReadConfigWithRevision(ctx, bucket, file)
++		if err != nil {
++			t.Fatal(err)
++		}
++		r := request(http.MethodPut, query, data, map[string]string{bucketConfigIfMatchHeader: revision})
++		if mutate != nil {
++			mutate(r)
++		}
++		rec := httptest.NewRecorder()
++		handler(rec, r)
++		if rec.Code < 400 || rec.Code >= 500 || rec.Header().Get(bucketConfigRevisionHeader) != "" {
++			t.Fatalf("%s unsafe edit accepted: status=%d body=%s", file, rec.Code, rec.Body.String())
++		}
++		after, afterRevision, err := globalBucketMetadataSys.ReadConfigWithRevision(ctx, bucket, file)
++		if err != nil || !bytes.Equal(before, after) || revision != afterRevision {
++			t.Fatalf("%s rejected edit changed persistent configuration: %v", file, err)
++		}
++	}
++	p := string(policyData("must-not-save"))
++	for _, invalid := range []string{
++		strings.Replace(p, `"Version":`, `"UnknownProtection":true,"Version":`, 1),
++		strings.Replace(p, `"Effect":`, `"NotAction":["s3:DeleteObject"],"Effect":`, 1),
++		strings.Replace(p, `"AWS":["*"]`, `"AWS":["*"],"Service":"other"`, 1),
++		strings.Replace(p, `"Effect":"Allow"`, `"Effect":"Deny","Effect":"Allow"`, 1),
++		strings.Replace(p, `"Version":`, `"ID":"one","Id":"two","Version":`, 1),
++		strings.Replace(p, `"Effect":`, `"Condition":{"StringEquals":{}},"Effect":`, 1),
++		p + strings.Repeat(" ", 8192) + `{}`,
++		strings.Replace(p, `"must-not-save"`, `"orphan-\ud800"`, 1),
++		strings.Replace(p, `"must-not-save"`, "\"raw-\xff\"", 1),
++	} {
++		assertRejected(bucketPolicyConfig, "policy", api.PutBucketPolicyHandler, []byte(invalid), nil)
++	}
++	for _, invalid := range []string{
++		strings.Replace(lifecycleDoc, `<Expiration>`, `<AbortIncompleteMultipartUpload><DaysAfterInitiation>1</DaysAfterInitiation></AbortIncompleteMultipartUpload><Expiration>`, 1),
++		strings.Replace(lifecycleDoc, `<Days>2</Days>`, `<Days>2</Days><ExpiredObjectAllVersions>true</ExpiredObjectAllVersions>`, 1),
++		strings.Replace(lifecycleDoc, `<Days>2</Days>`, `<Days>2</Days><Days>3</Days>`, 1),
++		strings.Replace(lifecycleDoc, `<Days>2</Days>`, `<Days><Unknown>2</Unknown></Days>`, 1),
++		strings.Replace(lifecycleDoc, `<Days>`, `<Days unit="day">`, 1),
++		strings.Replace(lifecycleDoc, `<Filter>`, `<Filter><ObjectSizeGreaterThan>1</ObjectSizeGreaterThan>`, 1),
++		strings.Replace(lifecycleDoc, `<Prefix></Prefix>`, `<Tag><Key></Key><Value>prod</Value></Tag>`, 1),
++		strings.Replace(lifecycleDoc, `<Prefix></Prefix>`, `<Tag><Value>prod</Value></Tag>`, 1),
++		strings.Replace(lifecycleDoc, `<Prefix></Prefix>`, `<And/>`, 1),
++		strings.Replace(lifecycleDoc, `<Prefix></Prefix>`, `<And/><Tag><Key>environment</Key><Value>prod</Value></Tag>`, 1),
++		strings.Replace(lifecycleDoc, `<Prefix></Prefix>`, `<Prefix/><Tag><Key>environment</Key><Value>prod</Value></Tag>`, 1),
++		strings.Replace(strings.Replace(lifecycleDoc, `<Prefix></Prefix>`, `<Tag><Key>environment</Key><Value>prod</Value></Tag>`, 1), `<Days>2</Days>`, `<ExpiredObjectDeleteMarker>true</ExpiredObjectDeleteMarker>`, 1),
++		strings.Replace(lifecycleDoc, `<Expiration><Days>2</Days></Expiration>`, `<Transition><Days>0</Days><Date>2000-01-01T00:00:00Z</Date><StorageClass>archive</StorageClass></Transition>`, 1),
++		strings.Replace(lifecycleDoc, `<Expiration><Days>2</Days></Expiration>`, `<NoncurrentVersionTransition><NoncurrentDays>2</NoncurrentDays><NewerNoncurrentVersions>3</NewerNoncurrentVersions><StorageClass>archive</StorageClass></NoncurrentVersionTransition>`, 1),
++		`<!DOCTYPE LifecycleConfiguration>` + lifecycleDoc,
++		lifecycleDoc + lifecycleDoc,
++		lifecycleDoc + "trailing",
++	} {
++		assertRejected(bucketLifecycleConfig, "lifecycle", api.PutBucketLifecycleHandler, []byte(invalid), nil)
++	}
++	// The base CAS must refuse storage runtime fields before target validation.
++	// Rejections preserve both persistent bytes and the revision.
++	for _, action := range []string{
++		`<Transition><Days>2</Days><StorageClass>unconfigured-target</StorageClass></Transition>`,
++		`<NoncurrentVersionTransition><NoncurrentDays>2</NoncurrentDays><StorageClass>unconfigured-target</StorageClass></NoncurrentVersionTransition>`,
++		`<Expiration><ExpiredObjectDeleteMarker>true</ExpiredObjectDeleteMarker></Expiration>`,
++	} {
++		doc := strings.Replace(lifecycleDoc, `<Expiration><Days>2</Days></Expiration>`, action, 1)
++		assertRejected(bucketLifecycleConfig, "lifecycle", api.PutBucketLifecycleHandler, []byte(doc), nil)
++	}
++	for _, filter := range []string{
++		`<Tag><Key>environment</Key><Value>prod</Value></Tag>`,
++		`<And><Prefix>logs/</Prefix><Tag><Key>environment name</Key><Value>prod+100%生产</Value></Tag></And>`,
++	} {
++		doc := strings.Replace(lifecycleDoc, `<Prefix></Prefix>`, filter, 1)
++		assertRejected(bucketLifecycleConfig, "lifecycle", api.PutBucketLifecycleHandler, []byte(doc), nil)
++		// A legacy document may have been stored by an earlier client. Reading
++		// it must remain complete even when the base CAS cannot edit it.
++		if err := globalBucketMetadataSys.Update(bucket, bucketLifecycleConfig, []byte(doc)); err != nil {
++			t.Fatal(err)
++		}
++		rec := httptest.NewRecorder()
++		api.GetBucketLifecycleHandler(rec, request(http.MethodGet, "lifecycle", nil, nil))
++		if rec.Code != 200 || rec.Body.String() != doc || rec.Header().Get(bucketConfigRevisionHeader) != bucketConfigRevision(bucketLifecycleConfig, []byte(doc)) {
++			t.Fatalf("base GET changed a legacy tag document: %d %s", rec.Code, rec.Body.String())
++		}
++	}
++	legacyNoncurrent := strings.Replace(lifecycleDoc, `<Expiration><Days>2</Days></Expiration>`, `<NoncurrentVersionTransition><NoncurrentDays>2</NoncurrentDays><StorageClass>archive</StorageClass></NoncurrentVersionTransition>`, 1)
++	if err := globalBucketMetadataSys.Update(bucket, bucketLifecycleConfig, []byte(legacyNoncurrent)); err != nil {
++		t.Fatal(err)
++	}
++	rec = httptest.NewRecorder()
++	api.GetBucketLifecycleHandler(rec, request(http.MethodGet, "lifecycle", nil, nil))
++	if rec.Code != 200 || rec.Body.String() != legacyNoncurrent || rec.Header().Get(bucketConfigRevisionHeader) != bucketConfigRevision(bucketLifecycleConfig, []byte(legacyNoncurrent)) {
++		t.Fatalf("legacy noncurrent transition was not preserved in GET: %d %s", rec.Code, rec.Body.String())
++	}
++	assertRejected(bucketLifecycleConfig, "lifecycle", api.PutBucketLifecycleHandler, []byte(legacyNoncurrent), nil)
++	if err := globalBucketMetadataSys.Update(bucket, bucketLifecycleConfig, []byte(lifecycleDoc)); err != nil {
++		t.Fatal(err)
++	}
++	// A decoder may stop before a long trailing body. Both checksum failures
++	// and UNSIGNED-PAYLOAD must be rejected before any CAS save occurs.
++	longPolicy := []byte(p + strings.Repeat(" ", 8192))
++	assertRejected(bucketPolicyConfig, "policy", api.PutBucketPolicyHandler, longPolicy, func(r *http.Request) {
++		tampered := append([]byte(nil), longPolicy...)
++		tampered[len(tampered)-1] = '\t'
++		r.Body = io.NopCloser(bytes.NewReader(tampered))
++	})
++	assertRejected(bucketPolicyConfig, "policy", api.PutBucketPolicyHandler, []byte(p), func(r *http.Request) {
++		r.Header.Set("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD")
++		if err := signRequestV4(r, globalActiveCred.AccessKey, globalActiveCred.SecretKey); err != nil {
++			t.Fatal(err)
++		}
++	})
++	_, currentPolicy, err := globalBucketMetadataSys.ReadConfigWithRevision(ctx, bucket, bucketPolicyConfig)
++	if err != nil {
++		t.Fatal(err)
++	}
++	rec = httptest.NewRecorder()
++	api.DeleteBucketPolicyHandler(rec, request(http.MethodDelete, "policy", []byte("nonempty"), map[string]string{bucketConfigIfMatchHeader: currentPolicy}))
++	if rec.Code != 400 {
++		t.Fatalf("conditional DELETE accepted ignored body: %d", rec.Code)
++	}
++	_, afterDelete, err := globalBucketMetadataSys.ReadConfigWithRevision(ctx, bucket, bucketPolicyConfig)
++	if err != nil || afterDelete != currentPolicy {
++		t.Fatal("rejected DELETE changed policy")
++	}
++	// Explicit deny is checked before exposing the current document/revision.
++	user := auth.Credentials{AccessKey: "config-denied", SecretKey: "config-denied-secret"}
++	globalIAMSys.iamUsersMap[user.AccessKey] = user
++	globalIAMSys.iamPolicyDocsMap["config-deny"] = *parseTestPolicy(t.(*testing.T), `{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":["s3:GetBucketPolicy","s3:PutBucketPolicy"],"Resource":["arn:aws:s3:::config-transactions"]}]}`)
++	globalIAMSys.iamUserPolicyMap[user.AccessKey] = newMappedPolicy("config-deny")
++	r, err := newTestSignedRequestV4(http.MethodGet, "/"+bucket+"?policy", 0, nil, user.AccessKey, user.SecretKey, nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	r = setURLVarsOnRequest(r, map[string]string{"bucket": bucket})
++	rec = httptest.NewRecorder()
++	api.GetBucketPolicyHandler(rec, r)
++	if rec.Code != 403 || rec.Header().Get(bucketConfigRevisionHeader) != "" {
++		t.Fatalf("denied GET leaked revision: %d", rec.Code)
++	}
++	if instance == ErasureTestStr {
++		v := httptest.NewRecorder()
++		api.GetBucketVersioningHandler(v, request(http.MethodGet, "versioning", nil, nil))
++		if v.Code != 200 || v.Header().Get(bucketConfigExistsHeader) != "false" || v.Header().Get(bucketConfigRevisionHeader) != bucketConfigRevision(bucketVersioningConfig, nil) {
++			t.Fatalf("empty versioning contract: %d %v", v.Code, v.Header())
++		}
++		rec = httptest.NewRecorder()
++		api.PutBucketVersioningHandler(rec, request(http.MethodPut, "versioning", []byte(`<VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration>`), map[string]string{bucketConfigIfMatchHeader: bucketConfigRevision(bucketVersioningConfig, nil)}))
++		if rec.Code != 200 {
++			t.Fatalf("conditional versioning PUT=%d %s", rec.Code, rec.Body.String())
++		}
++		assertACK(rec, bucketVersioningConfig, true)
++		for _, invalid := range []string{
++			`<VersioningConfiguration><Status>Enabled</Status><MFADelete>Enabled</MFADelete></VersioningConfiguration>`,
++			`<VersioningConfiguration><Status>Enabled</Status><Status>Suspended</Status></VersioningConfiguration>`,
++			`<VersioningConfiguration><Status><Value>Enabled</Value></Status></VersioningConfiguration>`,
++			`<VersioningConfiguration unknown="true"><Status>Enabled</Status></VersioningConfiguration>`,
++			`<VersioningConfiguration xmlns="urn:unknown"><Status>Enabled</Status></VersioningConfiguration>`,
++			`<!DOCTYPE VersioningConfiguration><VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration>`,
++			`<VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration><Other/>`,
++		} {
++			assertRejected(bucketVersioningConfig, "versioning", api.PutBucketVersioningHandler, []byte(invalid), nil)
++		}
++		rec = httptest.NewRecorder()
++		api.PutBucketVersioningHandler(rec, request(http.MethodPut, "versioning", []byte(`<VersioningConfiguration><Status>Suspended</Status></VersioningConfiguration>`), map[string]string{bucketConfigIfMatchHeader: bucketConfigRevision(bucketVersioningConfig, nil)}))
++		if rec.Code != 412 {
++			t.Fatalf("stale versioning PUT=%d %s", rec.Code, rec.Body.String())
++		}
++		if err := globalBucketMetadataSys.Update(bucket, objectLockConfig, enabledBucketObjectLockConfig); err != nil {
++			t.Fatal(err)
++		}
++		_, currentV, err := globalBucketMetadataSys.ReadConfigWithRevision(ctx, bucket, bucketVersioningConfig)
++		if err != nil {
++			t.Fatal(err)
++		}
++		// A lagging cache must not allow suspension after object lock committed.
++		globalBucketMetadataSys.Set(bucket, newBucketMetadata(bucket))
++		rec = httptest.NewRecorder()
++		api.PutBucketVersioningHandler(rec, request(http.MethodPut, "versioning", []byte(`<VersioningConfiguration><Status>Suspended</Status></VersioningConfiguration>`), map[string]string{bucketConfigIfMatchHeader: currentV}))
++		if rec.Code != 409 {
++			t.Fatalf("fresh transaction ignored object lock: %d %s", rec.Code, rec.Body.String())
++		}
++	}
++	// A legacy migration from any ordinary load/cache entry point must wait
++	// for the same transaction and must not later overwrite a newer CAS cache.
++	for _, loader := range []string{"cache-miss", "background", "peer-load"} {
++		legacy := policyData("legacy-" + loader)
++		if err := saveConfig(ctx, obj, pathJoin(bucketConfigPrefix, bucket, bucketPolicyConfig), legacy); err != nil {
++			t.Fatal(err)
++		}
++		globalBucketMetadataSys.Lock()
++		delete(globalBucketMetadataSys.metadataMap, bucket)
++		globalBucketMetadataSys.Unlock()
++		transaction := obj.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++		if _, err := transaction.GetLock(ctx, newDynamicTimeout(time.Second, time.Second)); err != nil {
++			t.Fatal(err)
++		}
++		loaded := make(chan error, 1)
++		go func() {
++			switch loader {
++			case "cache-miss":
++				_, err := globalBucketMetadataSys.GetConfig(bucket)
++				loaded <- err
++			case "background":
++				globalBucketMetadataSys.concurrentLoad(ctx, []BucketInfo{{Name: bucket}}, obj)
++				loaded <- nil
++			default:
++				_, err := globalBucketMetadataSys.loadConfig(ctx, obj, bucket)
++				loaded <- err
++			}
++		}()
++		select {
++		case err := <-loaded:
++			transaction.Unlock()
++			t.Fatalf("%s load bypassed transaction lock: %v", loader, err)
++		case <-time.After(30 * time.Millisecond):
++		}
++		changed := policyData("after-migration-" + loader)
++		saved := make(chan error, 1)
++		go func() {
++			saved <- globalBucketMetadataSys.UpdateWithContext(ctx, bucket, bucketPolicyConfig, changed, bucketConfigRevision(bucketPolicyConfig, legacy))
++		}()
++		transaction.Unlock()
++		if err := <-loaded; err != nil {
++			t.Fatal(err)
++		}
++		if err := <-saved; err != nil {
++			t.Fatal(err)
++		}
++		meta, err := loadBucketMetadata(ctx, obj, bucket)
++		if err != nil || !bytes.Equal(meta.PolicyConfigJSON, changed) {
++			t.Fatalf("%s migration overwrote CAS: %v", loader, err)
++		}
++		cached, err := globalBucketMetadataSys.Get(bucket)
++		if err != nil || !bytes.Equal(cached.PolicyConfigJSON, changed) {
++			t.Fatalf("%s load published stale cache: %v", loader, err)
++		}
++	}
++	// A leftover legacy file remains authoritative during the next load.
++	// Failed cleanup must therefore prevent later RMW commits rather than
++	// acknowledging an edit that a future migration can overwrite.
++	legacyKey := pathJoin(bucketConfigPrefix, bucket, bucketPolicyConfig)
++	legacy := policyData("cleanup-pending")
++	if err := saveConfig(ctx, obj, legacyKey, legacy); err != nil {
++		t.Fatal(err)
++	}
++	cleanupFailure := errors.New("fixture legacy cleanup failed")
++	setObjectLayer(p3LegacyDeleteFailure{ObjectLayer: obj, key: legacyKey, failure: cleanupFailure})
++	err = globalBucketMetadataSys.UpdateWithContext(ctx, bucket, bucketPolicyConfig, policyData("must-not-commit-before-cleanup"), "")
++	setObjectLayer(obj)
++	if !errors.Is(err, cleanupFailure) {
++		t.Fatalf("failed legacy cleanup allowed a later commit: %v", err)
++	}
++	meta = newBucketMetadata(bucket)
++	if err := meta.Load(ctx, obj, bucket); err != nil || !bytes.Equal(meta.PolicyConfigJSON, legacy) {
++		t.Fatalf("failed cleanup committed a later edit: %v", err)
++	}
++	if _, err := loadBucketMetadata(ctx, obj, bucket); err != nil {
++		t.Fatal(err)
++	}
++	changed := policyData("cleanup-confirmed")
++	if err := globalBucketMetadataSys.UpdateWithContext(ctx, bucket, bucketPolicyConfig, changed, bucketConfigRevision(bucketPolicyConfig, legacy)); err != nil {
++		t.Fatal(err)
++	}
++	meta, err = loadBucketMetadata(ctx, obj, bucket)
++	if err != nil || !bytes.Equal(meta.PolicyConfigJSON, changed) {
++		t.Fatalf("completed cleanup lost a conditional edit: %v", err)
++	}
++
++	// A remote peer shares the distributed namespace lock. Its reload must be
++	// able to acquire that lock before this mutation waits for the peer's ACK.
++	host, err := xnet.ParseHost("127.0.0.1:9000")
++	if err != nil {
++		t.Fatal(err)
++	}
++	peerReloaded := make(chan struct{}, 1)
++	peerTransport := p3PeerRoundTripper(func(r *http.Request) (*http.Response, error) {
++		lock := obj.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++		if _, err := lock.GetLock(r.Context(), newDynamicTimeout(100*time.Millisecond, time.Millisecond)); err != nil {
++			return nil, err
++		}
++		lock.Unlock()
++		select {
++		case peerReloaded <- struct{}{}:
++		default:
++		}
++		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(nil)), ContentLength: 0, Request: r}, nil
++	})
++	globalNotificationSys.peerClients = []*peerRESTClient{{host: host, restClient: rest.NewClient(&url.URL{Scheme: "http", Host: host.String(), Path: peerRESTPath}, peerTransport, func(string) string { return "fixture-token" })}}
++	peerCtx, peerCancel := context.WithTimeout(ctx, time.Second)
++	peerStart := time.Now()
++	err = globalBucketMetadataSys.UpdateWithContext(peerCtx, bucket, bucketPolicyConfig, policyData("peer-reload-committed"), "")
++	peerCancel()
++	globalNotificationSys.peerClients = nil
++	if err != nil || time.Since(peerStart) > 500*time.Millisecond {
++		t.Fatalf("peer reload waited for held transaction: %v duration=%v", err, time.Since(peerStart))
++	}
++	select {
++	case <-peerReloaded:
++	default:
++		t.Fatal("peer could not acquire shared transaction during reload")
++	}
++	// Cancellation interrupts waiting for the transaction lock without saving.
++	lock := obj.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++	if _, err := lock.GetLock(ctx, newDynamicTimeout(time.Second, time.Second)); err != nil {
++		t.Fatal(err)
++	}
++	deadline, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
++	start := time.Now()
++	err = globalBucketMetadataSys.UpdateWithContext(deadline, bucket, bucketPolicyConfig, policyData("must-not-save"), "")
++	cancel()
++	lock.Unlock()
++	if err == nil || time.Since(start) > time.Second || (!errors.Is(err, context.DeadlineExceeded) && !func() bool { var timeout OperationTimedOut; return errors.As(err, &timeout) }()) {
++		t.Fatalf("bounded transaction wait=%v duration=%v", err, time.Since(start))
++	}
++}
++
++func TestBucketConfigCapabilityAndCondition(t *testing.T) {
++	savedObj, savedGateway := newObjectLayerFn(), globalIsGateway
++	t.Cleanup(func() { setObjectLayer(savedObj); globalIsGateway = savedGateway })
++	globalIsGateway = false
++	setObjectLayer(&FSObjects{})
++	if !bucketConfigSupported(bucketPolicyConfig) || bucketConfigSupported(bucketVersioningConfig) {
++		t.Fatal("incorrect FS capability")
++	}
++	globalIsGateway = true
++	if bucketConfigSupported(bucketPolicyConfig) {
++		t.Fatal("gateway advertised CAS")
++	}
++	globalIsGateway = false
++	setObjectLayer(&erasureServerPools{serverPools: []*erasureSets{{}, {}}})
++	if bucketConfigSupported(bucketPolicyConfig) {
++		t.Fatal("multi-pool advertised CAS")
++	}
++	setObjectLayer(nil)
++	if bucketConfigSupported(bucketPolicyConfig) {
++		t.Fatal("unknown backend advertised CAS")
++	}
++}
++
++func TestBucketConfigSupportedDocumentEnvelopes(t *testing.T) {
++	// Standard XML declarations/namespaces, legacy lifecycle root names and
++	// repeated rules remain valid alongside the supported scalar fields.
++	versioning := `<?xml version="1.0" encoding="UTF-8"?><VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><!-- state --><Status>Enabled</Status></VersioningConfiguration>`
++	if !validConditionalBucketXML([]byte(versioning), bucketVersioningConfig) {
++		t.Fatal("standard versioning envelope was rejected")
++	}
++	const rule = `<Rule><ID>supported</ID><Status>Enabled</Status><Filter><Prefix>logs/</Prefix></Filter><Expiration><Date>2030-01-01T00:00:00Z</Date></Expiration><NoncurrentVersionExpiration><NoncurrentDays>7</NoncurrentDays></NoncurrentVersionExpiration></Rule>`
++	for _, root := range []string{"LifecycleConfiguration", "BucketLifecycleConfiguration"} {
++		doc := `<` + root + ` xmlns="http://s3.amazonaws.com/doc/2006-03-01/">` + rule + strings.Replace(rule, "supported", "other", 1) + `</` + root + `>`
++		if !validConditionalBucketXML([]byte(doc), bucketLifecycleConfig) {
++			t.Fatalf("supported lifecycle document rejected: %s", root)
++		}
++	}
++	for _, filter := range []string{`<Filter/>`, `<Filter><Prefix/></Filter>`} {
++		doc := `<LifecycleConfiguration><Rule><ID>empty-matches</ID><Status>Enabled</Status>` + filter + `<Expiration><Days>1</Days></Expiration></Rule></LifecycleConfiguration>`
++		if !validConditionalBucketXML([]byte(doc), bucketLifecycleConfig) {
++			t.Fatalf("supported empty filter/prefix/tag value was rejected: %s", filter)
++		}
++	}
++	policy := `{"Id":"standard-id","Version":"2012-10-17","Statement":[{"Sid":"read","Effect":"Allow","Principal":{"AWS":"*"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::example/*","Condition":{"StringEquals":{"s3:prefix":["logs/"]}}}]}`
++	if !validConditionalBucketPolicy([]byte(policy)) {
++		t.Fatal("supported JSON policy envelope was rejected")
++	}
++}
++
++func TestBucketConfigBaseLifecycleBoundary(t *testing.T) {
++	for _, status := range []string{"Enabled", "Disabled"} {
++		for _, action := range []string{
++			`<Transition><Days>2</Days><StorageClass>archive</StorageClass></Transition>`,
++			`<NoncurrentVersionTransition><NoncurrentDays>1</NoncurrentDays><StorageClass>archive</StorageClass></NoncurrentVersionTransition>`,
++			`<Expiration><ExpiredObjectDeleteMarker>true</ExpiredObjectDeleteMarker></Expiration>`,
++		} {
++			doc := `<LifecycleConfiguration><Rule><Filter><Prefix>logs/</Prefix></Filter><Status>` + status + `</Status>` + action + `</Rule></LifecycleConfiguration>`
++			if validConditionalBucketXML([]byte(doc), bucketLifecycleConfig) {
++				t.Fatalf("base CAS accepted a storage runtime field: %s", doc)
++			}
++		}
++	}
++	for _, filter := range []string{
++		`<Tag><Key>environment</Key><Value>prod</Value></Tag>`,
++		`<And><Prefix>logs/</Prefix><Tag><Key>environment</Key><Value>prod</Value></Tag></And>`,
++	} {
++		doc := `<LifecycleConfiguration><Rule><Filter>` + filter + `</Filter><Status>Enabled</Status><Expiration><Days>2</Days></Expiration></Rule></LifecycleConfiguration>`
++		if validConditionalBucketXML([]byte(doc), bucketLifecycleConfig) {
++			t.Fatalf("base CAS accepted decoded tag runtime semantics: %s", doc)
++		}
++	}
++}
+diff --git a/cmd/bucket-config-replication_test.go b/cmd/bucket-config-replication_test.go
+new file mode 100644
+index 0000000..ea8c2e6
+--- /dev/null
++++ b/cmd/bucket-config-replication_test.go
+@@ -0,0 +1,85 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"testing"
++
++	"github.com/soulteary/otterio/pkg/bucket/replication"
++)
++
++func TestBucketConfigReplicationVersioningTransaction(t *testing.T) {
++	ExecObjectLayerTest(t, func(obj ObjectLayer, instance string, t TestErrHandler) {
++		if instance != ErasureTestStr {
++			return
++		}
++		savedObject, savedMetadata, savedNotify := newObjectLayerFn(), globalBucketMetadataSys, globalNotificationSys
++		defer func() {
++			setObjectLayer(savedObject)
++			globalBucketMetadataSys, globalNotificationSys = savedMetadata, savedNotify
++		}()
++		setObjectLayer(obj)
++		globalBucketMetadataSys, globalNotificationSys = NewBucketMetadataSys(), &NotificationSys{}
++		ctx := context.Background()
++		const bucket = "replication-transaction"
++		if err := obj.MakeBucketWithLocation(ctx, bucket, BucketOptions{}); err != nil {
++			t.Fatal(err)
++		}
++		enabled := []byte(`<VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration>`)
++		suspended := []byte(`<VersioningConfiguration><Status>Suspended</Status></VersioningConfiguration>`)
++		replicationData := []byte(`<ReplicationConfiguration><Role>arn:aws:iam::AcctID:role/role-name</Role><Rule><Status>Enabled</Status><Priority>1</Priority><DeleteMarkerReplication><Status>Disabled</Status></DeleteMarkerReplication><DeleteReplication><Status>Disabled</Status></DeleteReplication><Prefix>logs/</Prefix><Destination><Bucket>arn:aws:s3:::destinationbucket</Bucket></Destination></Rule></ReplicationConfiguration>`)
++		if config, err := replication.ParseConfig(bytes.NewReader(replicationData)); err != nil || config.Validate(bucket, false) != nil {
++			t.Fatalf("invalid replication fixture: %v", err)
++		}
++		if err := globalBucketMetadataSys.Update(bucket, bucketVersioningConfig, enabled); err != nil {
++			t.Fatal(err)
++		}
++		config, err := globalBucketMetadataSys.GetVersioningConfig(bucket)
++		if err != nil || !config.Enabled() {
++			t.Fatal("replication's pre-body check did not observe Enabled")
++		}
++		// The replication handler has passed its versioning check, but is
++		// delayed by its body/destination validation. A CAS suspension wins.
++		allowCommit := make(chan struct{})
++		finished := make(chan error, 1)
++		go func() {
++			<-allowCommit
++			finished <- globalBucketMetadataSys.Update(bucket, bucketReplicationConfig, replicationData)
++		}()
++		if err := globalBucketMetadataSys.UpdateWithContext(ctx, bucket, bucketVersioningConfig, suspended, bucketConfigRevision(bucketVersioningConfig, enabled)); err != nil {
++			close(allowCommit)
++			<-finished
++			t.Fatal(err)
++		}
++		close(allowCommit)
++		if err := <-finished; !errors.Is(err, errBucketConfigInvalidState) {
++			t.Fatalf("replication committed after CAS suspension: %v", err)
++		}
++		meta, err := loadBucketMetadata(ctx, obj, bucket)
++		if err != nil || !bytes.Equal(meta.VersioningConfigXML, suspended) || len(meta.ReplicationConfigXML) != 0 {
++			t.Fatalf("rejected replication changed persistent state: %v", err)
++		}
++		if err := globalBucketMetadataSys.Update(bucket, bucketReplicationConfig, nil); err != nil {
++			t.Fatalf("replication deletion was rejected while suspended: %v", err)
++		}
++		if err := globalBucketMetadataSys.UpdateWithContext(ctx, bucket, bucketVersioningConfig, enabled, bucketConfigRevision(bucketVersioningConfig, suspended)); err != nil {
++			t.Fatal(err)
++		}
++		if err := globalBucketMetadataSys.Update(bucket, bucketReplicationConfig, replicationData); err != nil {
++			t.Fatalf("replication rejected with Enabled: %v", err)
++		}
++		if err := globalBucketMetadataSys.UpdateWithContext(ctx, bucket, bucketVersioningConfig, suspended, bucketConfigRevision(bucketVersioningConfig, enabled)); !errors.Is(err, errBucketConfigInvalidState) {
++			t.Fatalf("suspension bypassed persisted replication: %v", err)
++		}
++		meta, err = loadBucketMetadata(ctx, obj, bucket)
++		if err != nil || !bytes.Equal(meta.VersioningConfigXML, enabled) || !bytes.Equal(meta.ReplicationConfigXML, replicationData) {
++			t.Fatalf("rejected suspension changed configuration: %v", err)
++		}
++		if err := globalBucketMetadataSys.Update(bucket, bucketReplicationConfig, nil); err != nil {
++			t.Fatal(err)
++		}
++	})
++}
+diff --git a/cmd/bucket-config-validation.go b/cmd/bucket-config-validation.go
+new file mode 100644
+index 0000000..9fac25d
+--- /dev/null
++++ b/cmd/bucket-config-validation.go
+@@ -0,0 +1,324 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"encoding/hex"
++	"encoding/json"
++	"encoding/xml"
++	"errors"
++	"io"
++	"net/http"
++	"strconv"
++	"strings"
++
++	"github.com/soulteary/otterio/pkg/bucket/lifecycle"
++)
++
++// CAS edits must describe only behavior implemented by this server. Legacy
++// parsers can discard unknown fields, and a single Decode may not consume the
++// body far enough to verify its digest. Keep legacy unconditional semantics.
++func prepareConditionalBucketConfiguration(ctx context.Context, w http.ResponseWriter, r *http.Request, file string) bool {
++	if len(r.Header.Values(bucketConfigIfMatchHeader)) == 0 {
++		return true
++	}
++	if _, code := bucketConfigCondition(r, file); code != ErrNone {
++		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(code), r.URL, guessIsBrowserReq(r))
++		return false
++	}
++	fail := func(code APIErrorCode) bool {
++		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(code), r.URL, guessIsBrowserReq(r))
++		return false
++	}
++	shaValues := r.Header.Values("X-Amz-Content-Sha256")
++	if len(shaValues) != 1 || len(shaValues[0]) != 64 {
++		return fail(ErrContentSHA256Mismatch)
++	}
++	if _, err := hex.DecodeString(shaValues[0]); err != nil {
++		return fail(ErrContentSHA256Mismatch)
++	}
++	limit := int64(maxBucketVersioningConfigSize)
++	if file == bucketPolicyConfig {
++		limit = int64(maxBucketPolicySize)
++	}
++	if r.ContentLength < 0 {
++		return fail(ErrMissingContentLength)
++	}
++	if r.ContentLength > limit {
++		return fail(ErrEntityTooLarge)
++	}
++	if r.Method == http.MethodDelete && r.ContentLength != 0 {
++		return fail(ErrInvalidRequest)
++	}
++	data, err := readConfigurationBody(ctx, r, limit)
++	if err != nil {
++		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
++		return false
++	}
++	if int64(len(data)) > limit {
++		return fail(ErrEntityTooLarge)
++	}
++	if int64(len(data)) != r.ContentLength {
++		return fail(ErrIncompleteBody)
++	}
++	if r.Method != http.MethodDelete {
++		if file == bucketPolicyConfig {
++			if !validConditionalBucketPolicy(data) {
++				return fail(ErrMalformedPolicy)
++			}
++		} else if !validConditionalBucketXML(data, file) {
++			return fail(ErrMalformedXML)
++		}
++	}
++	r.Body = io.NopCloser(bytes.NewReader(data))
++	return true
++}
++
++// Decode a bounded JSON tree while rejecting duplicate keys, including keys
++// inside conditions. encoding/json otherwise silently keeps the last value.
++func decodeUniqueBucketJSON(d *json.Decoder, depth int) (interface{}, error) {
++	if depth > 32 {
++		return nil, errors.New("policy nesting exceeds limit")
++	}
++	token, err := d.Token()
++	if err != nil {
++		return nil, err
++	}
++	delim, composite := token.(json.Delim)
++	if !composite {
++		return token, nil
++	}
++	switch delim {
++	case '{':
++		result := make(map[string]interface{})
++		for d.More() {
++			keyToken, err := d.Token()
++			if err != nil {
++				return nil, err
++			}
++			key, ok := keyToken.(string)
++			if !ok {
++				return nil, errors.New("invalid policy key")
++			}
++			if _, duplicate := result[key]; duplicate {
++				return nil, errors.New("duplicate policy key")
++			}
++			value, err := decodeUniqueBucketJSON(d, depth+1)
++			if err != nil {
++				return nil, err
++			}
++			result[key] = value
++		}
++		if end, err := d.Token(); err != nil || end != json.Delim('}') {
++			return nil, errors.New("invalid policy object")
++		}
++		return result, nil
++	case '[':
++		result := make([]interface{}, 0)
++		for d.More() {
++			value, err := decodeUniqueBucketJSON(d, depth+1)
++			if err != nil {
++				return nil, err
++			}
++			result = append(result, value)
++		}
++		if end, err := d.Token(); err != nil || end != json.Delim(']') {
++			return nil, errors.New("invalid policy array")
++		}
++		return result, nil
++	default:
++		return nil, errors.New("invalid policy delimiter")
++	}
++}
++
++func bucketJSONKeys(object map[string]interface{}, allowed ...string) bool {
++	for key := range object {
++		if !contains(allowed, key) {
++			return false
++		}
++	}
++	return true
++}
++
++func validConditionalBucketPolicy(data []byte) bool {
++	if !validConfigurationJSONEncoding(data) {
++		return false
++	}
++	d := json.NewDecoder(bytes.NewReader(data))
++	d.UseNumber()
++	value, err := decodeUniqueBucketJSON(d, 0)
++	if err != nil {
++		return false
++	}
++	if _, err := d.Token(); err != io.EOF {
++		return false
++	}
++	policy, ok := value.(map[string]interface{})
++	if !ok || !bucketJSONKeys(policy, "ID", "Id", "Version", "Statement") {
++		return false
++	}
++	if _, upper := policy["ID"]; upper {
++		if _, standard := policy["Id"]; standard {
++			return false
++		}
++	}
++	statements, ok := policy["Statement"].([]interface{})
++	if !ok {
++		return false
++	}
++	for _, value := range statements {
++		statement, ok := value.(map[string]interface{})
++		if !ok || !bucketJSONKeys(statement, "Sid", "Effect", "Principal", "Action", "Resource", "Condition") {
++			return false
++		}
++		if principal, object := statement["Principal"].(map[string]interface{}); object && !bucketJSONKeys(principal, "AWS") {
++			return false
++		}
++		if value, present := statement["Condition"]; present {
++			conditions, ok := value.(map[string]interface{})
++			if !ok || len(conditions) == 0 {
++				return false
++			}
++			for _, value := range conditions {
++				arguments, ok := value.(map[string]interface{})
++				if !ok || len(arguments) == 0 {
++					return false
++				}
++			}
++		}
++	}
++	return true
++}
++
++// Values indicate whether a child can repeat. A missing parent is a scalar;
++// nested elements and attributes on scalar values must never be discarded.
++// The management base does not install the lifecycle storage runtime. Its CAS
++// editor must not acknowledge transitions, decoded tag filters or delete-marker
++// scanning semantics that the pinned runtime cannot guarantee. Existing documents
++// remain readable; ordinary S3 requests without the condition keep native parsing.
++var conditionalLifecycleXML = map[string]map[string]bool{
++	"LifecycleConfiguration":       {"Rule": true},
++	"BucketLifecycleConfiguration": {"Rule": true},
++	"Rule": {"ID": false, "Status": false, "Filter": false, "Prefix": false,
++		"Expiration": false, "NoncurrentVersionExpiration": false},
++	"Filter":                      {"Prefix": false},
++	"Expiration":                  {"Days": false, "Date": false},
++	"NoncurrentVersionExpiration": {"NoncurrentDays": false},
++}
++
++func validConditionalBucketXML(data []byte, file string) bool {
++	const namespace = "http://s3.amazonaws.com/doc/2006-03-01/"
++	schema := conditionalLifecycleXML
++	if file == bucketVersioningConfig {
++		schema = map[string]map[string]bool{"VersioningConfiguration": {"Status": false}}
++	}
++	type frame struct {
++		name         string
++		seen         map[string]bool
++		values       map[string]string
++		text         []byte
++		tagged       bool
++		deleteMarker bool
++	}
++	var stack []frame
++	rootSeen, rootClosed, declaration := false, false, false
++	d := xml.NewDecoder(bytes.NewReader(data))
++	for {
++		token, err := d.Token()
++		if err == io.EOF {
++			return rootSeen && rootClosed && len(stack) == 0
++		}
++		if err != nil {
++			return false
++		}
++		switch token := token.(type) {
++		case xml.StartElement:
++			if rootClosed || (token.Name.Space != "" && token.Name.Space != namespace) {
++				return false
++			}
++			root := len(stack) == 0
++			if root {
++				if rootSeen || (file == bucketVersioningConfig && token.Name.Local != "VersioningConfiguration") ||
++					(file == bucketLifecycleConfig && token.Name.Local != "LifecycleConfiguration" && token.Name.Local != "BucketLifecycleConfiguration") {
++					return false
++				}
++				rootSeen = true
++			} else {
++				parent := &stack[len(stack)-1]
++				repeat, allowed := schema[parent.name][token.Name.Local]
++				if !allowed || (parent.seen[token.Name.Local] && !repeat) {
++					return false
++				}
++				parent.seen[token.Name.Local] = true
++			}
++			for _, attr := range token.Attr {
++				if !root || attr.Name.Space != "" || attr.Name.Local != "xmlns" || (attr.Value != "" && attr.Value != namespace) {
++					return false
++				}
++			}
++			if len(token.Attr) > 1 {
++				return false
++			}
++			stack = append(stack, frame{name: token.Name.Local, seen: make(map[string]bool), values: make(map[string]string)})
++		case xml.EndElement:
++			if len(stack) == 0 {
++				return false
++			}
++			completed := stack[len(stack)-1]
++			switch completed.name {
++			case "Filter":
++				if len(completed.seen) > 1 {
++					return false
++				}
++			case "And":
++				if !completed.seen["Prefix"] || !completed.seen["Tag"] {
++					return false
++				}
++			case "Tag":
++				tag := lifecycle.Tag{Key: completed.values["Key"], Value: completed.values["Value"]}
++				if tag.Validate() != nil {
++					return false
++				}
++				completed.tagged = true
++			case "Expiration", "Transition":
++				if completed.seen["Days"] && completed.seen["Date"] {
++					return false
++				}
++				completed.deleteMarker, _ = strconv.ParseBool(strings.TrimSpace(completed.values["ExpiredObjectDeleteMarker"]))
++			case "Rule":
++				// Delete markers have no object tags. Reject a new configuration
++				// that promises a tag restriction on their expiration.
++				if completed.tagged && completed.deleteMarker {
++					return false
++				}
++			}
++			stack = stack[:len(stack)-1]
++			if len(stack) == 0 {
++				rootClosed = true
++			} else if schema[completed.name] == nil {
++				stack[len(stack)-1].values[completed.name] = string(completed.text)
++			}
++			if len(stack) != 0 {
++				parent := &stack[len(stack)-1]
++				parent.tagged = parent.tagged || completed.tagged
++				parent.deleteMarker = parent.deleteMarker || completed.deleteMarker
++			}
++		case xml.CharData:
++			if (len(stack) == 0 || schema[stack[len(stack)-1].name] != nil) && strings.TrimSpace(string(token)) != "" {
++				return false
++			}
++			if len(stack) != 0 && schema[stack[len(stack)-1].name] == nil {
++				stack[len(stack)-1].text = append(stack[len(stack)-1].text, token...)
++			}
++		case xml.Directive:
++			return false
++		case xml.ProcInst:
++			if token.Target != "xml" || rootSeen || declaration {
++				return false
++			}
++			declaration = true
++		}
++	}
++}
+diff --git a/cmd/bucket-handlers.go b/cmd/bucket-handlers.go
+index 2effd75..a51a0ec 100644
+--- a/cmd/bucket-handlers.go
++++ b/cmd/bucket-handlers.go
+@@ -23,6 +23,7 @@ import (
+ 	"encoding/base64"
+ 	"encoding/json"
+ 	"encoding/xml"
++	"errors"
+ 	"fmt"
+ 	"io"
+ 	"net/http"
+@@ -1526,6 +1527,10 @@ func (api objectAPIHandlers) PutBucketReplicationConfigHandler(w http.ResponseWr
+ 		return
+ 	}
+ 	if err = globalBucketMetadataSys.Update(bucket, bucketReplicationConfig, configData); err != nil {
++		if errors.Is(err, errBucketConfigInvalidState) {
++			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrReplicationNeedsVersioningError), r.URL, guessIsBrowserReq(r))
++			return
++		}
+ 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+ 		return
+ 	}
+diff --git a/cmd/bucket-lifecycle-handlers.go b/cmd/bucket-lifecycle-handlers.go
+index 6074522..cc0db35 100644
+--- a/cmd/bucket-lifecycle-handlers.go
++++ b/cmd/bucket-lifecycle-handlers.go
+@@ -65,6 +65,9 @@ func (api objectAPIHandlers) PutBucketLifecycleHandler(w http.ResponseWriter, r
+ 		return
+ 	}
+ 
++	if !prepareConditionalBucketConfiguration(ctx, w, r, bucketLifecycleConfig) {
++		return
++	}
+ 	bucketLifecycle, err := lifecycle.ParseLifecycleConfig(io.LimitReader(r.Body, r.ContentLength))
+ 	if err != nil {
+ 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+@@ -89,8 +92,7 @@ func (api objectAPIHandlers) PutBucketLifecycleHandler(w http.ResponseWriter, r
+ 		return
+ 	}
+ 
+-	if err = globalBucketMetadataSys.Update(bucket, bucketLifecycleConfig, configData); err != nil {
+-		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
++	if !updateBucketConfiguration(ctx, w, r, bucket, bucketLifecycleConfig, configData) {
+ 		return
+ 	}
+ 
+@@ -123,6 +125,10 @@ func (api objectAPIHandlers) GetBucketLifecycleHandler(w http.ResponseWriter, r
+ 		return
+ 	}
+ 
++	if writeFreshBucketConfiguration(ctx, w, r, bucket, bucketLifecycleConfig) {
++		return
++	}
++
+ 	config, err := globalBucketMetadataSys.GetLifecycleConfig(bucket)
+ 	if err != nil {
+ 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+@@ -164,8 +170,10 @@ func (api objectAPIHandlers) DeleteBucketLifecycleHandler(w http.ResponseWriter,
+ 		return
+ 	}
+ 
+-	if err := globalBucketMetadataSys.Update(bucket, bucketLifecycleConfig, nil); err != nil {
+-		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
++	if !prepareConditionalBucketConfiguration(ctx, w, r, bucketLifecycleConfig) {
++		return
++	}
++	if !updateBucketConfiguration(ctx, w, r, bucket, bucketLifecycleConfig, nil) {
+ 		return
+ 	}
+ 
+diff --git a/cmd/bucket-metadata-sys.go b/cmd/bucket-metadata-sys.go
+index 30e2a7d..b00ee3f 100644
+--- a/cmd/bucket-metadata-sys.go
++++ b/cmd/bucket-metadata-sys.go
+@@ -22,6 +22,7 @@ import (
+ 	"errors"
+ 	"fmt"
+ 	"sync"
++	"time"
+ 
+ 	"github.com/soulteary/otterio-sdk/v7/pkg/tags"
+ 	"github.com/soulteary/otterio/cmd/logger"
+@@ -73,59 +74,75 @@ func (sys *BucketMetadataSys) Set(bucket string, meta BucketMetadata) {
+ // Update update bucket metadata for the specified config file.
+ // The configData data should not be modified after being sent here.
+ func (sys *BucketMetadataSys) Update(bucket string, configFile string, configData []byte) error {
++	return sys.update(GlobalContext, bucket, configFile, configData, "", nil)
++}
++
++// UpdateWithContext also supports an optional revision checked inside the same
++// transaction as persistence. An empty revision preserves legacy semantics.
++func (sys *BucketMetadataSys) UpdateWithContext(ctx context.Context, bucket, configFile string, configData []byte, expected string) error {
++	return sys.update(ctx, bucket, configFile, configData, expected, nil)
++}
++
++func (sys *BucketMetadataSys) update(ctx context.Context, bucket string, configFile string, configData []byte, expected string, commit *bucketConfigCommit) error {
++	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
++	defer cancel()
+ 	objAPI := newObjectLayerFn()
+ 	if objAPI == nil {
+ 		return errServerNotInitialized
+ 	}
+ 
++	if expected != "" && !bucketConfigSupported(configFile) {
++		return NotImplemented{}
++	}
++
+ 	if globalIsGateway {
+ 		// This code is needed only for gateway implementations.
+ 		switch configFile {
+ 		case bucketSSEConfig:
+ 			if globalGatewayName == NASBackendGateway {
+-				meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
++				meta, err := loadBucketMetadataUnlocked(ctx, objAPI, bucket)
+ 				if err != nil {
+ 					return err
+ 				}
+ 				meta.EncryptionConfigXML = configData
+-				return meta.Save(GlobalContext, objAPI)
++				return meta.Save(ctx, objAPI)
+ 			}
+ 		case bucketLifecycleConfig:
+ 			if globalGatewayName == NASBackendGateway {
+-				meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
++				meta, err := loadBucketMetadataUnlocked(ctx, objAPI, bucket)
+ 				if err != nil {
+ 					return err
+ 				}
+ 				meta.LifecycleConfigXML = configData
+-				return meta.Save(GlobalContext, objAPI)
++				return meta.Save(ctx, objAPI)
+ 			}
+ 		case bucketTaggingConfig:
+ 			if globalGatewayName == NASBackendGateway {
+-				meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
++				meta, err := loadBucketMetadataUnlocked(ctx, objAPI, bucket)
+ 				if err != nil {
+ 					return err
+ 				}
+ 				meta.TaggingConfigXML = configData
+-				return meta.Save(GlobalContext, objAPI)
++				return meta.Save(ctx, objAPI)
+ 			}
+ 		case bucketNotificationConfig:
+ 			if globalGatewayName == NASBackendGateway {
+-				meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
++				meta, err := loadBucketMetadataUnlocked(ctx, objAPI, bucket)
+ 				if err != nil {
+ 					return err
+ 				}
+ 				meta.NotificationConfigXML = configData
+-				return meta.Save(GlobalContext, objAPI)
++				return meta.Save(ctx, objAPI)
+ 			}
+ 		case bucketPolicyConfig:
+ 			if configData == nil {
+-				return objAPI.DeleteBucketPolicy(GlobalContext, bucket)
++				return objAPI.DeleteBucketPolicy(ctx, bucket)
+ 			}
+ 			config, err := policy.ParseConfig(bytes.NewReader(configData), bucket)
+ 			if err != nil {
+ 				return err
+ 			}
+-			return objAPI.SetBucketPolicy(GlobalContext, bucket, config)
++			return objAPI.SetBucketPolicy(ctx, bucket, config)
+ 		}
+ 		return NotImplemented{}
+ 	}
+@@ -134,11 +151,32 @@ func (sys *BucketMetadataSys) Update(bucket string, configFile string, configDat
+ 		return errInvalidArgument
+ 	}
+ 
+-	meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
++	// Serialize the complete metadata read/modify/write, including updates to
++	// different settings. This key differs from the metadata object's own lock.
++	lock := objAPI.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++	ctx, err := lock.GetLock(ctx, newDynamicTimeout(10*time.Second, time.Second))
++	if err != nil {
++		return err
++	}
++	locked := true
++	defer func() {
++		if locked {
++			lock.Unlock()
++		}
++	}()
++	if _, err := objAPI.GetBucketInfo(ctx, bucket); err != nil {
++		return err
++	}
++
++	meta, err := loadBucketMetadataUnlocked(ctx, objAPI, bucket)
+ 	if err != nil {
+ 		return err
+ 	}
+ 
++	if expected != "" && bucketConfigRevision(configFile, bucketConfigBytes(meta, configFile)) != expected {
++		return PreConditionFailed{}
++	}
++
+ 	switch configFile {
+ 	case bucketPolicyConfig:
+ 		meta.PolicyConfigJSON = configData
+@@ -153,19 +191,34 @@ func (sys *BucketMetadataSys) Update(bucket string, configFile string, configDat
+ 	case bucketQuotaConfigFile:
+ 		meta.QuotaConfigJSON = configData
+ 	case objectLockConfig:
+-		if !globalIsErasure && !globalIsDistErasure {
++		if !globalIsErasure && !globalIsDistErasure && !bucketMetadataErasureBackend(objAPI) {
+ 			return NotImplemented{}
+ 		}
+ 		meta.ObjectLockConfigXML = configData
+ 	case bucketVersioningConfig:
+-		if !globalIsErasure && !globalIsDistErasure {
++		if !globalIsErasure && !globalIsDistErasure && !bucketMetadataErasureBackend(objAPI) {
+ 			return NotImplemented{}
+ 		}
++		requested, err := versioning.ParseConfig(bytes.NewReader(configData))
++		if err != nil {
++			return err
++		}
++		// A peer's cache may lag a different setting. Recheck dependencies in
++		// the same fresh transaction that will commit the versioning document.
++		if requested.Suspended() && ((meta.objectLockConfig != nil && meta.objectLockConfig.ObjectLockEnabled == "Enabled") || meta.replicationConfig != nil) {
++			return errBucketConfigInvalidState
++		}
+ 		meta.VersioningConfigXML = configData
+ 	case bucketReplicationConfig:
+-		if !globalIsErasure && !globalIsDistErasure {
++		if !globalIsErasure && !globalIsDistErasure && !bucketMetadataErasureBackend(objAPI) {
+ 			return NotImplemented{}
+ 		}
++		// Replication's handler checks versioning before reading the body and
++		// contacting its destination. A concurrent suspension may have won
++		// since that check, so validate the fresh state inside this transaction.
++		if len(configData) != 0 && (meta.versioningConfig == nil || !meta.versioningConfig.Enabled()) {
++			return errBucketConfigInvalidState
++		}
+ 		meta.ReplicationConfigXML = configData
+ 	case bucketTargetsFile:
+ 		meta.BucketTargetsConfigJSON, meta.BucketTargetsConfigMetaJSON, err = encryptBucketMetadata(meta.Name, configData, bucketTargetsCtx(meta.Name))
+@@ -176,12 +229,22 @@ func (sys *BucketMetadataSys) Update(bucket string, configFile string, configDat
+ 		return fmt.Errorf("Unknown bucket %s metadata update requested %s", bucket, configFile)
+ 	}
+ 
+-	if err := meta.Save(GlobalContext, objAPI); err != nil {
++	if err := meta.Save(ctx, objAPI); err != nil {
+ 		return err
+ 	}
+ 
++	if commit != nil {
++		data := bucketConfigBytes(meta, configFile)
++		commit.revision, commit.exists = bucketConfigRevision(configFile, data), len(data) != 0
++	}
+ 	sys.Set(bucket, meta)
+-	globalNotificationSys.LoadBucketMetadata(GlobalContext, bucket)
++	// A peer reload acquires this same distributed lock. Release it before
++	// waiting for peer acknowledgments. Persistence/cache/ACK are captured.
++	lock.Unlock()
++	locked = false
++	if globalNotificationSys != nil {
++		globalNotificationSys.LoadBucketMetadata(ctx, bucket)
++	}
+ 
+ 	return nil
+ }
+@@ -409,14 +472,31 @@ func (sys *BucketMetadataSys) GetConfig(bucket string) (BucketMetadata, error) {
+ 	if ok {
+ 		return meta, nil
+ 	}
+-	meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
+-	if err != nil {
+-		return meta, err
++	return sys.loadConfig(GlobalContext, objAPI, bucket)
++}
++
++// Loading can write migrations. Publish the resulting cache before releasing
++// the transaction, so an older load cannot overwrite a newer committed cache.
++func (sys *BucketMetadataSys) loadConfig(ctx context.Context, obj ObjectLayer, bucket string) (BucketMetadata, error) {
++	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
++	defer cancel()
++	if !globalIsGateway && bucketMetadataTransactionSupported(obj) {
++		lock := obj.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++		locked, err := lock.GetLock(ctx, newDynamicTimeout(10*time.Second, time.Second))
++		if err != nil {
++			return newBucketMetadata(bucket), err
++		}
++		ctx = locked
++		defer lock.Unlock()
++		if _, err := obj.GetBucketInfo(ctx, bucket); err != nil {
++			return newBucketMetadata(bucket), err
++		}
+ 	}
+-	sys.Lock()
+-	sys.metadataMap[bucket] = meta
+-	sys.Unlock()
+-	return meta, nil
++	meta, err := loadBucketMetadataUnlocked(ctx, obj, bucket)
++	if err == nil {
++		sys.Set(bucket, meta)
++	}
++	return meta, err
+ }
+ 
+ // Init - initializes bucket metadata system for all buckets.
+@@ -446,13 +526,10 @@ func (sys *BucketMetadataSys) concurrentLoad(ctx context.Context, buckets []Buck
+ 				// Ensure heal opts for bucket metadata be deep healed all the time.
+ 				ScanMode: madmin.HealDeepScan,
+ 			})
+-			meta, err := loadBucketMetadata(ctx, objAPI, buckets[index].Name)
++			_, err := sys.loadConfig(ctx, objAPI, buckets[index].Name)
+ 			if err != nil {
+ 				return err
+ 			}
+-			sys.Lock()
+-			sys.metadataMap[buckets[index].Name] = meta
+-			sys.Unlock()
+ 			return nil
+ 		}, index)
+ 	}
+diff --git a/cmd/bucket-metadata.go b/cmd/bucket-metadata.go
+index cbb4757..2ba51ec 100644
+--- a/cmd/bucket-metadata.go
++++ b/cmd/bucket-metadata.go
+@@ -146,6 +146,25 @@ func (b *BucketMetadata) Load(ctx context.Context, api ObjectLayer, name string)
+ 
+ // loadBucketMetadata loads and migrates to bucket metadata.
+ func loadBucketMetadata(ctx context.Context, objectAPI ObjectLayer, bucket string) (BucketMetadata, error) {
++	// Loading can migrate legacy files and encrypt targets, both of which
++	// persist the complete metadata object. Serialize those writes with CAS.
++	if !globalIsGateway && bucketMetadataTransactionSupported(objectAPI) {
++		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
++		defer cancel()
++		lock := objectAPI.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++		ctx, err := lock.GetLock(ctx, newDynamicTimeout(10*time.Second, time.Second))
++		if err != nil {
++			return newBucketMetadata(bucket), err
++		}
++		defer lock.Unlock()
++		return loadBucketMetadataUnlocked(ctx, objectAPI, bucket)
++	}
++	return loadBucketMetadataUnlocked(ctx, objectAPI, bucket)
++}
++
++// Caller owns the transaction lock for native FS/erasure. Gateway loads retain
++// their existing backend-specific behavior and never advertise CAS.
++func loadBucketMetadataUnlocked(ctx context.Context, objectAPI ObjectLayer, bucket string) (BucketMetadata, error) {
+ 	b := newBucketMetadata(bucket)
+ 	err := b.Load(ctx, objectAPI, b.Name)
+ 	if err != nil && !errors.Is(err, errConfigNotFound) {
+@@ -339,7 +358,10 @@ func (b *BucketMetadata) convertLegacyConfigs(ctx context.Context, objectAPI Obj
+ 	for legacyFile := range configs {
+ 		configFile := path.Join(bucketConfigPrefix, b.Name, legacyFile)
+ 		if err := deleteConfig(ctx, objectAPI, configFile); err != nil && !errors.Is(err, errConfigNotFound) {
+-			logger.LogIf(ctx, err)
++			// A future load would import this leftover legacy file again.
++			// Do not let a following RMW commit acknowledge settings that the
++			// next migration could replace with the old document.
++			return err
+ 		}
+ 	}
+ 
+diff --git a/cmd/bucket-policy-handlers.go b/cmd/bucket-policy-handlers.go
+index d91a610..22d835d 100644
+--- a/cmd/bucket-policy-handlers.go
++++ b/cmd/bucket-policy-handlers.go
+@@ -73,6 +73,9 @@ func (api objectAPIHandlers) PutBucketPolicyHandler(w http.ResponseWriter, r *ht
+ 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrPolicyTooLarge), r.URL, guessIsBrowserReq(r))
+ 		return
+ 	}
++	if !prepareConditionalBucketConfiguration(ctx, w, r, bucketPolicyConfig) {
++		return
++	}
+ 
+ 	bucketPolicy, err := policy.ParseConfig(io.LimitReader(r.Body, r.ContentLength), bucket)
+ 	if err != nil {
+@@ -92,8 +95,7 @@ func (api objectAPIHandlers) PutBucketPolicyHandler(w http.ResponseWriter, r *ht
+ 		return
+ 	}
+ 
+-	if err = globalBucketMetadataSys.Update(bucket, bucketPolicyConfig, configData); err != nil {
+-		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
++	if !updateBucketConfiguration(ctx, w, r, bucket, bucketPolicyConfig, configData) {
+ 		return
+ 	}
+ 
+@@ -126,8 +128,10 @@ func (api objectAPIHandlers) DeleteBucketPolicyHandler(w http.ResponseWriter, r
+ 		return
+ 	}
+ 
+-	if err := globalBucketMetadataSys.Update(bucket, bucketPolicyConfig, nil); err != nil {
+-		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
++	if !prepareConditionalBucketConfiguration(ctx, w, r, bucketPolicyConfig) {
++		return
++	}
++	if !updateBucketConfiguration(ctx, w, r, bucket, bucketPolicyConfig, nil) {
+ 		return
+ 	}
+ 
+@@ -160,6 +164,10 @@ func (api objectAPIHandlers) GetBucketPolicyHandler(w http.ResponseWriter, r *ht
+ 		return
+ 	}
+ 
++	if writeFreshBucketConfiguration(ctx, w, r, bucket, bucketPolicyConfig) {
++		return
++	}
++
+ 	// Read bucket access policy.
+ 	config, err := globalPolicySys.Get(bucket)
+ 	if err != nil {
+diff --git a/cmd/bucket-versioning-handler.go b/cmd/bucket-versioning-handler.go
+index e48af1b..1ad0fbb 100644
+--- a/cmd/bucket-versioning-handler.go
++++ b/cmd/bucket-versioning-handler.go
+@@ -55,6 +55,9 @@ func (api objectAPIHandlers) PutBucketVersioningHandler(w http.ResponseWriter, r
+ 		return
+ 	}
+ 
++	if !prepareConditionalBucketConfiguration(ctx, w, r, bucketVersioningConfig) {
++		return
++	}
+ 	v, err := versioning.ParseConfig(io.LimitReader(r.Body, maxBucketVersioningConfigSize))
+ 	if err != nil {
+ 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+@@ -84,8 +87,7 @@ func (api objectAPIHandlers) PutBucketVersioningHandler(w http.ResponseWriter, r
+ 		return
+ 	}
+ 
+-	if err = globalBucketMetadataSys.Update(bucket, bucketVersioningConfig, configData); err != nil {
+-		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
++	if !updateBucketConfiguration(ctx, w, r, bucket, bucketVersioningConfig, configData) {
+ 		return
+ 	}
+ 
+@@ -118,6 +120,10 @@ func (api objectAPIHandlers) GetBucketVersioningHandler(w http.ResponseWriter, r
+ 		return
+ 	}
+ 
++	if writeFreshBucketConfiguration(ctx, w, r, bucket, bucketVersioningConfig) {
++		return
++	}
++
+ 	config, err := globalBucketVersioningSys.Get(bucket)
+ 	if err != nil {
+ 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+diff --git a/cmd/configuration-body.go b/cmd/configuration-body.go
+new file mode 100644
+index 0000000..3b5e659
+--- /dev/null
++++ b/cmd/configuration-body.go
+@@ -0,0 +1,75 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"context"
++	"io"
++	"net"
++	"net/http"
++	"time"
++)
++
++// Native Fiber request bodies can be streams without a transport read timeout.
++// Scope the deadline to small configuration reads; object uploads keep their
++// existing behavior. Cancellation interrupts the socket read without spawning
++// a goroutine that could continue reading a recycled request body.
++func readConfigurationBody(ctx context.Context, r *http.Request, limit int64) ([]byte, error) {
++	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
++	defer cancel()
++	conn, _ := r.Context().Value(configurationReadConnKey{}).(net.Conn)
++	if err := ctx.Err(); err != nil {
++		if conn != nil {
++			_ = conn.Close()
++		}
++		return nil, err
++	}
++	if conn == nil {
++		data, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
++		if ctx.Err() != nil {
++			return nil, ctx.Err()
++		}
++		return data, err
++	}
++	deadline, _ := ctx.Deadline()
++	state, _ := r.Context().Value(configurationReadStateKey{}).(*configurationReadState)
++	if state == nil || !state.transportBounded {
++		if err := conn.SetReadDeadline(deadline); err != nil {
++			_ = conn.Close()
++			return nil, err
++		}
++	}
++	done := make(chan struct{})
++	stop := context.AfterFunc(ctx, func() {
++		_ = conn.SetReadDeadline(time.Now())
++		close(done)
++	})
++	data, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
++	if !stop() {
++		<-done
++	}
++	if ctx.Err() != nil {
++		err = ctx.Err()
++	} else if timeout, ok := err.(net.Error); ok && timeout.Timeout() {
++		err = context.DeadlineExceeded
++	}
++	fullyConsumed := r.ContentLength >= 0 && int64(len(data)) == r.ContentLength
++	if err != nil {
++		code := toAPIErrorCode(ctx, err)
++		// Digest failures happen at EOF. Their small error response can still
++		// be sent normally because no request bytes remain to be drained.
++		fullyConsumed = fullyConsumed && (code == ErrContentSHA256Mismatch || code == ErrBadDigest)
++	}
++	if state != nil && fullyConsumed {
++		state.complete = true
++	}
++	if !fullyConsumed || int64(len(data)) > limit {
++		// A failed/overflowing stream may still contain unread bytes. Close
++		// this connection so fasthttp cannot drain it without the deadline.
++		_ = conn.Close()
++	} else if resetErr := conn.SetReadDeadline(time.Time{}); resetErr != nil {
++		_ = conn.Close()
++		return nil, resetErr
++	}
++	return data, err
++}
+diff --git a/cmd/configuration-body_test.go b/cmd/configuration-body_test.go
+new file mode 100644
+index 0000000..2848da2
+--- /dev/null
++++ b/cmd/configuration-body_test.go
+@@ -0,0 +1,110 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"io"
++	"net"
++	"net/http/httptest"
++	"testing"
++	"time"
++)
++
++type configurationDeadlineFailureConn struct {
++	net.Conn
++	closed bool
++}
++
++func (c *configurationDeadlineFailureConn) SetReadDeadline(time.Time) error {
++	return errors.New("fixture cannot set deadline")
++}
++
++func (c *configurationDeadlineFailureConn) Close() error {
++	c.closed = true
++	return c.Conn.Close()
++}
++
++func TestBucketConfigBodyReadEarlyFailure(t *testing.T) {
++	for _, canceled := range []bool{false, true} {
++		server, client := net.Pipe()
++		conn := &configurationDeadlineFailureConn{Conn: server}
++		ctx, cancel := context.WithCancel(context.Background())
++		if canceled {
++			cancel()
++		}
++		r := httptest.NewRequest("PUT", "/configuration", nil)
++		r = r.WithContext(context.WithValue(ctx, configurationReadConnKey{}, conn))
++		r.Body = io.NopCloser(server)
++		_, err := readConfigurationBody(ctx, r, 4096)
++		cancel()
++		_ = client.Close()
++		_ = server.Close()
++		if err == nil || !conn.closed {
++			t.Fatalf("early body failure left a connection open for draining: canceled=%v error=%v", canceled, err)
++		}
++	}
++}
++
++func TestBucketConfigBodyReadDeadline(t *testing.T) {
++	for _, cancelEarly := range []bool{false, true} {
++		server, client := net.Pipe()
++		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
++		r := httptest.NewRequest("PUT", "/configuration", nil)
++		r = r.WithContext(context.WithValue(ctx, configurationReadConnKey{}, server))
++		r.Body = io.NopCloser(server)
++		finished := make(chan error, 1)
++		go func() {
++			_, err := readConfigurationBody(ctx, r, 4096)
++			finished <- err
++		}()
++		// A caller supplies only the beginning of a body, then never finishes.
++		if _, err := client.Write([]byte("partial")); err != nil {
++			t.Fatal(err)
++		}
++		if cancelEarly {
++			cancel()
++		}
++		select {
++		case err := <-finished:
++			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
++				t.Fatalf("stalled read did not return cancellation: %v", err)
++			}
++		case <-time.After(time.Second):
++			_ = client.Close()
++			_ = server.Close()
++			t.Fatal("stalled configuration body was not interrupted")
++		}
++		cancel()
++		_ = client.Close()
++		_ = server.Close()
++	}
++	// A completed read clears its deadline and cancellation hook before a
++	// keep-alive connection can be reused by another request.
++	server, client := net.Pipe()
++	defer server.Close()
++	defer client.Close()
++	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
++	r := httptest.NewRequest("PUT", "/configuration", nil)
++	r = r.WithContext(context.WithValue(ctx, configurationReadConnKey{}, server))
++	r.Body = io.NopCloser(bytes.NewReader([]byte("complete")))
++	r.ContentLength = 8
++	data, err := readConfigurationBody(ctx, r, 4096)
++	cancel()
++	if err != nil || string(data) != "complete" {
++		t.Fatalf("complete body rejected: %s %v", data, err)
++	}
++	done := make(chan error, 1)
++	go func() {
++		_, err := io.CopyN(io.Discard, server, 4)
++		done <- err
++	}()
++	if _, err := client.Write([]byte("next")); err != nil {
++		t.Fatal(err)
++	}
++	if err := <-done; err != nil {
++		t.Fatalf("canceled prior body deadline affected reuse: %v", err)
++	}
++}
+diff --git a/cmd/configuration-json.go b/cmd/configuration-json.go
+new file mode 100644
+index 0000000..cb99e43
+--- /dev/null
++++ b/cmd/configuration-json.go
+@@ -0,0 +1,56 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"strconv"
++	"unicode/utf8"
++)
++
++// Go's JSON decoder replaces invalid UTF-8 and unpaired UTF-16 escapes with
++// U+FFFD. Signed configuration documents and secrets must not silently change
++// during decoding. Explicit U+FFFD and correctly paired escapes are valid.
++func validConfigurationJSONEncoding(data []byte) bool {
++	if !utf8.Valid(data) {
++		return false
++	}
++	quoted := false
++	for i := 0; i < len(data); i++ {
++		if data[i] == '"' {
++			quoted = !quoted
++			continue
++		}
++		if !quoted || data[i] != '\\' {
++			continue
++		}
++		i++
++		if i >= len(data) {
++			return false
++		}
++		if data[i] != 'u' {
++			continue
++		}
++		if i+4 >= len(data) {
++			return false
++		}
++		code, err := strconv.ParseUint(string(data[i+1:i+5]), 16, 16)
++		if err != nil {
++			return false
++		}
++		i += 4
++		switch {
++		case code >= 0xd800 && code <= 0xdbff:
++			if i+6 >= len(data) || data[i+1] != '\\' || data[i+2] != 'u' {
++				return false
++			}
++			low, err := strconv.ParseUint(string(data[i+3:i+7]), 16, 16)
++			if err != nil || low < 0xdc00 || low > 0xdfff {
++				return false
++			}
++			i += 6
++		case code >= 0xdc00 && code <= 0xdfff:
++			return false
++		}
++	}
++	return !quoted
++}
+diff --git a/cmd/configuration-json_test.go b/cmd/configuration-json_test.go
+new file mode 100644
+index 0000000..5575b43
+--- /dev/null
++++ b/cmd/configuration-json_test.go
+@@ -0,0 +1,33 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import "testing"
++
++func TestBucketConfigJSONEncoding(t *testing.T) {
++	for _, value := range []string{`\ud800`, `\udc00`, `\ud800x`, `\ud800\u0041`, `\ud800\ud800`, "\xff"} {
++		doc := []byte(`{"newSecretKey":"secret-` + value + `"}`)
++		if validConfigurationJSONEncoding(doc) {
++			t.Errorf("accepted a substituted JSON string %q", doc)
++		}
++		if _, err := decodeSelfCredentialSecret(doc); err == nil {
++			t.Errorf("accepted a substituted secret %q", doc)
++		}
++	}
++	for _, tc := range []struct{ wire, decoded string }{
++		{`\ud83d\ude00`, "😀"},
++		{`\ufffd`, "�"},
++		{"�", "�"},
++		{`\\ud800`, `\ud800`},
++		{`\\udc00`, `\udc00`},
++	} {
++		doc := []byte(`{"newSecretKey":"secret-` + tc.wire + `"}`)
++		if !validConfigurationJSONEncoding(doc) {
++			t.Errorf("rejected a valid JSON string %q", doc)
++		}
++		secret, err := decodeSelfCredentialSecret(doc)
++		if err != nil || secret != "secret-"+tc.decoded {
++			t.Errorf("changed valid secret %q into %q: %v", doc, secret, err)
++		}
++	}
++}
+diff --git a/cmd/configuration-transport.go b/cmd/configuration-transport.go
+new file mode 100644
+index 0000000..729f27d
+--- /dev/null
++++ b/cmd/configuration-transport.go
+@@ -0,0 +1,70 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"net/http"
++	"net/url"
++	"time"
++
++	"github.com/gofiber/fiber/v3"
++	"github.com/valyala/fasthttp"
++)
++
++type configurationReadStateKey struct{}
++
++type configurationReadState struct {
++	transportBounded bool
++	complete         bool
++}
++
++func configurationRequestLimit(header *fasthttp.RequestHeader) int {
++	u, err := url.ParseRequestURI(string(header.RequestURI()))
++	if err != nil {
++		return 0
++	}
++	if u.Path == adminPathPrefix+adminAPIVersionPrefix+"/self-credentials" {
++		return 4096
++	}
++	method := string(header.Method())
++	if (method != http.MethodPut && method != http.MethodDelete) || len(header.PeekAll(bucketConfigIfMatchHeader)) == 0 {
++		return 0
++	}
++	query := u.Query()
++	if query.Has("policy") {
++		return int(maxBucketPolicySize)
++	}
++	if query.Has("lifecycle") || query.Has("versioning") {
++		return int(maxBucketVersioningConfigSize)
++	}
++	return 0
++}
++
++// fasthttp pre-reads up to 8 KiB before the Fiber handler runs. Establish the
++// small configuration deadline at header receipt, not after that pre-read.
++func configurationRequestConfig(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
++	if limit := configurationRequestLimit(header); limit != 0 {
++		return fasthttp.RequestConfig{ReadTimeout: 15 * time.Second, MaxRequestBodySize: limit}
++	}
++	return fasthttp.RequestConfig{}
++}
++
++func configurationReadDeadlineFiber(c fiber.Ctx) error {
++	if configurationRequestLimit(&c.Request().Header) == 0 {
++		return c.Next()
++	}
++	state := &configurationReadState{transportBounded: true, complete: c.Request().Header.ContentLength() == 0}
++	c.RequestCtx().SetUserValue(configurationReadStateKey{}, state)
++	defer func() {
++		// A rejected request may leave a stream unread. Send its response and
++		// close the connection instead of interpreting that body as a next
++		// request. Never leave a configuration deadline on a reused socket.
++		if !state.complete {
++			c.Response().Header.SetConnectionClose()
++		}
++		if conn := c.RequestCtx().Conn(); conn != nil {
++			_ = conn.SetReadDeadline(time.Time{})
++		}
++	}()
++	return c.Next()
++}
+diff --git a/cmd/configuration-transport_test.go b/cmd/configuration-transport_test.go
+new file mode 100644
+index 0000000..fb15eab
+--- /dev/null
++++ b/cmd/configuration-transport_test.go
+@@ -0,0 +1,192 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bufio"
++	"context"
++	"fmt"
++	"io"
++	"net"
++	"net/http"
++	"strings"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/gofiber/fiber/v3"
++	"github.com/valyala/fasthttp"
++)
++
++func configurationTestReadTimeout(t *testing.T, app *fiber.App) {
++	t.Helper()
++	installed := app.Server().HeaderReceived
++	if installed == nil {
++		t.Fatal("configuration read deadline was not installed on the production app")
++	}
++	for _, tc := range []struct {
++		uri   string
++		limit int
++	}{
++		{adminPathPrefix + adminAPIVersionPrefix + "/self-credentials", 4096},
++		{"/bucket?policy", int(maxBucketPolicySize)},
++		{"/bucket?lifecycle", int(maxBucketVersioningConfigSize)},
++		{"/bucket?versioning", int(maxBucketVersioningConfigSize)},
++	} {
++		var header fasthttp.RequestHeader
++		header.SetMethod(http.MethodPut)
++		header.SetRequestURI(tc.uri)
++		header.Set(bucketConfigIfMatchHeader, strings.Repeat("0", 64))
++		cfg := installed(&header)
++		if cfg.ReadTimeout != 15*time.Second || cfg.MaxRequestBodySize != tc.limit {
++			t.Fatalf("production configuration read limits for %s: %+v", tc.uri, cfg)
++		}
++	}
++	app.Server().HeaderReceived = func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
++		cfg := installed(header)
++		if cfg.ReadTimeout != 0 {
++			cfg.ReadTimeout = 50 * time.Millisecond
++		}
++		return cfg
++	}
++}
++
++func TestBucketConfigTransportPreReadDeadline(t *testing.T) {
++	for _, tc := range []struct {
++		name, uri, extra string
++		length           int
++	}{
++		{"self-small", adminPathPrefix + adminAPIVersionPrefix + "/self-credentials", "", 1024},
++		{"policy-large", "/bucket?policy", bucketConfigIfMatchHeader + ": " + strings.Repeat("0", 64) + "\r\n", 9000},
++		{"lifecycle-small", "/bucket?lifecycle", bucketConfigIfMatchHeader + ": " + strings.Repeat("0", 64) + "\r\n", 1024},
++		{"versioning-small", "/bucket?versioning", bucketConfigIfMatchHeader + ": " + strings.Repeat("0", 64) + "\r\n", 1024},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			app := newFiberApp()
++			configurationTestReadTimeout(t, app)
++			var called atomic.Bool
++			method := http.MethodPut
++			if strings.Contains(tc.uri, "?restore") {
++				method = http.MethodPost
++				app.Post(strings.Split(tc.uri, "?")[0], func(c fiber.Ctx) error { called.Store(true); return c.SendStatus(http.StatusNoContent) })
++			} else {
++				app.Put(strings.Split(tc.uri, "?")[0], func(c fiber.Ctx) error { called.Store(true); return c.SendStatus(http.StatusNoContent) })
++			}
++			_ = app.Handler()
++			server, client := net.Pipe()
++			defer client.Close()
++			done := make(chan error, 1)
++			go func() { done <- app.Server().ServeConn(server) }()
++			_ = client.SetDeadline(time.Now().Add(time.Second))
++			request := fmt.Sprintf("%s %s HTTP/1.1\r\nHost: localhost\r\nContent-Length: %d\r\n%s\r\npartial", method, tc.uri, tc.length, tc.extra)
++			if _, err := io.WriteString(client, request); err != nil {
++				t.Fatal(err)
++			}
++			// Consume any timeout response so a net.Pipe write cannot obscure
++			// the server's completion. The handler must never be entered.
++			_, _ = io.ReadAll(client)
++			select {
++			case <-done:
++			case <-time.After(time.Second):
++				_ = server.Close()
++				t.Fatal("configuration stalled before the handler without a bounded read")
++			}
++			if called.Load() {
++				t.Fatal("incomplete body entered the handler")
++			}
++		})
++	}
++}
++
++func TestBucketConfigTransportScopeAndReuse(t *testing.T) {
++	var header fasthttp.RequestHeader
++	header.SetMethod(http.MethodPut)
++	header.SetRequestURI("/bucket/object")
++	header.Set(bucketConfigIfMatchHeader, strings.Repeat("0", 64))
++	if cfg := configurationRequestConfig(&header); cfg.ReadTimeout != 0 || cfg.MaxRequestBodySize != 0 {
++		t.Fatalf("ordinary object upload was limited: %+v", cfg)
++	}
++	header.SetRequestURI("/bucket?lifecycle")
++	header.Del(bucketConfigIfMatchHeader)
++	if cfg := configurationRequestConfig(&header); cfg.ReadTimeout != 0 || cfg.MaxRequestBodySize != 0 {
++		t.Fatalf("legacy upload was limited: %+v", cfg)
++	}
++	app := newFiberApp()
++	configurationTestReadTimeout(t, app)
++	app.Put("/bucket", toOtterioHandler(func(w http.ResponseWriter, r *http.Request) {
++		if _, err := readConfigurationBody(context.Background(), r, 4096); err != nil {
++			w.WriteHeader(400)
++			return
++		}
++		w.WriteHeader(http.StatusNoContent)
++	}))
++	app.Put("/bucket/object", func(c fiber.Ctx) error { return c.SendStatus(http.StatusNoContent) })
++	_ = app.Handler()
++	server, client := net.Pipe()
++	defer client.Close()
++	done := make(chan error, 1)
++	go func() { done <- app.Server().ServeConn(server) }()
++	_ = client.SetDeadline(time.Now().Add(2 * time.Second))
++	reader := bufio.NewReader(client)
++	if _, err := io.WriteString(client, "PUT /bucket?policy HTTP/1.1\r\nHost: localhost\r\nContent-Length: 8\r\n"+bucketConfigIfMatchHeader+": "+strings.Repeat("0", 64)+"\r\n\r\ncomplete"); err != nil {
++		t.Fatal(err)
++	}
++	response, err := http.ReadResponse(reader, nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	_ = response.Body.Close()
++	if response.StatusCode != http.StatusNoContent || response.Close {
++		t.Fatalf("completed configuration did not permit reuse: %+v", response)
++	}
++	// Let the first request's read deadline expire before sending an object
++	// upload on the same socket. Its semantics must remain unchanged.
++	time.Sleep(75 * time.Millisecond)
++	if _, err = io.WriteString(client, "PUT /bucket/object HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\nConnection: close\r\n\r\nnext"); err != nil {
++		t.Fatal(err)
++	}
++	response, err = http.ReadResponse(reader, nil)
++	if err != nil {
++		t.Fatalf("prior configuration deadline affected reuse: %v", err)
++	}
++	_ = response.Body.Close()
++	if response.StatusCode != http.StatusNoContent {
++		t.Fatalf("upload after configuration: %d", response.StatusCode)
++	}
++	select {
++	case <-done:
++	case <-time.After(time.Second):
++		_ = server.Close()
++		t.Fatal("connection did not finish")
++	}
++}
++
++func TestBucketConfigTransportEarlyReject(t *testing.T) {
++	app := newFiberApp()
++	configurationTestReadTimeout(t, app)
++	app.Put("/bucket", func(c fiber.Ctx) error { return c.SendStatus(http.StatusForbidden) })
++	_ = app.Handler()
++	server, client := net.Pipe()
++	defer client.Close()
++	done := make(chan error, 1)
++	go func() { done <- app.Server().ServeConn(server) }()
++	_ = client.SetDeadline(time.Now().Add(time.Second))
++	request := "PUT /bucket?policy HTTP/1.1\r\nHost: localhost\r\nContent-Length: 9000\r\n" + bucketConfigIfMatchHeader + ": " + strings.Repeat("0", 64) + "\r\n\r\n" + strings.Repeat("x", 8192)
++	if _, err := io.WriteString(client, request); err != nil {
++		t.Fatal(err)
++	}
++	response, err := http.ReadResponse(bufio.NewReader(client), nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	_ = response.Body.Close()
++	if response.StatusCode != http.StatusForbidden || !response.Close {
++		t.Fatalf("unread rejected body kept a socket alive: %+v", response)
++	}
++	select {
++	case <-done:
++	case <-time.After(time.Second):
++		_ = server.Close()
++		t.Fatal("early rejection attempted an unbounded body drain")
++	}
++}
+diff --git a/cmd/erasure-server-pool.go b/cmd/erasure-server-pool.go
+index 5d20add..631aee4 100644
+--- a/cmd/erasure-server-pool.go
++++ b/cmd/erasure-server-pool.go
+@@ -554,6 +554,16 @@ func (z *erasureServerPools) NSScanner(ctx context.Context, bf *bloomFilter, upd
+ // even if one of the sets fail to create buckets, we proceed all the successful
+ // operations.
+ func (z *erasureServerPools) MakeBucketWithLocation(ctx context.Context, bucket string, opts BucketOptions) error {
++	if !globalIsGateway {
++		transaction := z.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++		locked, err := transaction.GetLock(ctx, newDynamicTimeout(10*time.Second, time.Second))
++		if err != nil {
++			return err
++		}
++		ctx = locked
++		defer transaction.Unlock()
++	}
++
+ 	g := errgroup.WithNErrs(len(z.serverPools))
+ 
+ 	// Create buckets in parallel across all sets.
+@@ -1267,6 +1277,16 @@ func (z *erasureServerPools) IsTaggingSupported() bool {
+ // even if one of the serverPools fail to delete buckets, we proceed to
+ // undo a successful operation.
+ func (z *erasureServerPools) DeleteBucket(ctx context.Context, bucket string, forceDelete bool) error {
++	if !globalIsGateway {
++		transaction := z.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++		locked, err := transaction.GetLock(ctx, newDynamicTimeout(10*time.Second, time.Second))
++		if err != nil {
++			return err
++		}
++		ctx = locked
++		defer transaction.Unlock()
++	}
++
+ 	if z.SinglePool() {
+ 		return z.serverPools[0].DeleteBucket(ctx, bucket, forceDelete)
+ 	}
+diff --git a/cmd/fiber_admin_router.go b/cmd/fiber_admin_router.go
+index a863a85..9f201e8 100644
+--- a/cmd/fiber_admin_router.go
++++ b/cmd/fiber_admin_router.go
+@@ -207,6 +207,12 @@ func registerAdminIAMRoutes(app *fiber.App, verPrefix, adminVersion string, admi
+ 	registerAdminRoute(app, verPrefix+"/accountinfo", []routeRule{
+ 		adminRule(http.MethodGet, adminAPI.AccountInfoHandler, false, nil),
+ 	})
++	if adminVersion == adminAPIVersionPrefix {
++		registerAdminRoute(app, verPrefix+"/self-credentials", []routeRule{
++			adminRule(http.MethodGet, adminAPI.SelfCredentials, false, nil),
++			adminRule(http.MethodPut, adminAPI.SelfCredentials, false, nil),
++		})
++	}
+ 	registerAdminRoute(app, verPrefix+"/add-user", []routeRule{
+ 		adminRule(http.MethodPut, adminAPI.AddUser, true, map[string]string{"accessKey": ".*"}),
+ 	})
+diff --git a/cmd/fiber_ctx.go b/cmd/fiber_ctx.go
+index a8d4370..70a1031 100644
+--- a/cmd/fiber_ctx.go
++++ b/cmd/fiber_ctx.go
+@@ -70,6 +70,10 @@ type fiberRequestCtx struct {
+ 	done <-chan struct{}
+ }
+ 
++// A connection snapshot permits bounded reads on the small configuration
++// endpoints without retaining the recycled fasthttp request context.
++type configurationReadConnKey struct{}
++
+ func newFiberRequestCtx(reqCtx *fasthttp.RequestCtx) *fiberRequestCtx {
+ 	// Capture Done() once, in the request goroutine, while reqCtx.s is
+ 	// stable. After this point we never call reqCtx.Done() again.
+@@ -80,6 +84,7 @@ func newFiberRequestCtx(reqCtx *fasthttp.RequestCtx) *fiberRequestCtx {
+ 		}
+ 		values[key] = value
+ 	})
++	values[configurationReadConnKey{}] = reqCtx.Conn()
+ 	return &fiberRequestCtx{values: values, done: reqCtx.Done()}
+ }
+ 
+diff --git a/cmd/fiber_router.go b/cmd/fiber_router.go
+index 2d85d0b..546e047 100644
+--- a/cmd/fiber_router.go
++++ b/cmd/fiber_router.go
+@@ -184,6 +184,8 @@ func newFiberApp() *fiber.App {
+ 		// wires the body to this stream when available.
+ 		StreamRequestBody: true,
+ 	})
++	app.Server().HeaderReceived = configurationRequestConfig
++	app.Use(configurationReadDeadlineFiber)
+ 	return app
+ }
+ 
+diff --git a/cmd/fs-v1.go b/cmd/fs-v1.go
+index e2945f8..4c642f7 100644
+--- a/cmd/fs-v1.go
++++ b/cmd/fs-v1.go
+@@ -423,6 +423,16 @@ func (fs *FSObjects) statBucketDir(ctx context.Context, bucket string) (os.FileI
+ 
+ // MakeBucketWithLocation - create a new bucket, returns if it already exists.
+ func (fs *FSObjects) MakeBucketWithLocation(ctx context.Context, bucket string, opts BucketOptions) error {
++	if !globalIsGateway {
++		transaction := fs.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++		locked, err := transaction.GetLock(ctx, newDynamicTimeout(10*time.Second, time.Second))
++		if err != nil {
++			return err
++		}
++		ctx = locked
++		defer transaction.Unlock()
++	}
++
+ 	if opts.LockEnabled || opts.VersioningEnabled {
+ 		return NotImplemented{}
+ 	}
+@@ -578,6 +588,16 @@ func (fs *FSObjects) ListBuckets(ctx context.Context) ([]BucketInfo, error) {
+ // DeleteBucket - delete a bucket and all the metadata associated
+ // with the bucket including pending multipart, object metadata.
+ func (fs *FSObjects) DeleteBucket(ctx context.Context, bucket string, forceDelete bool) error {
++	if !globalIsGateway {
++		transaction := fs.NewNSLock(otterioMetaBucket, bucketMetadataTransactionKey(bucket))
++		locked, err := transaction.GetLock(ctx, newDynamicTimeout(10*time.Second, time.Second))
++		if err != nil {
++			return err
++		}
++		ctx = locked
++		defer transaction.Unlock()
++	}
++
+ 	atomic.AddInt64(&fs.activeIOCount, 1)
+ 	defer func() {
+ 		atomic.AddInt64(&fs.activeIOCount, -1)
+diff --git a/cmd/notification.go b/cmd/notification.go
+index c4cadda..c893db6 100644
+--- a/cmd/notification.go
++++ b/cmd/notification.go
+@@ -138,7 +138,11 @@ func (g *NotificationGroup) Go(ctx context.Context, f func() error, index int, a
+ 				}
+ 				// Wait for one second and no need wait after last attempt.
+ 				if i < 2 {
+-					time.Sleep(1 * time.Second)
++					select {
++					case <-ctx.Done():
++						return
++					case <-time.After(time.Second):
++					}
+ 				}
+ 				continue
+ 			}
+@@ -209,14 +213,19 @@ func (sys *NotificationSys) DeleteUser(accessKey string) []NotificationPeerErr {
+ 
+ // LoadUser - reloads a specific user across all peers
+ func (sys *NotificationSys) LoadUser(accessKey string, temp bool) []NotificationPeerErr {
++	return sys.LoadUserWithContext(GlobalContext, accessKey, temp)
++}
++
++// LoadUserWithContext reloads a user across peers within the caller's deadline.
++func (sys *NotificationSys) LoadUserWithContext(ctx context.Context, accessKey string, temp bool) []NotificationPeerErr {
+ 	ng := WithNPeers(len(sys.peerClients))
+ 	for idx, client := range sys.peerClients {
+ 		if client == nil {
+ 			continue
+ 		}
+ 		client := client
+-		ng.Go(GlobalContext, func() error {
+-			return client.LoadUser(accessKey, temp)
++		ng.Go(ctx, func() error {
++			return client.loadUserWithContext(ctx, accessKey, temp)
+ 		}, idx, *client.host)
+ 	}
+ 	return ng.Wait()
+@@ -653,7 +662,7 @@ func (sys *NotificationSys) LoadBucketMetadata(ctx context.Context, bucketName s
+ 		}
+ 		client := client
+ 		ng.Go(ctx, func() error {
+-			return client.LoadBucketMetadata(bucketName)
++			return client.loadBucketMetadataWithContext(ctx, bucketName)
+ 		}, idx, *client.host)
+ 	}
+ 	for _, nErr := range ng.Wait() {
+diff --git a/cmd/peer-rest-client.go b/cmd/peer-rest-client.go
+index 33286a7..5fb23b6 100644
+--- a/cmd/peer-rest-client.go
++++ b/cmd/peer-rest-client.go
+@@ -450,9 +450,13 @@ func (client *peerRESTClient) GetBucketStats(bucket string) (BucketStats, error)
+ 
+ // LoadBucketMetadata - load bucket metadata
+ func (client *peerRESTClient) LoadBucketMetadata(bucket string) error {
++	return client.loadBucketMetadataWithContext(GlobalContext, bucket)
++}
++
++func (client *peerRESTClient) loadBucketMetadataWithContext(ctx context.Context, bucket string) error {
+ 	values := make(url.Values)
+ 	values.Set(peerRESTBucket, bucket)
+-	respBody, err := client.call(peerRESTMethodLoadBucketMetadata, values, nil, -1)
++	respBody, err := client.callWithContext(ctx, peerRESTMethodLoadBucketMetadata, values, nil, -1)
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -560,12 +564,16 @@ func (client *peerRESTClient) DeleteServiceAccount(accessKey string) (err error)
+ }
+ 
+ // LoadUser - reload a specific user.
+-func (client *peerRESTClient) LoadUser(accessKey string, temp bool) (err error) {
++func (client *peerRESTClient) LoadUser(accessKey string, temp bool) error {
++	return client.loadUserWithContext(GlobalContext, accessKey, temp)
++}
++
++func (client *peerRESTClient) loadUserWithContext(ctx context.Context, accessKey string, temp bool) (err error) {
+ 	values := make(url.Values)
+ 	values.Set(peerRESTUser, accessKey)
+ 	values.Set(peerRESTUserTemp, strconv.FormatBool(temp))
+ 
+-	respBody, err := client.call(peerRESTMethodLoadUser, values, nil, -1)
++	respBody, err := client.callWithContext(ctx, peerRESTMethodLoadUser, values, nil, -1)
+ 	if err != nil {
+ 		return
+ 	}
+diff --git a/cmd/peer-rest-server.go b/cmd/peer-rest-server.go
+index 5f11c09..65cd489 100644
+--- a/cmd/peer-rest-server.go
++++ b/cmd/peer-rest-server.go
+@@ -568,14 +568,12 @@ func (s *peerRESTServer) LoadBucketMetadataHandler(w http.ResponseWriter, r *htt
+ 		return
+ 	}
+ 
+-	meta, err := loadBucketMetadata(r.Context(), objAPI, bucketName)
++	meta, err := globalBucketMetadataSys.loadConfig(r.Context(), objAPI, bucketName)
+ 	if err != nil {
+ 		s.writeErrorResponse(w, err)
+ 		return
+ 	}
+ 
+-	globalBucketMetadataSys.Set(bucketName, meta)
+-
+ 	if meta.notificationConfig != nil {
+ 		globalNotificationSys.AddRulesMap(bucketName, meta.notificationConfig.ToRulesMap())
+ 	}

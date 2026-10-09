@@ -18,6 +18,7 @@
 - [命令索引](commands.md)：命令分类和参数查询方法。
 - [OtterIO 管理](administration.md)：服务信息、身份、策略与诊断。
 - [本机 Web 控制台](console.md)：可选源码构建、单别名、对象写入、受保护桶配置与自身 IAM 改密。
+- [控制台五项功能补全](../console-features.md)：存储桶、IAM、历史版本、ZIP 和预签名分享。
 - [生命周期转换与恢复](../lifecycle-transition.md)：CLI 目标配置、服务端协议要求、执行及回退边界。
 - [兼容与验证范围](compatibility.md)：SDK 基线、部署覆盖和已知边界。
 - [故障排查](troubleshooting.md)：认证、TLS、地址、流式命令与导入问题。

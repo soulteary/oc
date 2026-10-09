@@ -21,10 +21,18 @@
     "settings-read-dialog", "back-setting-read", "settings-read-current", "settings-read-next", "confirm-setting-read",
     "open-account", "account-dialog", "close-account", "self-account-status", "self-account-summary", "account-buckets",
     "self-secret-help", "self-secret-form", "new-secret", "self-secret-status", "review-secret", "secret-confirmation", "cancel-secret", "confirm-secret",
+    "open-create-bucket", "open-delete-bucket", "bucket-dialog", "bucket-action-form", "bucket-action-title", "bucket-action-help", "close-bucket-action", "bucket-action-name", "bucket-confirm-field", "bucket-action-confirm", "bucket-action-status", "submit-bucket-action",
+    "open-versions", "versions-dialog", "close-versions", "versions-form", "versions-bucket", "versions-key", "load-versions", "versions-status", "versions-list", "more-versions",
+    "share-dialog", "share-form", "close-share", "share-scope", "share-expiry", "share-name", "share-status", "share-result", "share-url", "share-expires", "copy-share", "create-share",
+    "read-toolbar", "open-current-archive", "archive-selected", "archive-prefix", "archive-selection-count", "archive-dialog", "close-archive", "archive-scope", "archive-limit-help", "archive-items", "archive-status", "archive-progress", "retry-archive-status", "cancel-archive", "start-archive", "download-archive",
+    "iam-binding-controls", "load-iam-bindings", "iam-binding-scope", "iam-binding-status", "iam-binding-read-confirmation", "iam-binding-read-warning", "cancel-iam-bindings-read", "confirm-iam-bindings-read",
+    "open-iam", "iam-dialog", "close-iam", "iam-list-form", "iam-kind", "iam-owner-field", "iam-owner", "refresh-iam", "iam-status", "iam-list", "iam-action-form", "iam-action", "iam-action-help", "iam-fields", "iam-confirm", "iam-action-status", "submit-iam-action", "iam-secret-result", "iam-result-access", "iam-result-secret", "reveal-iam-secret", "dismiss-iam-secret",
+    "stopped-credential-dialog", "close-stopped-credential", "stopped-result-access", "stopped-result-secret", "reveal-stopped-secret", "dismiss-stopped-secret",
   ];
   const elements = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
   const requests = new Map();
   const state = {
+    capabilities: {},
     authenticated: false,
     readOnly: true,
     maxUploadSize: 1024 ** 3,
@@ -57,6 +65,20 @@
   let selfAccount = null;
   let consoleStopped = false;
   let rotationInFlight = false;
+  let bucketAction = "create";
+  let versionLocation = null;
+  let versionEntries = [];
+  let versionCursor = "";
+  let shareRef = null;
+  let archiveDraft = null;
+  let archiveJob = null;
+  let archiveTimer = null;
+  let iamInputs = {};
+  let iamRecord = null;
+  let iamGroups = [];
+  let iamBinding = null;
+  let iamBindingNeedsRead = false;
+  let pendingBindingRead = null;
   const settingLabels = { policy: "Bucket policy", versioning: "Versioning", lifecycle: "Lifecycle" };
   const dateFormatter = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" });
 
@@ -103,6 +125,7 @@
     elements["cancel-secret"].disabled = secretBusy;
     elements["close-account"].disabled = secretBusy;
     updateSelection();
+    updateFeatures();
   }
 
   function cancelRequest(name) {
@@ -134,6 +157,8 @@
 
   function abortAll() {
     clearTimeout(pollTimer);
+    clearTimeout(archiveTimer);
+    archiveTimer = null;
     pollTimer = null;
     for (const request of requests.values()) request.controller.abort();
     requests.clear();
@@ -179,7 +204,7 @@
     state.epoch += 1;
     abortAll();
     Object.assign(state, {
-      authenticated: false, readOnly: true, alias: "", csrfToken: "", buckets: [], bucket: "", prefix: "",
+      capabilities: {}, authenticated: false, readOnly: true, alias: "", csrfToken: "", buckets: [], bucket: "", prefix: "",
       entries: [], nextCursor: "", account: null, accountMessage: "Permission information is loading…",
     });
     selectedKeys.clear();
@@ -194,6 +219,13 @@
     selfAccount = null;
     jobsMessage = "";
     closeDialogs();
+    clearArchive();
+    versionEntries = [];
+    versionLocation = null;
+    versionCursor = "";
+    elements["versions-list"].replaceChildren();
+    elements["versions-key"].value = "";
+    elements["versions-bucket"].value = "";
     elements["upload-form"].reset();
     clearSecret();
     elements["settings-document"].value = "";
@@ -229,6 +261,7 @@
     }
     state.epoch += 1;
     abortAll();
+    state.capabilities = {};
     state.authenticated = true;
     state.readOnly = session.readOnly;
     state.maxUploadSize = Number.isSafeInteger(session.maxUploadSize) && session.maxUploadSize > 0 ? session.maxUploadSize : 1024 ** 3;
@@ -243,15 +276,15 @@
     renderMode();
     renderLocation();
     refreshAll();
-    if (!state.readOnly) loadJobs();
   }
 
   function renderMode() {
     setText("session-mode", state.readOnly ? "● Read-only" : "● Writes enabled");
     elements["session-mode"].classList.toggle("writes-enabled", !state.readOnly);
     elements["write-toolbar"].hidden = state.readOnly;
-    elements["selection-header"].hidden = state.readOnly;
-    elements["objects-body"].closest("table").classList.toggle("writable", !state.readOnly);
+    elements["selection-header"].hidden = !canSelectObjects();
+    elements["objects-body"].closest("table").classList.toggle("writable", canSelectObjects());
+    updateFeatures();
     setText("workspace-footnote", `${state.readOnly ? "Read-only browsing." : "Writes enabled by the local OC process."} Downloads use your browser’s download manager. Download errors open in a separate tab.`);
   }
 
@@ -357,7 +390,7 @@
     }
     for (const entry of state.entries) {
       const row = document.createElement("tr");
-      if (!state.readOnly) {
+      if (canSelectObjects()) {
         const selection = document.createElement("td");
         selection.className = "selection-cell";
         if (!entry.isPrefix) {
@@ -410,6 +443,8 @@
         const bucket = state.bucket;
         download.addEventListener("click", event => prepareDownload(event, download, bucket, entry.key));
         actions.append(download);
+        if (featureEnabled("versions")) actions.append(actionButton("Versions", () => openVersions(bucket, entry.key), `Read versions of ${entry.key}`));
+        if (featureEnabled("sharing")) actions.append(actionButton("Share", () => openShare({ bucket, key: entry.key }), `Share ${entry.key}`));
         if (!state.readOnly) {
           const remove = document.createElement("button");
           remove.type = "button";
@@ -437,9 +472,10 @@
     elements["delete-prefix"].disabled = !writable || !state.prefix.endsWith("/") || requests.has("delete-plan");
     setText("selection-count", selectedKeys.size ? `${selectedKeys.size} loaded ${selectedKeys.size === 1 ? "object" : "objects"} selected` : "No objects selected");
     const keys = state.entries.filter(entry => !entry.isPrefix).map(entry => entry.key);
-    elements["select-loaded"].disabled = !writable || keys.length === 0;
+    elements["select-loaded"].disabled = !canSelectObjects() || keys.length === 0;
     elements["select-loaded"].checked = keys.length > 0 && keys.every(key => selectedKeys.has(key));
     elements["select-loaded"].indeterminate = selectedKeys.size > 0 && !elements["select-loaded"].checked;
+    updateFeatures();
   }
 
   function selectLocation(bucket, prefix) {
@@ -571,6 +607,7 @@
     cancelRequest("objects");
     loadBuckets();
     loadAccount();
+    loadCapabilities();
     if (!state.readOnly) loadJobs();
   }
 
@@ -580,13 +617,17 @@
 
   function closeDialogs() {
     clearSecret();
-    for (const id of ["upload-dialog", "replace-dialog", "delete-dialog", "exact-delete-dialog", "settings-dialog", "settings-read-dialog", "settings-review-dialog", "account-dialog"]) {
+    clearShare();
+    clearIAM();
+    clearStoppedCredential();
+    cancelRequest("versions");
+    for (const id of ["upload-dialog", "replace-dialog", "delete-dialog", "exact-delete-dialog", "settings-dialog", "settings-read-dialog", "settings-review-dialog", "account-dialog", "bucket-dialog", "versions-dialog", "share-dialog", "archive-dialog", "iam-dialog", "stopped-credential-dialog"]) {
       if (elements[id].open) elements[id].close();
     }
   }
 
   let downloadSequence = 0;
-  async function prepareDownload(event, link, bucket, key) {
+  async function prepareDownload(event, link, bucket, key, versionId, downloadPath) {
     event.preventDefault();
     if (!state.authenticated) return;
     // Open during the user gesture; waiting for fetch first would trigger popup blockers.
@@ -607,14 +648,21 @@
         throw new APIError(0, "PopupBlocked", "Allow pop-ups for this local console, then try the download again.");
       }
       const parameters = new URLSearchParams({ bucket, key });
-      downloadWindow.location.replace(new URL(`/api/download?${parameters.toString()}`, window.location.origin).href);
+      if (versionId !== undefined) parameters.set("versionId", versionId);
+      downloadWindow.location.replace(new URL(downloadPath || `/api/download?${parameters.toString()}`, window.location.origin).href);
+      if (downloadPath && archiveJob) {
+        archiveJob.status = "downloading";
+        renderArchive();
+        clearTimeout(archiveTimer);
+        archiveTimer = setTimeout(pollArchive, 500);
+      }
       setText("objects-status", "Download requested. If the object is unavailable or access is denied, its error appears in the new tab.");
     } catch (error) {
       if (downloadWindow) downloadWindow.close();
       if (!currentRequest(name, request) || error.name === "AbortError") return;
       if (expired(error)) return;
       elements["objects-status"].classList.add("error");
-      setText("objects-status", error.message);
+      setText(downloadPath ? "archive-status" : "objects-status", error.message);
     } finally {
       finishRequest(name, request);
     }
@@ -1402,6 +1450,821 @@
     }
   }
 
+  function featureEnabled(name) {
+    return state.authenticated && state.capabilities[name] === true;
+  }
+
+  function canSelectObjects() {
+    return state.authenticated && (!state.readOnly || featureEnabled("archives"));
+  }
+
+  async function loadCapabilities() {
+    if (!state.authenticated || requests.has("capabilities")) return;
+    const request = beginRequest("capabilities");
+    try {
+      const result = await api("/api/capabilities", {}, request);
+      if (!currentRequest("capabilities", request)) return;
+      state.capabilities = result && typeof result === "object" ? result : {};
+      renderMode();
+      renderEntries();
+      if (featureEnabled("archives")) loadArchiveList();
+    } catch (error) {
+      if (!currentRequest("capabilities", request) || error.name === "AbortError") return;
+      if (expired(error)) return;
+      state.capabilities = {};
+      renderMode();
+    } finally {
+      finishRequest("capabilities", request);
+    }
+  }
+
+  function updateFeatures() {
+    const writable = state.authenticated && !state.readOnly;
+    elements["open-create-bucket"].hidden = !featureEnabled("bucketManagement") || !writable;
+    elements["open-delete-bucket"].hidden = !featureEnabled("bucketManagement") || !writable;
+    elements["open-delete-bucket"].disabled = !featureEnabled("bucketManagement") || !writable;
+    elements["open-versions"].hidden = !featureEnabled("versions");
+    elements["open-versions"].disabled = !featureEnabled("versions");
+    elements["open-iam"].hidden = !featureEnabled("iam");
+    elements["read-toolbar"].hidden = !featureEnabled("archives");
+    const archiveBytes = Number.isSafeInteger(state.capabilities.maxArchiveSize) && state.capabilities.maxArchiveSize > 0 ? state.capabilities.maxArchiveSize : 5 * 1024 ** 3;
+    const archiveCount = Number.isSafeInteger(state.capabilities.maxArchiveObjects) && state.capabilities.maxArchiveObjects > 0 ? state.capabilities.maxArchiveObjects : 1000;
+    setText("archive-limit-help", `Up to ${archiveCount.toLocaleString()} objects and ${formatSize(archiveBytes)} are supported.`);
+    elements["archive-selected"].disabled = !featureEnabled("archives") || !selectedKeys.size;
+    elements["archive-prefix"].disabled = !featureEnabled("archives") || !state.bucket;
+    elements["open-current-archive"].hidden = !archiveJob && !requests.has("archive-create");
+    setText("archive-selection-count", selectedKeys.size ? `${selectedKeys.size} objects selected` : "No objects selected");
+    const bucketBusy = requests.has("bucket-action");
+    elements["submit-bucket-action"].disabled = !writable || bucketBusy;
+    elements["close-bucket-action"].disabled = bucketBusy;
+    elements["bucket-action-name"].disabled = bucketBusy;
+    elements["bucket-action-confirm"].disabled = bucketBusy;
+    elements["load-versions"].disabled = requests.has("versions");
+    elements["versions-bucket"].disabled = requests.has("versions");
+    elements["versions-key"].disabled = requests.has("versions");
+    elements["more-versions"].disabled = requests.has("versions");
+    elements["create-share"].disabled = !featureEnabled("sharing") || requests.has("share");
+    elements["copy-share"].disabled = !elements["share-url"].value;
+    elements["start-archive"].disabled = !archiveDraft || !!archiveJob || requests.has("archive-create") || requests.has("archives-list");
+    elements["cancel-archive"].disabled = requests.has("archive-cancel");
+    elements["retry-archive-status"].disabled = requests.has("archive-status");
+    elements["refresh-iam"].disabled = requests.has("iam-list");
+    elements["submit-iam-action"].disabled = !writable || requests.has("iam-action") || !elements["iam-secret-result"].hidden || (bindingAction() && (!bindingReady() || requests.has("iam-bindings") || !!pendingBindingRead));
+    elements["close-iam"].disabled = requests.has("iam-action");
+    const iamLocked = requests.has("iam-action") || requests.has("iam-bindings") || !!pendingBindingRead || !elements["iam-secret-result"].hidden;
+    elements["iam-kind"].disabled = iamLocked;
+    elements["iam-action"].disabled = iamLocked;
+    elements["iam-owner"].disabled = iamLocked;
+    elements["iam-confirm"].disabled = iamLocked;
+    for (const input of Object.values(iamInputs)) input.disabled = iamLocked;
+    if (iamInputs.policies && bindingAction()) iamInputs.policies.readOnly = !bindingReady() || iamLocked;
+    elements["load-iam-bindings"].disabled = iamLocked;
+    elements["confirm-iam-bindings-read"].disabled = requests.has("iam-bindings");
+  }
+
+  function actionButton(label, callback, ariaLabel = label) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "row-action";
+    button.textContent = label;
+    button.setAttribute("aria-label", ariaLabel);
+    button.addEventListener("click", callback);
+    return button;
+  }
+
+  function openBucketAction(remove) {
+    if (!featureEnabled("bucketManagement") || state.readOnly) return;
+    closeDialogs();
+    bucketAction = remove ? "delete" : "create";
+    elements["bucket-action-form"].reset();
+    elements["bucket-action-name"].value = remove ? state.bucket : "";
+    elements["bucket-action-name"].readOnly = false;
+    elements["bucket-confirm-field"].hidden = !remove;
+    elements["bucket-action-confirm"].required = remove;
+    setText("bucket-action-title", remove ? "Delete empty bucket" : "Create bucket");
+    setText("bucket-action-help", remove ? "Enter an exact known bucket name, even if listing buckets is not allowed. Only an empty bucket can be deleted. Objects, historical versions, and delete markers must be removed separately. OC never empties the bucket automatically." : "A new bucket starts private. Use 3–63 lowercase letters, digits, dots, or hyphens; begin and end with a letter or digit.");
+    setText("bucket-action-status", "");
+    setText("submit-bucket-action", remove ? "Delete this empty bucket" : "Create private bucket");
+    elements["submit-bucket-action"].className = `button ${remove ? "danger" : "primary"}`;
+    updateBusy();
+    elements["bucket-dialog"].showModal();
+    elements[remove && state.bucket ? "bucket-action-confirm" : "bucket-action-name"].focus();
+  }
+
+  async function submitBucketAction(event) {
+    event.preventDefault();
+    if (!featureEnabled("bucketManagement") || state.readOnly || requests.has("bucket-action")) return;
+    const bucket = elements["bucket-action-name"].value;
+    const removing = bucketAction === "delete";
+    const confirmBucket = elements["bucket-action-confirm"].value;
+    if (removing && confirmBucket !== bucket) {
+      setText("bucket-action-status", "Enter the exact bucket name to confirm deletion.");
+      return;
+    }
+    const request = beginRequest("bucket-action");
+    setText("bucket-action-status", removing ? "Deleting empty bucket…" : "Creating bucket…");
+    try {
+      await api(`/api/buckets/${removing ? "delete" : "create"}`, mutationOptions(removing ? { bucket, confirmBucket } : { bucket }), request);
+      if (!currentRequest("bucket-action", request)) return;
+      elements["bucket-dialog"].close();
+      state.bucket = removing ? "" : bucket;
+      state.prefix = "";
+      selectedKeys.clear();
+      loadBuckets();
+    } catch (error) {
+      if (!currentRequest("bucket-action", request) || error.name === "AbortError") return;
+      if (!expired(error)) setText("bucket-action-status", error.message);
+    } finally {
+      finishRequest("bucket-action", request);
+    }
+  }
+
+  function openVersions(bucket, key = "") {
+    if (!featureEnabled("versions")) return;
+    closeDialogs();
+    versionLocation = null;
+    versionEntries = [];
+    versionCursor = "";
+    elements["versions-bucket"].value = bucket;
+    elements["versions-key"].value = key;
+    elements["versions-list"].replaceChildren();
+    elements["more-versions"].hidden = true;
+    setText("versions-status", "");
+    elements["versions-dialog"].showModal();
+    if (key) readVersions(false);
+    else elements[bucket ? "versions-key" : "versions-bucket"].focus();
+  }
+
+  async function readVersions(append) {
+    const bucket = append ? versionLocation?.bucket : elements["versions-bucket"].value;
+    const key = append ? versionLocation?.key : elements["versions-key"].value;
+    if (!featureEnabled("versions") || !bucket || !key || (append && !versionCursor)) return;
+    const cursor = append ? versionCursor : "";
+    const request = beginRequest("versions");
+    setText("versions-status", "Loading versions…");
+    if (!append) {
+      versionEntries = [];
+      versionCursor = "";
+      versionLocation = { bucket, key };
+      renderVersions();
+    }
+    const parameters = new URLSearchParams({ bucket, key, limit: "100" });
+    if (cursor) parameters.set("cursor", cursor);
+    try {
+      const result = await api(`/api/versions?${parameters}`, {}, request);
+      if (!currentRequest("versions", request)) return;
+      if (!result || !Array.isArray(result.entries) || result.entries.some(entry => !entry || typeof entry.versionId !== "string" || typeof entry.key !== "string")) throw new APIError(0, "InvalidVersions", "The console returned an invalid version list.");
+      versionEntries = [...new Map((append ? [...versionEntries, ...result.entries] : result.entries).map(entry => [`${entry.key}:${entry.versionId}`, entry])).values()];
+      versionCursor = typeof result.nextCursor === "string" && result.nextCursor !== cursor ? result.nextCursor : "";
+      setText("versions-status", versionEntries.length ? "" : "No versions were returned for this exact object.");
+      renderVersions();
+    } catch (error) {
+      if (!currentRequest("versions", request) || error.name === "AbortError") return;
+      if (!expired(error)) setText("versions-status", error.message);
+    } finally { finishRequest("versions", request); }
+  }
+
+  function renderVersions() {
+    elements["versions-list"].replaceChildren();
+    for (const entry of versionEntries) {
+      const card = document.createElement("article");
+      card.className = "record-card";
+      const title = document.createElement("p");
+      title.className = "scope-key";
+      title.textContent = entry.versionId || "Unversioned object";
+      const detail = document.createElement("p");
+      detail.className = "subtle";
+      detail.textContent = `${entry.latest ? "Latest · " : ""}${entry.deleteMarker ? "Delete marker" : formatSize(entry.size)} · ${formatDate(entry.modified)}`;
+      card.append(title, detail);
+      if (!entry.deleteMarker && versionLocation) {
+        const ref = { bucket: versionLocation.bucket, key: entry.key, versionId: entry.versionId };
+        const actions = document.createElement("div");
+        actions.className = "record-actions";
+        const download = document.createElement("a");
+        download.className = "download-link";
+        const parameters = new URLSearchParams(ref);
+        download.href = `/api/download?${parameters}`;
+        download.textContent = "Download this version ↓";
+        download.target = "_blank";
+        download.rel = "noopener";
+        download.addEventListener("click", event => prepareDownload(event, download, ref.bucket, ref.key, ref.versionId));
+        actions.append(download);
+        if (featureEnabled("sharing")) actions.append(actionButton("Share this version", () => openShare(ref)));
+        if (featureEnabled("archives")) actions.append(actionButton("ZIP this version", () => openArchive({ refs: [ref] })));
+        card.append(actions);
+      }
+      elements["versions-list"].append(card);
+    }
+    elements["more-versions"].hidden = !versionCursor;
+  }
+
+  function clearShare() {
+    cancelRequest("share");
+    shareRef = null;
+    elements["share-url"].value = "";
+    elements["share-name"].value = "";
+    elements["share-result"].hidden = true;
+    setText("share-scope", "");
+    setText("share-status", "");
+    setText("share-expires", "");
+  }
+
+  function openShare(ref) {
+    if (!featureEnabled("sharing")) return;
+    closeDialogs();
+    shareRef = { ...ref };
+    elements["share-expiry"].value = "3600";
+    setText("share-scope", `${ref.bucket}/${ref.key}${ref.versionId !== undefined ? `\nVersion ${ref.versionId || "null"}` : "\nCurrent object"}`);
+    elements["share-dialog"].showModal();
+    updateBusy();
+  }
+
+  async function createShare(event) {
+    event.preventDefault();
+    if (!featureEnabled("sharing") || !shareRef) return;
+    const request = beginRequest("share");
+    elements["share-url"].value = "";
+    elements["share-result"].hidden = true;
+    setText("share-status", "Creating a download link…");
+    const body = { ...shareRef, expiresSeconds: Number(elements["share-expiry"].value), downloadName: elements["share-name"].value };
+    try {
+      const result = await api("/api/shares", mutationOptions(body), request);
+      if (!currentRequest("share", request)) return;
+      if (!result || typeof result.url !== "string" || !/^https?:\/\//.test(result.url)) throw new APIError(0, "InvalidShare", "The console returned an invalid share link.");
+      elements["share-url"].value = result.url;
+      elements["share-result"].hidden = false;
+      setText("share-expires", `Expires ${new Date(result.expiresAt).toLocaleString()}. Temporary credentials may expire sooner.`);
+      setText("share-status", "Link created. Copy it before closing this window.");
+    } catch (error) {
+      if (!currentRequest("share", request) || error.name === "AbortError") return;
+      if (!expired(error)) setText("share-status", error.message);
+    } finally { finishRequest("share", request); }
+  }
+
+  async function copyShare() {
+    const value = elements["share-url"].value;
+    if (!value) return;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        setText("share-status", "Link copied.");
+        return;
+      }
+    } catch (_) { /* Manual selection also works when clipboard permission is denied. */ }
+    elements["share-url"].focus();
+    elements["share-url"].select();
+    setText("share-status", "Link selected. Copy it using your browser or keyboard.");
+  }
+
+  function clearArchive() {
+    clearTimeout(archiveTimer);
+    archiveTimer = null;
+    cancelRequest("archive-status");
+    archiveDraft = null;
+    archiveJob = null;
+    elements["archive-items"].replaceChildren();
+    elements["archive-progress"].hidden = true;
+    elements["retry-archive-status"].hidden = true;
+    elements["download-archive"].hidden = true;
+    elements["download-archive"].removeAttribute("href");
+    elements["cancel-archive"].hidden = true;
+    elements["start-archive"].hidden = false;
+    setText("archive-scope", "");
+    setText("archive-status", "");
+  }
+
+  function openArchive(draft) {
+    if (!featureEnabled("archives")) return;
+    closeDialogs();
+    if ((archiveJob && ["planning", "running", "ready", "downloading"].includes(archiveJob.status)) || requests.has("archive-create")) {
+      elements["archive-dialog"].showModal();
+      return;
+    }
+    clearArchive();
+    archiveDraft = draft.refs ? { refs: draft.refs.map(ref => ({ ...ref })) } : { bucket: draft.bucket, prefix: draft.prefix };
+    setText("archive-scope", draft.refs ? `${draft.refs.length} selected ${draft.refs.length === 1 ? "object" : "objects"}` : `Bucket ${draft.bucket}\nPrefix ${draft.prefix || "(all objects)"}`);
+    for (const ref of draft.refs || []) {
+      const item = document.createElement("li");
+      item.textContent = `${ref.bucket}/${ref.key}${ref.versionId !== undefined ? ` · version ${ref.versionId || "null"}` : " · current object"}`;
+      elements["archive-items"].append(item);
+    }
+    setText("archive-status", draft.refs ? "The selected keys are fixed. Current objects are resolved during preparation." : "Preparation lists this prefix once and fixes the archive manifest before reading object data.");
+    elements["archive-dialog"].showModal();
+    updateBusy();
+  }
+
+  function renderArchive() {
+    if (!archiveJob) return;
+    const { status, count, size, transferred, error } = archiveJob;
+    elements["retry-archive-status"].hidden = true;
+    const labels = { planning: "Planning archive…", running: "Preparing ZIP…", ready: "ZIP ready to download", downloading: "Downloading ZIP…", succeeded: "ZIP download completed", failed: "Archive preparation failed", canceled: "Archive canceled" };
+    setText("archive-status", `${labels[status] || status} · ${count || 0} objects · ${formatSize(size)}${error ? ` · ${typeof error === "object" ? error.message || "Archive preparation failed." : error}` : ""}`);
+    if (Array.isArray(archiveJob.entries)) {
+      elements["archive-items"].replaceChildren();
+      for (const entry of archiveJob.entries) {
+        const item = document.createElement("li");
+        item.textContent = `${entry.bucket}/${entry.key} · ${formatSize(entry.size)} · ${entry.versionId ? `version ${entry.versionId}` : "current object (fixed content)"} → ${entry.archivePath}`;
+        elements["archive-items"].append(item);
+      }
+    }
+    elements["start-archive"].hidden = true;
+    elements["cancel-archive"].hidden = !["planning", "running", "ready"].includes(status);
+    elements["cancel-archive"].textContent = status === "ready" ? "Discard ZIP" : "Cancel preparation";
+    elements["download-archive"].hidden = status !== "ready";
+    if (status === "ready") elements["download-archive"].href = `/api/archives/${encodeURIComponent(archiveJob.id)}/download`;
+    elements["archive-progress"].hidden = status !== "running";
+    elements["archive-progress"].max = size || 1;
+    elements["archive-progress"].value = transferred || 0;
+    updateBusy();
+  }
+
+  function acceptArchive(result) {
+    if (!result || typeof result.id !== "string" || !["planning", "running", "ready", "downloading", "succeeded", "failed", "canceled"].includes(result.status)) throw new APIError(0, "InvalidArchive", "The console returned an invalid archive status.");
+    archiveJob = result;
+    renderArchive();
+    clearTimeout(archiveTimer);
+    if (["planning", "running", "downloading", "ready"].includes(result.status) && !pageSuspended) archiveTimer = setTimeout(pollArchive, result.status === "ready" ? 5000 : 1000);
+  }
+
+  async function loadArchiveList() {
+    if (!featureEnabled("archives") || requests.has("archive-create")) return;
+    const request = beginRequest("archives-list");
+    try {
+      const result = await api("/api/archives", {}, request);
+      if (!currentRequest("archives-list", request)) return;
+      const states = new Set(["planning", "running", "ready", "downloading", "succeeded", "failed", "canceled"]);
+      if (!result || !Array.isArray(result.archives) || result.archives.length > 16 || result.archives.some(task => !task || typeof task.id !== "string" || !states.has(task.status))) throw new APIError(0, "InvalidArchives", "The console returned an invalid ZIP task list.");
+      const active = result.archives.find(task => ["planning", "running", "ready", "downloading"].includes(task.status));
+      const recovered = active || (archiveJob && result.archives.find(task => task.id === archiveJob.id));
+      if (recovered) {
+        if (archiveJob?.id !== recovered.id) {
+          archiveDraft = null;
+          elements["archive-items"].replaceChildren();
+          setText("archive-scope", `Recovered ZIP task${recovered.created ? ` · created ${new Date(recovered.created).toLocaleString()}` : ""}`);
+        }
+        acceptArchive(recovered);
+      } else if (archiveJob) {
+        archiveJob.status = "failed";
+        archiveJob.error = { message: "Archive expired or is no longer available." };
+        renderArchive();
+      }
+    } catch (error) {
+      if (!currentRequest("archives-list", request) || error.name === "AbortError") return;
+      if (!expired(error)) setText("archive-status", `${error.message} Check ZIP status before preparing another archive.`);
+    } finally { finishRequest("archives-list", request); }
+  }
+
+  async function startArchive() {
+    if (!featureEnabled("archives") || !archiveDraft || archiveJob || requests.has("archives-list")) return;
+    cancelRequest("archives-list");
+    const request = beginRequest("archive-create");
+    let recover = false;
+    setText("archive-status", "Planning ZIP…");
+    try {
+      const result = await api("/api/archives", mutationOptions(archiveDraft), request);
+      if (currentRequest("archive-create", request)) acceptArchive(result);
+    } catch (error) {
+      if (!currentRequest("archive-create", request) || error.name === "AbortError") return;
+      if (!expired(error)) {
+        setText("archive-status", error.message);
+        recover = error.status === 0 || error.status === 429;
+      }
+    } finally {
+      finishRequest("archive-create", request);
+      if (recover) loadArchiveList();
+    }
+  }
+
+  async function pollArchive() {
+    if (!archiveJob || !state.authenticated || pageSuspended) return;
+    const id = archiveJob.id;
+    const request = beginRequest("archive-status");
+    try {
+      const result = await api(`/api/archives/${encodeURIComponent(id)}`, {}, request);
+      if (currentRequest("archive-status", request) && archiveJob?.id === id) acceptArchive(result);
+    } catch (error) {
+      if (!currentRequest("archive-status", request) || error.name === "AbortError") return;
+      if (!expired(error)) {
+        if ([404, 410].includes(error.status)) {
+          archiveJob.status = "failed";
+          archiveJob.error = "Archive expired or is no longer available.";
+          renderArchive();
+          setText("archive-status", "Archive expired or is no longer available. Close this window and prepare a new ZIP.");
+        } else {
+          setText("archive-status", `${error.message} Check ZIP status to retry this read. Preparation is not repeated.`);
+          elements["retry-archive-status"].hidden = false;
+          elements["download-archive"].hidden = true;
+        }
+      }
+    } finally { finishRequest("archive-status", request); }
+  }
+
+  async function cancelArchive() {
+    if (!archiveJob || !state.authenticated || requests.has("archive-cancel")) return;
+    clearTimeout(archiveTimer);
+    cancelRequest("archive-status");
+    cancelRequest("archives-list");
+    const request = beginRequest("archive-cancel");
+    let recover = false;
+    try {
+      const result = await api(`/api/archives/${encodeURIComponent(archiveJob.id)}/cancel`, mutationOptions({}), request);
+      if (currentRequest("archive-cancel", request)) acceptArchive(result);
+    } catch (error) {
+      if (!currentRequest("archive-cancel", request) || error.name === "AbortError") return;
+      if (!expired(error)) {
+        setText("archive-status", error.message);
+        recover = error.status === 0 || error.status === 404 || error.status === 410;
+      }
+    } finally {
+      finishRequest("archive-cancel", request);
+      if (recover) loadArchiveList();
+    }
+  }
+
+  const iamActions = {
+    users: ["user.create", "user.enable", "user.disable", "user.rotate", "user.policies", "user.delete"],
+    groups: ["group.create", "group.add-members", "group.remove-members", "group.enable", "group.disable", "group.policies", "group.delete"],
+    "service-accounts": ["service-account.create", "service-account.enable", "service-account.disable", "service-account.rotate", "service-account.policy", "service-account.delete"],
+    policies: [],
+  };
+  const iamLabels = {
+    "user.policies": "Change user policy bindings", "group.policies": "Change group policy bindings",
+    "user.create": "Create user", "user.enable": "Enable user", "user.disable": "Disable user", "user.rotate": "Change user secret key", "user.delete": "Delete user",
+    "group.create": "Create empty group", "group.add-members": "Add group members", "group.remove-members": "Remove group members", "group.enable": "Enable group", "group.disable": "Disable group", "group.delete": "Delete empty group",
+    "service-account.create": "Create service account", "service-account.enable": "Enable service account", "service-account.disable": "Disable service account", "service-account.rotate": "Change service account secret key", "service-account.policy": "Change service account restrictions", "service-account.delete": "Delete service account",
+  };
+
+  function clearIAMSecret() {
+    elements["iam-result-access"].value = "";
+    elements["iam-result-secret"].value = "";
+    elements["iam-result-secret"].type = "password";
+    elements["iam-secret-result"].hidden = true;
+    setText("reveal-iam-secret", "Show secret");
+    if (iamInputs.secretKey) iamInputs.secretKey.value = "";
+  }
+
+  function clearStoppedCredential() {
+    elements["stopped-result-access"].value = "";
+    elements["stopped-result-secret"].value = "";
+    elements["stopped-result-secret"].type = "password";
+    setText("reveal-stopped-secret", "Show secret");
+  }
+
+  function dismissStoppedCredential() {
+    clearStoppedCredential();
+    if (elements["stopped-credential-dialog"].open) elements["stopped-credential-dialog"].close();
+  }
+
+  function showStoppedCredential(credentials) {
+    if (!credentials || typeof credentials.accessKey !== "string" || !credentials.accessKey || typeof credentials.secretKey !== "string" || !credentials.secretKey) return;
+    elements["stopped-result-access"].value = credentials.accessKey;
+    elements["stopped-result-secret"].value = credentials.secretKey;
+    elements["stopped-credential-dialog"].showModal();
+    elements["stopped-result-secret"].focus();
+  }
+
+  function clearIAM() {
+    clearIAMSecret();
+    cancelRequest("iam-list");
+    resetBindings();
+    iamInputs = {};
+    iamRecord = null;
+    iamGroups = [];
+    elements["iam-fields"].replaceChildren();
+    elements["iam-list"].replaceChildren();
+    elements["iam-confirm"].value = "";
+    elements["iam-owner"].value = "";
+    setText("iam-action-status", "");
+    setText("iam-status", "");
+  }
+
+  function openIAM() {
+    if (!featureEnabled("iam")) return;
+    closeDialogs();
+    elements["iam-kind"].value = "users";
+    configureIAMView();
+    elements["iam-dialog"].showModal();
+    loadIAM();
+  }
+
+  function configureIAMView() {
+    clearIAMSecret();
+    iamRecord = null;
+    const kind = elements["iam-kind"].value;
+    elements["iam-owner-field"].hidden = kind !== "service-accounts";
+    elements["iam-action"].replaceChildren();
+    for (const action of iamActions[kind] || []) {
+      const option = document.createElement("option");
+      option.value = action;
+      option.textContent = iamLabels[action];
+      elements["iam-action"].append(option);
+    }
+    elements["iam-action"].value = iamActions[kind]?.[0] || "";
+    elements["iam-action-form"].hidden = state.readOnly || !(iamActions[kind]?.length);
+    elements["iam-list"].replaceChildren();
+    setText("iam-action-status", "");
+    configureIAMAction();
+  }
+
+  function addIAMField(name, labelText, options = {}) {
+    const wrapper = document.createElement("div");
+    const label = document.createElement("label");
+    const input = document.createElement(options.multiline ? "textarea" : "input");
+    input.id = `iam-field-${name}`;
+    if (!options.multiline) input.type = options.secret ? "password" : "text";
+    input.autocomplete = options.secret ? "new-password" : "off";
+    input.spellcheck = false;
+    input.required = options.required !== false;
+    input.value = options.value || "";
+    if (options.multiline) input.rows = 5;
+    label.setAttribute("for", input.id);
+    label.textContent = labelText;
+    wrapper.append(label, input);
+    elements["iam-fields"].append(wrapper);
+    input.addEventListener("input", updateBusy);
+    iamInputs[name] = input;
+  }
+
+  function configureIAMAction() {
+    resetBindings();
+    if (iamInputs.secretKey) iamInputs.secretKey.value = "";
+    iamInputs = {};
+    elements["iam-fields"].replaceChildren();
+    elements["iam-confirm"].value = "";
+    setText("iam-action-status", "");
+    const action = elements["iam-action"].value;
+    elements["iam-binding-controls"].hidden = !bindingAction();
+    if (!action) return;
+    if (action.startsWith("user.")) {
+      addIAMField("user", "User access key", { value: iamRecord?.accessKey });
+      if (["user.create", "user.rotate"].includes(action)) addIAMField("secretKey", action === "user.create" ? "New secret key (optional; generated if empty)" : "New secret key", { secret: true, required: action !== "user.create" });
+    } else if (action.startsWith("group.")) {
+      addIAMField("group", "Group name", { value: iamRecord?.name });
+      if (action.endsWith("members")) addIAMField("members", "Member access keys (one per line)", { multiline: true });
+    } else if (action === "service-account.create") {
+      addIAMField("user", "Parent user access key", { value: elements["iam-owner"].value });
+      addIAMField("accessKey", "New access key (optional)", { required: false });
+      addIAMField("secretKey", "New secret key (optional; generated if empty)", { secret: true, required: false });
+      addIAMField("policy", "Restriction policy JSON (optional)", { multiline: true, required: false });
+    } else {
+      addIAMField("accessKey", "Service account access key", { value: iamRecord?.accessKey });
+      if (action === "service-account.rotate") addIAMField("secretKey", "New secret key", { secret: true });
+      if (action === "service-account.policy") addIAMField("policy", "Restriction policy JSON", { multiline: true, value: typeof iamRecord?.policy === "string" ? iamRecord.policy : iamRecord?.policy ? JSON.stringify(iamRecord.policy, null, 2) : "" });
+    }
+    if (bindingAction()) addIAMField("policies", "Complete policy bindings (one policy name per line; empty removes all bindings)", { multiline: true, required: false });
+    let help = "Confirm the exact target before applying. Changes are never retried automatically. Policy binding changes require a fresh read and support for safe concurrent updates.";
+    if (action === "user.delete") help += " Remove listed service accounts and group memberships first. Current membership is checked again before deletion. Deletion revokes temporary credentials and direct policy bindings, and may revoke service credentials or memberships created concurrently.";
+    if (action === "group.delete") help += " Only an empty group can be deleted.";
+    if (action === "service-account.create") help += " Confirm the parent user's access key. Supply an access key when you supply a secret key; leave both blank to generate a credential. Save the returned credential before closing.";
+    if (action.endsWith("rotate")) help += " Existing clients must update their credentials after the change.";
+    setText("iam-action-help", help);
+    updateBusy();
+  }
+
+  function iamMembershipSummary(record) {
+    if (record.memberOfKnown === true && Array.isArray(record.memberOf)) return `Groups: ${record.memberOf.join(", ") || "none"}`;
+    const listedGroups = iamGroups.filter(group => Array.isArray(group.members) && group.members.includes(record.accessKey)).map(group => group.name);
+    return [listedGroups.length ? `Listed groups: ${listedGroups.join(", ")}` : "", "Group membership: unknown"].filter(Boolean).join(" · ");
+  }
+
+  async function loadIAM() {
+    if (!featureEnabled("iam")) return;
+    const kind = elements["iam-kind"].value;
+    const user = elements["iam-owner"].value;
+    if (kind === "groups") iamGroups = [];
+    if (kind === "service-accounts" && !user) {
+      setText("iam-status", "Enter an exact parent user to list its service accounts.");
+      return;
+    }
+    const request = beginRequest("iam-list");
+    setText("iam-status", "Loading access records…");
+    const path = `/api/iam/${kind}${kind === "service-accounts" ? `?${new URLSearchParams({ user })}` : ""}`;
+    try {
+      const result = await api(path, {}, request);
+      if (!currentRequest("iam-list", request)) return;
+      const items = result?.[kind === "service-accounts" ? "serviceAccounts" : kind];
+      if (!Array.isArray(items)) throw new APIError(0, "InvalidIAM", "The console returned invalid access records.");
+      if (kind === "groups") iamGroups = items;
+      elements["iam-list"].replaceChildren();
+      for (const record of items) {
+        const card = document.createElement("article");
+        card.className = "record-card";
+        const title = document.createElement("h3");
+        title.textContent = record.name || record.accessKey || "Unnamed record";
+        card.append(title);
+        const detail = document.createElement("p");
+        detail.className = "subtle";
+        detail.textContent = [record.status, record.parentUser ? `Parent: ${record.parentUser}` : "", record.policies?.length ? `Policies: ${record.policies.join(", ")}` : "", record.members ? `Members: ${record.members.join(", ") || "none"}` : "", kind === "users" ? iamMembershipSummary(record) : ""].filter(Boolean).join(" · ");
+        card.append(detail);
+        if (record.document || record.policy) {
+          const policy = document.createElement("pre");
+          policy.className = "scope-key setting-preview";
+          const value = record.document || record.policy;
+          policy.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+          card.append(policy);
+        }
+        if (!state.readOnly && kind !== "policies") card.append(actionButton("Choose for change", () => {
+          iamRecord = record;
+          elements["iam-action"].value = iamActions[kind][1] || iamActions[kind][0];
+          configureIAMAction();
+          elements["iam-action"].focus();
+        }, `Choose ${title.textContent} for a change`));
+        elements["iam-list"].append(card);
+      }
+      setText("iam-status", `${items.length} ${kind.replaceAll("-", " ")} returned. Policy bindings can be inspected through the policy binding action.`);
+    } catch (error) {
+      if (!currentRequest("iam-list", request) || error.name === "AbortError") return;
+      if (!expired(error)) setText("iam-status", error.message);
+    } finally { finishRequest("iam-list", request); }
+  }
+
+  async function applyIAMAction(event) {
+    event.preventDefault();
+    if (!featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
+    const action = elements["iam-action"].value;
+    const body = { action, confirmTarget: elements["iam-confirm"].value };
+    for (const [name, input] of Object.entries(iamInputs)) {
+      if (name === "policies") body.policies = [...new Set(input.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];
+      else if (name === "members") body.members = input.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+      else if (input.value || input.required) body[name] = input.value;
+    }
+    if (bindingAction()) body.revision = iamBinding.revision;
+    if (action === "service-account.create" && body.secretKey && !body.accessKey) {
+      setText("iam-action-status", "Enter an access key when supplying a secret key, or leave both blank to generate the credential.");
+      return;
+    }
+    const target = action === "service-account.create" ? body.user : action.startsWith("user.") ? body.user : action.startsWith("group.") ? body.group : body.accessKey;
+    if (!target || body.confirmTarget !== target) {
+      setText("iam-action-status", "Enter the exact target name or access key to confirm this change.");
+      return;
+    }
+    const request = beginRequest("iam-action");
+    if (iamInputs.secretKey) iamInputs.secretKey.value = "";
+    setText("iam-action-status", "Applying the change…");
+    try {
+      const result = await api("/api/iam/actions", mutationOptions(body), request);
+      if (!currentRequest("iam-action", request)) return;
+      if (result?.outcome !== "confirmed") throw new APIError(0, "UnknownIAMOutcome", "The change was not confirmed. Verify storage before retrying.");
+      if (result?.restartRequired) {
+        consoleStopped = true;
+        showLogin("The current credentials changed. Update the alias in your terminal and restart OC console before continuing.");
+        showStoppedCredential(result.credentials);
+        return;
+      }
+      if (iamInputs.secretKey) iamInputs.secretKey.value = "";
+      elements["iam-confirm"].value = "";
+      setText("iam-action-status", "Change confirmed by storage.");
+      iamGroups = [];
+      if (bindingAction()) {
+        iamBindingNeedsRead = true;
+        iamBinding = { ...iamBinding, policies: body.policies };
+        iamInputs.policies.value = body.policies.join("\n");
+        setText("iam-binding-status", "Change confirmed. Read current bindings before making another change.");
+      }
+      if (result.credentials?.accessKey && result.credentials?.secretKey) {
+        elements["iam-result-access"].value = result.credentials.accessKey;
+        elements["iam-result-secret"].value = result.credentials.secretKey;
+        elements["iam-secret-result"].hidden = false;
+        elements["iam-result-secret"].focus();
+      }
+      loadIAM();
+    } catch (error) {
+      if (iamInputs.secretKey) iamInputs.secretKey.value = "";
+      if (!currentRequest("iam-action", request) || error.name === "AbortError") return;
+      if (error.restartRequired || error.status === 0 || error.code === "outcome_unknown") {
+        consoleStopped = true;
+        showLogin("The credential change outcome is unconfirmed. Verify which secret works, update the alias, and restart OC console. This action will not be repeated.");
+        return;
+      }
+      if (!expired(error)) {
+        setText("iam-action-status", error.message);
+        if (bindingAction()) {
+          iamBindingNeedsRead = true;
+          setText("iam-binding-status", "Read current bindings before another change. Your policy draft is preserved; no conflicting change is retried automatically.");
+        }
+      }
+    } finally { finishRequest("iam-action", request); }
+  }
+
+  function bindingAction() {
+    return ["user.policies", "group.policies"].includes(elements["iam-action"].value);
+  }
+
+  function bindingTarget() {
+    const kind = elements["iam-action"].value.startsWith("user.") ? "user" : "group";
+    return { kind, target: iamInputs[kind]?.value || "" };
+  }
+
+  function bindingReady() {
+    if (!bindingAction()) return true;
+    const { kind, target } = bindingTarget();
+    return !!iamBinding && !iamBindingNeedsRead && iamBinding.conditional === true && /^[a-f0-9]{64}$/.test(iamBinding.revision || "") && iamBinding.kind === kind && iamBinding.target === target;
+  }
+
+  function dirtyBindings() {
+    return !!iamBinding && !!iamInputs.policies && iamInputs.policies.value !== iamBinding.policies.join("\n");
+  }
+
+  function resetBindings() {
+    cancelRequest("iam-bindings");
+    iamBinding = null;
+    pendingBindingRead = null;
+    iamBindingNeedsRead = false;
+    elements["iam-binding-read-confirmation"].hidden = true;
+    setText("iam-binding-scope", "");
+    setText("iam-binding-status", "");
+  }
+
+  function reviewBindingRead() {
+    if (!bindingAction() || requests.has("iam-bindings")) return;
+    const scope = bindingTarget();
+    if (!scope.target) {
+      setText("iam-binding-status", "Enter an exact user or group before reading its policy bindings.");
+      return;
+    }
+    if (dirtyBindings()) {
+      pendingBindingRead = scope;
+      elements["iam-binding-read-confirmation"].hidden = false;
+      setText("iam-binding-read-warning", `Read bindings for ${scope.kind} ${scope.target}? A successful read will replace the unsaved policy list. A failed read keeps the draft.`);
+      elements["cancel-iam-bindings-read"].focus();
+      updateBusy();
+      return;
+    }
+    readIAMBindings(scope);
+  }
+
+  async function readIAMBindings(scope) {
+    if (!bindingAction() || !scope.target || requests.has("iam-bindings")) return;
+    pendingBindingRead = null;
+    elements["iam-binding-read-confirmation"].hidden = true;
+    const request = beginRequest("iam-bindings");
+    setText("iam-binding-status", "Reading current policy bindings…");
+    try {
+      const result = await api(`/api/iam/bindings?${new URLSearchParams(scope)}`, {}, request);
+      if (!currentRequest("iam-bindings", request)) return;
+      if (!result || result.kind !== scope.kind || result.target !== scope.target || !Array.isArray(result.policies) || result.policies.some(policy => typeof policy !== "string") || typeof result.conditional !== "boolean" || typeof result.revision !== "string") throw new APIError(0, "InvalidBindings", "The console returned invalid policy bindings.");
+      iamBinding = result;
+      iamBindingNeedsRead = false;
+      iamInputs.policies.value = result.policies.join("\n");
+      setText("iam-binding-scope", `Loaded ${result.kind} ${result.target}`);
+      setText("iam-binding-status", result.conditional && /^[a-f0-9]{64}$/.test(result.revision) ? "Edit the complete list. Saving checks that these bindings have not changed since this read." : "Current storage permits reading these bindings. Editing requires support for safe concurrent changes.");
+    } catch (error) {
+      if (!currentRequest("iam-bindings", request) || error.name === "AbortError") return;
+      if (!expired(error)) setText("iam-binding-status", error.message);
+    } finally { finishRequest("iam-bindings", request); }
+  }
+
+  elements["load-iam-bindings"].addEventListener("click", reviewBindingRead);
+  elements["cancel-iam-bindings-read"].addEventListener("click", () => {
+    pendingBindingRead = null;
+    elements["iam-binding-read-confirmation"].hidden = true;
+    updateBusy();
+  });
+  elements["confirm-iam-bindings-read"].addEventListener("click", () => { if (pendingBindingRead) readIAMBindings({ ...pendingBindingRead }); });
+
+  elements["open-create-bucket"].addEventListener("click", () => openBucketAction(false));
+  elements["open-delete-bucket"].addEventListener("click", () => openBucketAction(true));
+  elements["bucket-action-form"].addEventListener("submit", submitBucketAction);
+  elements["close-bucket-action"].addEventListener("click", () => elements["bucket-dialog"].close());
+  elements["bucket-dialog"].addEventListener("cancel", event => { if (requests.has("bucket-action")) event.preventDefault(); });
+  elements["open-versions"].addEventListener("click", () => openVersions(state.bucket));
+  elements["close-versions"].addEventListener("click", () => { cancelRequest("versions"); elements["versions-dialog"].close(); });
+  elements["versions-form"].addEventListener("submit", event => { event.preventDefault(); readVersions(false); });
+  elements["more-versions"].addEventListener("click", () => readVersions(true));
+  elements["share-form"].addEventListener("submit", createShare);
+  elements["copy-share"].addEventListener("click", copyShare);
+  elements["close-share"].addEventListener("click", () => { clearShare(); elements["share-dialog"].close(); });
+  elements["share-dialog"].addEventListener("cancel", event => { event.preventDefault(); clearShare(); elements["share-dialog"].close(); });
+  elements["archive-selected"].addEventListener("click", () => openArchive({ refs: [...selectedKeys].map(key => ({ bucket: state.bucket, key })) }));
+  elements["archive-prefix"].addEventListener("click", () => openArchive({ bucket: state.bucket, prefix: state.prefix }));
+  elements["start-archive"].addEventListener("click", startArchive);
+  elements["retry-archive-status"].addEventListener("click", pollArchive);
+  elements["cancel-archive"].addEventListener("click", cancelArchive);
+  elements["download-archive"].addEventListener("click", event => { if (archiveJob?.status === "ready") prepareDownload(event, elements["download-archive"], "", "", undefined, `/api/archives/${encodeURIComponent(archiveJob.id)}/download`); else event.preventDefault(); });
+  elements["open-current-archive"].addEventListener("click", () => { closeDialogs(); elements["archive-dialog"].showModal(); });
+  elements["close-archive"].addEventListener("click", () => elements["archive-dialog"].close());
+  elements["archive-dialog"].addEventListener("cancel", event => { event.preventDefault(); elements["archive-dialog"].close(); });
+  elements["open-iam"].addEventListener("click", openIAM);
+  elements["close-iam"].addEventListener("click", () => { clearIAM(); elements["iam-dialog"].close(); });
+  elements["iam-dialog"].addEventListener("cancel", event => { event.preventDefault(); if (!requests.has("iam-action")) { clearIAM(); elements["iam-dialog"].close(); } });
+  elements["iam-kind"].addEventListener("change", () => { cancelRequest("iam-list"); configureIAMView(); loadIAM(); });
+  elements["iam-action"].addEventListener("change", configureIAMAction);
+  elements["iam-list-form"].addEventListener("submit", event => { event.preventDefault(); loadIAM(); });
+  elements["iam-action-form"].addEventListener("submit", applyIAMAction);
+  elements["dismiss-iam-secret"].addEventListener("click", () => { clearIAMSecret(); updateBusy(); });
+  elements["reveal-iam-secret"].addEventListener("click", () => {
+    elements["iam-result-secret"].type = elements["iam-result-secret"].type === "password" ? "text" : "password";
+    setText("reveal-iam-secret", elements["iam-result-secret"].type === "password" ? "Show secret" : "Hide secret");
+  });
+  elements["close-stopped-credential"].addEventListener("click", dismissStoppedCredential);
+  elements["dismiss-stopped-secret"].addEventListener("click", dismissStoppedCredential);
+  elements["stopped-credential-dialog"].addEventListener("cancel", event => { event.preventDefault(); dismissStoppedCredential(); });
+  elements["stopped-credential-dialog"].addEventListener("close", clearStoppedCredential);
+  elements["reveal-stopped-secret"].addEventListener("click", () => {
+    elements["stopped-result-secret"].type = elements["stopped-result-secret"].type === "password" ? "text" : "password";
+    setText("reveal-stopped-secret", elements["stopped-result-secret"].type === "password" ? "Show secret" : "Hide secret");
+  });
+
   elements["open-settings"].addEventListener("click", openSettings);
   elements["close-settings"].addEventListener("click", closeSettings);
   elements["settings-dialog"].addEventListener("cancel", event => { event.preventDefault(); closeSettings(); });
@@ -1471,6 +2334,8 @@
 
   elements.logout.addEventListener("click", async () => {
     clearSecret();
+    dismissStoppedCredential();
+    if (consoleStopped) return;
     const request = beginRequest("logout");
     try {
       await api("/api/logout", { method: "POST", headers: { "X-CSRF-Token": state.csrfToken } }, request);
@@ -1610,6 +2475,9 @@
   window.addEventListener("pagehide", () => {
     pageSuspended = true;
     clearSecret();
+    clearShare();
+    clearIAMSecret();
+    dismissStoppedCredential();
     if (rotationInFlight) stopAfterRotation(false);
     else abortAll();
   });

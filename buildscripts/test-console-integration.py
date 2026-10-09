@@ -185,13 +185,15 @@ def scenario(args, name, preview=False, record=None):
         def cli(*options):
             return run_fixture_cli([args.cli, '--config-dir', str(cfg_dir), '--no-color', *options], env, credentials)
 
-        def start_console(alias, writes=False, config_dir=cfg_dir):
+        def start_console(alias, writes=False, config_dir=cfg_dir, sharing=False):
             output_path = root / (alias + ('-writer' if writes else '') + '-console.log')
             log = output_path.open('wb')
             log_files.append(log)
             command = [args.console, '--config-dir', str(config_dir), '--alias', alias, '--address', '127.0.0.1:0']
             if writes:
                 command.append('--allow-writes')
+            if sharing:
+                command += ['--allow-sharing', '--share-url', endpoint]
             process = subprocess.Popen(command, env=env, stdout=log, stderr=log)
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
@@ -212,7 +214,7 @@ def scenario(args, name, preview=False, record=None):
             jar = http.cookiejar.CookieJar()
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(jar))
 
-            def request(path, method='GET', body=None, expected=200, headers=None):
+            def request(path, method='GET', body=None, expected=200, headers=None, allowed_credentials=()):
                 request_headers = {'Origin': base, **(headers or {})}
                 data = None
                 if body is not None:
@@ -229,9 +231,10 @@ def scenario(args, name, preview=False, record=None):
                     response = error
                 with response:
                     payload = response.read()
-                    if any(credential.encode() in payload for credential in credentials):
+                    if any(credential.encode() in payload for credential in credentials if credential not in allowed_credentials):
                         raise RuntimeError('browser response disclosed storage credentials')
-                    if expected is not None and response.status != expected:
+                    accepted = expected if isinstance(expected, tuple) else (expected,)
+                    if expected is not None and response.status not in accepted:
                         raise RuntimeError(f'{method} {path.split("?")[0]}: expected {expected}, got {response.status}: {payload[:300]!r}')
                     return payload, response.headers
             request.jar = jar
@@ -246,7 +249,7 @@ def scenario(args, name, preview=False, record=None):
                 command += ['--console-address', f'127.0.0.1:{ports[1]}']
                 if tls:
                     command += ['--console-certs-dir', str(admincert_dir)]
-            command += [str(root / f'data-{i}') for i in range(4)] if args.writes or args.settings else [str(root / 'data')]
+            command += [str(root / f'data-{i}') for i in range(4)] if args.writes or args.settings or args.features or args.version_copy else [str(root / 'data')]
             server = subprocess.Popen(command, env=env, stdout=log, stderr=log)
             deadline = time.monotonic() + 30
             while True:
@@ -263,7 +266,7 @@ def scenario(args, name, preview=False, record=None):
                 time.sleep(0.1)
             bucket = 'console-fixture'
             cli('mb', 'store/' + bucket)
-            if preview and args.writes:
+            if preview and (args.writes or args.features):
                 cli('version', 'enable', 'store/' + bucket)
             objects = {'empty.txt': b'', 'plain.txt': b'console acceptance\n',
                        '中文/含 空格+%.txt': '原样对象内容'.encode(),
@@ -274,7 +277,8 @@ def scenario(args, name, preview=False, record=None):
             for key, payload in objects.items():
                 put_object(endpoint, bucket, key, payload, access, secret, context)
             checks.append('real S3 fixture with unusual literal keys')
-            console, base, code = start_console('store', writes=preview and args.writes)
+            console, base, code = start_console('store',
+                writes=preview and (args.writes or args.features), sharing=preview and args.features)
             if preview:
                 print(json.dumps({'previewURL': base, 'loginCode': code, 'alias': 'store', 'fixtureConfig': str(config_path), 'previewPID': os.getpid()}), flush=True)
                 while True:
@@ -353,7 +357,12 @@ def scenario(args, name, preview=False, record=None):
                 record['settingsMetrics'] = verify_settings(
                     root, bucket, cli, request, session, viewer, start_console, browser, stop,
                     credentials, endpoint, access, secret, context, signed_request,
-                    checks, legacy=args.settings_legacy)
+                    checks, legacy=args.settings_legacy, base_protocol=args.settings_base)
+            if args.version_copy:
+                from version_copy_acceptance import verify_version_copy
+                record['versionCopyMetrics'] = verify_version_copy(
+                    root, bucket, cli, credentials, endpoint, access, secret, context,
+                    signed_request, put_object, checks)
             if args.writes:
                 from console_write_acceptance import verify_writes
                 write_metrics = {}
@@ -368,6 +377,12 @@ def scenario(args, name, preview=False, record=None):
                 write_metrics = verify_writes(root, bucket, cli, write_base, write_request, write_session, viewer_write, viewer_session,
                               endpoint, access, secret, context, signed_request, put_object, checks,
                               start_console, browser, stop, credentials, write_console, metrics=write_metrics)
+            if args.features:
+                from console_features_acceptance import verify_features
+                record['featureMetrics'] = verify_features(
+                    root, bucket, cli, request, session, viewer, start_console, browser, stop,
+                    credentials, endpoint, access, secret, context, signed_request, put_object,
+                    checks, legacy=args.features_legacy)
             request('/api/logout', 'POST', expected=403)
             request('/api/logout', 'POST', expected=204, headers={'X-CSRF-Token': session['csrfToken']})
             request('/api/session', expected=401)
@@ -405,32 +420,55 @@ def main():
     parser.add_argument('--scenarios', default='single-http,dual-http,dual-tls')
     parser.add_argument('--preview', action='store_true', help='hold the last disposable scenario for manual browser QA')
     parser.add_argument('--writes', action='store_true', help='also test opt-in uploads and deletes on disposable four-disk storage')
+    parser.add_argument('--features', action='store_true', help='test bucket/history/sharing/ZIP/IAM features on disposable four-disk storage')
+    parser.add_argument('--features-legacy', action='store_true', help='with --features, verify protected features refuse the unpatched server')
+    parser.add_argument('--version-copy', action='store_true', help='verify source version authorization and copied bytes for CopyObject and UploadPartCopy')
+    parser.add_argument('--settings-base', action='store_true', help='with --settings, verify the base protocol refuses lifecycle runtime features')
     settings_group = parser.add_mutually_exclusive_group()
     settings_group.add_argument('--settings', action='store_true', help='test v1 bucket CAS and own IAM rotation on disposable four-disk storage')
     settings_group.add_argument('--settings-legacy', action='store_true', help='test safe read-only fallback on the current unpatched module pin')
     args = parser.parse_args()
+    if args.features_legacy and not args.features:
+        parser.error('--features-legacy requires --features')
+    if args.settings_base and not args.settings:
+        parser.error('--settings-base requires --settings')
     names = args.scenarios.split(',')
     if any(name not in ('single-http', 'dual-http', 'single-tls', 'dual-tls') for name in names):
         parser.error('unknown scenario')
     report = {'dateUTC': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'platform': platform.platform(),
-              'serverSource': args.server_source, 'sdkPin': args.sdk_pin or json.loads((Path(__file__).resolve().parents[1] / 'docs' / 'compatibility.json').read_text())['otterioSDK'],
-              'binaries': {name: {'sha256': digest(path)} for name, path in [('oc', args.cli), ('oc-console', args.console), ('otterio', args.server)]},
+              'serverSource': args.server_source, 'sdkPin': args.sdk_pin,
+              'binaries': {},
               'scenarios': [], 'status': 'running'}
     report['scope'] = 'read-only-and-writes' if args.writes else ('read-only-and-protected-settings' if args.settings else 'read-only')
+    if args.features:
+        report['scope'] = 'console-features-legacy-fallback' if args.features_legacy else 'console-five-features'
     if args.settings or args.settings_legacy:
-        report['settingsProfile'] = 'legacy-read-only-fallback' if args.settings_legacy else 'v1-protected-settings'
-    report['storage'] = 'single-node-four-disk-erasure' if args.writes or args.settings else 'filesystem'
-    report['harnesses'] = [{'name': path.name, 'sha256': digest(path)} for path in
-                           [Path(__file__), Path(__file__).with_name('console_write_acceptance.py')]]
+        report['settingsProfile'] = 'legacy-read-only-fallback' if args.settings_legacy else ('v1-base-protected-settings' if args.settings_base else 'v1-protected-settings')
+    if args.version_copy:
+        report['scope'] += '-and-version-copy'
+    report['storage'] = 'single-node-four-disk-erasure' if args.writes or args.settings or args.features or args.version_copy else 'filesystem'
+    harness_paths = [Path(__file__), Path(__file__).with_name('console_write_acceptance.py'),
+                     Path(__file__).with_name('local_http.py')]
     if args.settings or args.settings_legacy:
         settings_path = Path(__file__).with_name('console_settings_acceptance.py')
-        report['harnesses'].append({'name': settings_path.name, 'sha256': digest(settings_path)})
-    if args.server_patch:
-        report['serverPatches'] = [{'name': Path(patch).name, 'sha256': digest(patch)} for patch in args.server_patch]
+        harness_paths.append(settings_path)
+    if args.features:
+        features_path = Path(__file__).with_name('console_features_acceptance.py')
+        harness_paths.append(features_path)
+    if args.version_copy:
+        copy_path = Path(__file__).with_name('version_copy_acceptance.py')
+        harness_paths.append(copy_path)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     result = {}
     try:
+        output.write_text(json.dumps(report, indent=2) + '\n')
+        report['sdkPin'] = args.sdk_pin or json.loads((Path(__file__).resolve().parents[1] / 'docs' / 'compatibility.json').read_text())['otterioSDK']
+        report['binaries'] = {name: {'sha256': digest(path)} for name, path in
+                              [('oc', args.cli), ('oc-console', args.console), ('otterio', args.server)]}
+        report['harnesses'] = [{'name': path.name, 'sha256': digest(path)} for path in harness_paths]
+        if args.server_patch:
+            report['serverPatches'] = [{'name': Path(patch).name, 'sha256': digest(patch)} for patch in args.server_patch]
         build_info = {name: json.loads(subprocess.check_output(['go', 'version', '-m', '-json', path], text=True))
                       for name, path in [('oc', args.cli), ('oc-console', args.console), ('otterio', args.server)]}
         for name, info in build_info.items():
@@ -457,5 +495,5 @@ def main():
 
 
 if __name__ == '__main__':
-    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(SystemExit(0)))
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(SystemExit(1)))
     main()

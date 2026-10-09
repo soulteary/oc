@@ -32,15 +32,17 @@ S3 操作使用独立发布的 `github.com/soulteary/otterio-sdk/v7 v7.3.1`，�
 
 ## 可选控制台协议与生命周期环境
 
-控制台使用两条不同的服务端基线。未应用补丁的固定服务端用于浏览、对象上传/删除和设置的安全只读降级。保护性策略/版本/生命周期编辑与自身 IAM 改密，需要在该源码的可写副本上应用 `buildscripts/console-server-p3.patch`。`requiredServerPatches: []` 指核心基线；`consoleSettingsProtocol` 单独记录这项可选协议及拓扑限制。补丁还没有包含在固定服务端依赖或已发布版本中。
+未补丁固定 pin 继续作为核心与旧协议安全降级基线。OtterIO 当前源码 HEAD 已包含 P3，但 OC 没有悄悄更新依赖 pin；导出补丁只应用于固定 pin 的可写副本。
 
-应用补丁后的环境还验证当前与非当前版本转换、持久化目标引用、源端重启、指定版本恢复、准确远端版本清理和目标保护。独立进程验收使用临时四盘源端和目标端，覆盖 `single-http` 与 `dual-tls`；不证明外部提供商、分布式、gateway 或文件系统转换已经通过。范围见[生命周期说明](../lifecycle-transition.md)和[当前验证记录](../lifecycle-transition-verification.json)。较早的第三阶段报告记录的是上一版补丁，继续保留历史状态。
+`console-server-base.patch` 独立提供保护性设置与自身改密。其条件生命周期仅支持前缀到期和非当前到期，拒绝转换、标签过滤及到期删除标记规则；已有配置仍可完整读取，普通无条件 S3 行为保留。base 后必须叠加 `lifecycle-storage.patch` 和 `lifecycle-storage-hardening.patch`，才构成当前生命周期部署来源。hardening保留HEAD80已合入的12个storage-class snapshot、覆盖quorum和tier元数据保护源码/测试文件；当前源码未启用独立IAM补丁，不能声称与固定pin core组合全等。
 
-两条服务端基线的复现命令见[开发指南](development.md#复现可选控制台协议环境)。解读证据时，将服务端源码、补丁哈希、二进制身份和实际通过场景一起核对。本机控制台仍是从源码构建的可选程序；当前 CLI 发行归档与镜像不包含它。
+五功能先以 base + versions + IAM 验收，不依赖存储层。另一份 base + storage + hardening 程序执行独立归档端生命周期验收，第四份程序检查完整组合。GET/HEAD、CopyObject 和 UploadPartCopy 版本授权均有明确回归。旧 `console-server-p3.patch` 及原阶段三、生命周期、五功能报告保留原身份，不再用作当前部署输入。
+
+复现见[开发指南](development.md#复现可选控制台协议环境)。base设置/对象、独立五功能/copy、硬化生命周期、完整五功能/copy及设置/对象报告已本地通过；完整组合生命周期与汇总也已通过。这些结果来自本地macOS arm64，配置的远程CI尚未由本任务运行。见[五功能记录](../console-features.md)、[生命周期范围](../lifecycle-transition.md)及[兼容清单](../compatibility.json)的 `consoleServerAcceptance`。最终加固组合的Go/根module与独立current+IAM projection逐字一致；实际current缺IAM，嵌套Mint module仍不同。本地单节点验收不证明外部提供者、分布式、gateway或FS转换通过。控制台仍从源码构建，当前CLI发行归档和镜像不包含它。
 
 ## 原生 CI 与交叉编译
 
-[Go CI](../../.github/workflows/go.yml) 配置了 Linux、macOS、Windows 的原生单元、竞态、控制台前端与辅助程序测试。真实 OtterIO 集成配置在 Linux / macOS 上分别使用 `CGO_ENABLED=0`、`1`：先测试未应用补丁的固定服务端，再构建带可选 P3 补丁的独立程序，验证设置、对象写回归与生命周期。工作流无论成功或失败都会归档报告和诊断证据。独立的 [CLI 兼容工作流](../../.github/workflows/cli-compat.yml)在各原生 CI 平台比较固定基线与候选程序。
+[Go CI](../../.github/workflows/go.yml) 配置了 Linux、macOS、Windows 的原生单元、竞态、控制台前端与辅助程序测试。真实 OtterIO 集成配置在 Linux / macOS 上分别使用 `CGO_ENABLED=0`、`1`：先测试未补丁固定服务端，再独立构建 base、base + versions + IAM、base + storage + hardening 与完整组合，分别验收并归档。工作流无论成功或失败都会归档报告和诊断证据。独立的 [CLI 兼容工作流](../../.github/workflows/cli-compat.yml)在各原生 CI 平台比较固定基线与候选程序。
 
 交叉编译包含 11 个目标：
 

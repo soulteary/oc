@@ -120,15 +120,28 @@ The exact server regression tests and the Linux/macOS cgo matrix live in the [Go
 
 ## Reproduce the optional console protocol fixture
 
-The pinned server supports console browsing and object writes, but does not yet include protected bucket configuration, own IAM secret rotation or the new lifecycle transition protocol. `requiredServerPatches: []` describes the core baseline. The separate `consoleSettingsProtocol.optionalServerPatch` identifies an opt-in fixture, not a published server dependency or a released protocol.
+The pinned source remains `6f6d0835ddff68020f1491c403b958fade22841f`; it does not include P3. Current OtterIO source HEAD already includes P3 and must be identified separately. The exported patches below target the fixed pin, not that developer checkout. `requiredServerPatches: []` continues to describe the unpatched core baseline.
 
-Continue in the same shell with the `OC_INTEGRATION` directory prepared above. First build the console and verify the unpatched server's safe settings fallback and object writes:
+Current fixtures use four independent source copies and binaries:
+
+- `console-server-base.patch`: protected bucket settings, own IAM secret rotation and metadata transactions. Its CAS lifecycle profile accepts prefix expiration and noncurrent expiration, while refusing transitions, tag filters and expired-delete-marker rules. Reads preserve complete existing documents, and ordinary unconditional S3 writes keep the pinned server's behavior.
+- Base plus `console-features-server.patch` and `console-iam-bindings.patch`: primary five-feature acceptance, including GET/HEAD and CopyObject/UploadPartCopy version authorization. Lifecycle storage is not required by this profile.
+- Base plus `lifecycle-storage.patch` and mandatory `lifecycle-storage-hardening.patch`: lifecycle transition/restore runtime acceptance with a separate disposable tier. The storage layer adds decoded-tag and noncurrent filtering, delete-marker scanning, durable references and deletion protection.
+- Base plus storage, mandatory lifecycle hardening, version authorization and IAM: independent composition regression for features, protected settings and object writes.
+
+`console-server-p3.patch` is frozen historical evidence. Do not apply it together with the new base/storage/hardening exports. Historical reports retain their original patch and binary hashes; they do not establish a passing result for a split profile. Current report status is recorded in [feature validation](console-features.md), [lifecycle scope](lifecycle-transition.md) and `consoleServerAcceptance` in [compatibility.json](compatibility.json).
+
+Continue in the same shell with the `OC_INTEGRATION` directory prepared above. Keep the original pin intact, then build and test the four compositions separately:
 
 ```sh
 set -eu
 go build -mod=readonly -trimpath -o "$OC_INTEGRATION/oc-console" ./cmd/oc-console
 OC_SERVER_SOURCE="$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')"
-OC_P3_PATCH="$PWD/buildscripts/console-server-p3.patch"
+OC_BASE_PATCH="$PWD/buildscripts/console-server-base.patch"
+OC_STORAGE_PATCH="$PWD/buildscripts/lifecycle-storage.patch"
+OC_HARDENING_PATCH="$PWD/buildscripts/lifecycle-storage-hardening.patch"
+OC_VERSIONS_PATCH="$PWD/buildscripts/console-features-server.patch"
+OC_IAM_PATCH="$PWD/buildscripts/console-iam-bindings.patch"
 python3 buildscripts/test-console-integration.py \
   --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
   --server "$OC_INTEGRATION/otterio" --server-source "$OC_SERVER_SOURCE" \
@@ -136,46 +149,111 @@ python3 buildscripts/test-console-integration.py \
 python3 buildscripts/test-console-integration.py \
   --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
   --server "$OC_INTEGRATION/otterio" --server-source "$OC_SERVER_SOURCE" \
-  --writes --output "$OC_INTEGRATION/console-writes.json"
-```
+  --features --features-legacy --output "$OC_INTEGRATION/console-features-legacy.json"
 
-Keep that source and binary intact. Apply the optional patch to a second writable source copy, run the workflow's protocol regressions and build a separately named server:
-
-```sh
-cp -R "$OC_INTEGRATION/otterio-source" "$OC_INTEGRATION/otterio-p3-source"
+cp -R "$OC_INTEGRATION/otterio-source" "$OC_INTEGRATION/otterio-base-source"
 (
-  cd "$OC_INTEGRATION/otterio-p3-source"
-  git apply --check "$OC_P3_PATCH"
-  git apply "$OC_P3_PATCH"
-  go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestBucketTarget|TestTransition|TestXLStorageInline|TestLifecycleTransition|TestLifecycleQueues|TestScannerLifecycle|TestExpiry|TestParseRestore|TestRestoreRequest|TestBeginRestore|TestRestoredVersion|TestPutObjectExpiry' -count=1
-  go test -mod=readonly ./pkg/bucket/lifecycle -count=1
+  cd "$OC_INTEGRATION/otterio-base-source"
+  git apply --check "$OC_BASE_PATCH"
+  git apply "$OC_BASE_PATCH"
+  go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestConfiguration|TestFiber|TestGetBucket|TestPutBucket|TestDeleteBucket|TestAccountInfo|TestBucketMetadata' -count=1
   if [ "$CGO_ENABLED" = 1 ]; then
-    go test -mod=readonly -race ./pkg/bucket/lifecycle -count=1
+    go test -mod=readonly -race ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestConfiguration|TestFiber|TestGetBucket|TestPutBucket|TestDeleteBucket|TestAccountInfo|TestBucketMetadata' -count=1
   fi
-  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-p3" .
+  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-base" .
 )
 python3 buildscripts/test-console-integration.py \
   --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
-  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
-  --server-patch "$OC_P3_PATCH" --settings \
-  --output "$OC_INTEGRATION/console-settings.json"
+  --server "$OC_INTEGRATION/otterio-base" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --settings --settings-base \
+  --output "$OC_INTEGRATION/console-base-settings.json"
 python3 buildscripts/test-console-integration.py \
   --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
-  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
-  --server-patch "$OC_P3_PATCH" --writes \
-  --output "$OC_INTEGRATION/console-p3-object-regression.json"
+  --server "$OC_INTEGRATION/otterio-base" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --writes \
+  --output "$OC_INTEGRATION/console-base-objects.json"
+
+cp -R "$OC_INTEGRATION/otterio-base-source" "$OC_INTEGRATION/otterio-features-source"
+(
+  cd "$OC_INTEGRATION/otterio-features-source"
+  git apply "$OC_VERSIONS_PATCH"
+  git apply "$OC_IAM_PATCH"
+  go test -mod=readonly ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+  if [ "$CGO_ENABLED" = 1 ]; then
+    go test -mod=readonly -race ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+  fi
+  go test -mod=readonly ./pkg/iam/policy ./pkg/bucket/policy -count=1
+  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-features" .
+)
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-features" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --server-patch "$OC_VERSIONS_PATCH" \
+  --server-patch "$OC_IAM_PATCH" --features --version-copy \
+  --output "$OC_INTEGRATION/console-base-features.json"
+
+cp -R "$OC_INTEGRATION/otterio-base-source" "$OC_INTEGRATION/otterio-storage-source"
+(
+  cd "$OC_INTEGRATION/otterio-storage-source"
+  git apply --check "$OC_STORAGE_PATCH"
+  git apply "$OC_STORAGE_PATCH"
+  git apply --check "$OC_HARDENING_PATCH"
+  git apply "$OC_HARDENING_PATCH"
+  go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestConfiguration|TestFiber|TestGetBucket|TestPutBucket|TestDeleteBucket|TestAccountInfo|TestBucketMetadata|TestBucketTarget|TestTransition|TestXLStorageInline|TestLifecycleTransition|TestLifecycleQueues|TestScannerLifecycle|TestExpiry|TestParseRestore|TestRestoreRequest|TestBeginRestore|TestRestoredVersion|TestPutObjectExpiry|TestFindFileInfoInQuorum|TestXLV2FormatData|TestErasureDeleteObjectBasic|TestErasureDeleteObjectsErasureSet' -count=1
+  go test -mod=readonly ./pkg/bucket/lifecycle ./cmd/config/storageclass -count=1
+  go test -mod=readonly ./cmd -run 'TestErasurePutObject|TestXLStorageReadFile|TestXLStorageHealsPendingTransitionMetadata|TestMonitorAndConnectEndpointsCanceled|TestPutObjectNoQuorum|TestObjectQuorumFromMeta|TestDisksWithAllParts' -count=1
+  if [ "$CGO_ENABLED" = 1 ]; then
+    go test -mod=readonly -race ./pkg/bucket/lifecycle ./cmd/config/storageclass -count=1
+    go test -mod=readonly -race ./cmd -run 'TestErasurePutObject|TestXLStorageReadFile|TestXLStorageHealsPendingTransitionMetadata|TestMonitorAndConnectEndpointsCanceled|TestPutObjectNoQuorum|TestObjectQuorumFromMeta|TestDisksWithAllParts' -count=1
+  fi
+  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-storage" .
+)
 python3 buildscripts/test-lifecycle-transition-integration.py \
   --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
-  --server "$OC_INTEGRATION/otterio-p3" --server-source "$OC_SERVER_SOURCE" \
-  --server-patch "$OC_P3_PATCH" \
-  --output "$OC_INTEGRATION/lifecycle-transition.json"
+  --server "$OC_INTEGRATION/otterio-storage" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --server-patch "$OC_STORAGE_PATCH" \
+  --server-patch "$OC_HARDENING_PATCH" \
+  --output "$OC_INTEGRATION/lifecycle-storage.json"
+
+cp -R "$OC_INTEGRATION/otterio-storage-source" "$OC_INTEGRATION/otterio-combined-source"
+(
+  cd "$OC_INTEGRATION/otterio-combined-source"
+  git apply "$OC_VERSIONS_PATCH"
+  git apply "$OC_IAM_PATCH"
+  go test -mod=readonly ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+  if [ "$CGO_ENABLED" = 1 ]; then
+    go test -mod=readonly -race ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+  fi
+  go build -mod=readonly -trimpath -o "$OC_INTEGRATION/otterio-combined" .
+)
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-combined" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --server-patch "$OC_STORAGE_PATCH" \
+  --server-patch "$OC_HARDENING_PATCH" \
+  --server-patch "$OC_VERSIONS_PATCH" --server-patch "$OC_IAM_PATCH" \
+  --features --version-copy --output "$OC_INTEGRATION/console-combined-features.json"
+python3 buildscripts/test-console-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-combined" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --server-patch "$OC_STORAGE_PATCH" \
+  --server-patch "$OC_HARDENING_PATCH" \
+  --server-patch "$OC_VERSIONS_PATCH" --server-patch "$OC_IAM_PATCH" \
+  --settings --writes --output "$OC_INTEGRATION/console-combined-settings-objects.json"
+python3 buildscripts/test-lifecycle-transition-integration.py \
+  --cli "$OC_INTEGRATION/oc" --console "$OC_INTEGRATION/oc-console" \
+  --server "$OC_INTEGRATION/otterio-combined" --server-source "$OC_SERVER_SOURCE" \
+  --server-patch "$OC_BASE_PATCH" --server-patch "$OC_STORAGE_PATCH" \
+  --server-patch "$OC_HARDENING_PATCH" \
+  --server-patch "$OC_VERSIONS_PATCH" --server-patch "$OC_IAM_PATCH" \
+  --output "$OC_INTEGRATION/console-combined-lifecycle.json"
 ```
 
-These use the workflow's default console scenarios (`single-http`, `dual-http`, `dual-tls`) and lifecycle scenarios (`single-http`, `dual-tls`). The lifecycle fixture starts separate temporary four-drive source and destination servers; it does not test an external S3 provider. See [phase three](console-phase-three.md), [lifecycle transition scope](lifecycle-transition.md) and its [verification record](lifecycle-transition-verification.json) for exact local evidence and unvalidated cases. Applying this patch does not extend the unpatched release's compatibility claim. Keep reports for both server baselines and the patch identity when reviewing results.
+The console scenarios are `single-http`, `dual-http` and `dual-tls`; lifecycle execution uses `single-http` and `dual-tls` with independent four-drive source and destination processes. Neither proves external-provider or distributed acceptance. Use `CGO_ENABLED=1` for the matching race-enabled CI variant. Lifecycle reports accept repeatable `--server-patch` values and record each layer in `serverPatches`. Each report records source, actual patch hashes, binaries and harness identity; base settings/object, hardened lifecycle, standalone/full features and copy, and full settings/object reports have passed locally; the full composition lifecycle and final aggregate have also passed. See the [Go workflow](../.github/workflows/go.yml) for the authoritative step order and artifact names.
 
 ## Understand the CI scope
 
-The Go workflow runs platform unit/race tests and console frontend/helper regressions on Linux, macOS and Windows, Linux lint/cross-compilation, and vet on Linux/macOS. Its Linux/macOS integration matrix uses cgo both disabled and enabled. It first tests the unpatched pinned server for core/CLI operations, console browsing, safe settings fallback and object writes. It then applies the optional P3 patch, builds another server and tests protected settings, own IAM rotation, object-write regressions and lifecycle execution/restore. The upload step runs after a failure and preserves the reports generated before that point.
+The Go workflow runs platform unit/race tests and console frontend/helper regressions on Linux, macOS and Windows, Linux lint/cross-compilation, and vet on Linux/macOS. Its Linux/macOS integration matrix uses cgo both disabled and enabled. It first tests the unpatched pinned server for core/CLI operations, console browsing, safe settings fallback and object writes. It then independently builds the base settings/write server, the base/version/IAM five-feature server, the base/storage/hardening runtime server, and the full composition regression server. Version-copy checks exercise actual CopyObject and UploadPartCopy requests in both feature compositions. Both lifecycle compositions also run the same independent-tier harness and archive separate reports. The upload step runs after a failure and preserves the reports generated before that point.
 
 The separate [CLI compatibility workflow](../.github/workflows/cli-compat.yml) builds a fixed baseline and the candidate on Linux, macOS and Windows and compares their command contracts. The Go workflow also checks release boundaries, compiled-module inventory and reachable vulnerabilities. [CodeQL](../.github/workflows/codeql.yml) builds the Go code separately for analysis.
 

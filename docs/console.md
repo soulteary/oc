@@ -2,7 +2,7 @@
 
 [中文](zh_CN/console.md) · [Documentation](README.md) · [Migration plan](console-migration.md)
 
-`oc-console` is an optional source-built program for one operator and one configured S3 alias on the local machine. Browsing, downloads and bucket configuration reads are available in the default read-only mode. Explicit write mode adds uploads, exact-key/batch/prefix deletion, cancellation and per-object results. Servers with the P3 protocol also expose protected bucket settings and own IAM secret rotation. The existing OtterIO Web console remains available.
+`oc-console` is an optional source-built program for one operator and one configured S3 alias on the local machine. Browsing, downloads, ZIP archives and configuration reads are available in the default read-only mode. Explicit write mode adds bucket creation/empty-bucket deletion, uploads, object deletion and IAM administration. Historical versions, protected settings and policy binding changes require matching server protocols; presigned sharing has a separate opt-in flag. The existing OtterIO Web console remains available.
 
 ## Build and start
 
@@ -13,6 +13,8 @@ make build-console
 ./oc-console --alias store
 ./oc-console --alias store --allow-writes
 ./oc-console --alias store --allow-writes --max-upload-size 268435456
+./oc-console --alias store --allow-writes --allow-sharing \
+  --share-url http://127.0.0.1:9000 --max-archive-size 5368709120
 ```
 
 Configure `store` using `oc alias set`. Open the exact URL printed at startup and enter the printed login code. Sessions last 30 minutes. Logout cancels the session's requests and tasks; the process login code remains valid until it stops. Protect that code as access to the selected alias.
@@ -35,7 +37,7 @@ Management URL precedence is `--admin-url`, `OC_ADMIN_URL_<alias>`, `OC_ADMIN_UR
 
 S3 trust normally includes system roots and `<config-dir>/certs/CAs`. `--s3-ca` replaces that custom directory with system roots plus the supplied file. Certificate verification stays enabled. Relative file paths use the working directory; prefer absolute paths. `OC_HOST_<alias>` and `MC_HOST_<alias>` overrides are rejected. Stored temporary session tokens are supported without automatic refresh.
 
-Storage credentials remain in OC. Browsers receive an HttpOnly/SameSite=Strict cookie and a separate CSRF token. Credentials and login codes are not persisted in localStorage. Restart after changing an alias or CA.
+The startup alias credentials remain in OC. Browsers receive an HttpOnly/SameSite=Strict cookie and a separate CSRF token. Newly generated IAM credentials are displayed once; existing credentials are never returned. Credentials and login codes are not persisted in localStorage. Restart after changing an alias or CA.
 
 ## Upload semantics
 
@@ -84,7 +86,7 @@ revokes your own read access can be committed but fail read-back verification,
 leaving the outcome unconfirmed. Check the actual setting with an identity that
 can read it before making another change; do not replay the submitted write.
 
-Reading over an unsaved draft requires confirmation. Canceling or a failed read keeps the previous document and its exact save scope. The matching server patch now supports current and noncurrent version transitions, persistent destination references, and version-specific restore on erasure storage; see [runtime scope and verification](lifecycle-transition.md). The pinned, unpatched server still refuses protected writes. `NewerNoncurrentVersions` remains unsupported. A tag filter combined with `ExpiredObjectDeleteMarker=true` is also rejected. Invalid UTF-8 and unpaired UTF-16 escapes are refused before a secret or configuration can silently change during decoding.
+Reading over an unsaved draft requires confirmation. Canceling or a failed read keeps the previous document and its exact save scope. The lifecycle profile requires `lifecycle-storage.patch` followed by `lifecycle-storage-hardening.patch`, applied after `console-server-base.patch`; it supports current and noncurrent version transitions, persistent destination references, and version-specific restore on erasure storage; see [runtime scope and verification](lifecycle-transition.md). The base-only conditional lifecycle profile accepts prefix expiration and noncurrent expiration; tag filters, transitions and expired-delete-marker rules require the storage profile or are rejected. Existing documents remain fully readable, and ordinary unconditional S3 writes preserve the pin behavior. The pinned, unpatched server still refuses protected writes. `NewerNoncurrentVersions` remains unsupported in the combined profile. A tag filter combined with `ExpiredObjectDeleteMarker=true` is also rejected. Invalid UTF-8 and unpaired UTF-16 escapes are refused before a secret or configuration can silently change during decoding.
 
 Protected writes require the server's `X-Otterio-Bucket-Config: v1`, a 64-hex revision and an exists flag. A signed `X-Otterio-Config-If-Match` is checked under the complete metadata transaction lock. Conflicts retain the draft but require a fresh read and review; uncertain outcomes require checking storage before another edit. Writes are never replayed automatically. Documents are limited to 1 MiB, with the server's existing tighter limits still applying. FS protects policy/lifecycle; single-pool erasure also protects versioning. Gateways, multiple pools, V2 signing and servers without the protocol cannot perform these protected writes.
 
@@ -105,18 +107,38 @@ management, addressing and trust settings when updating it.
 
 Finish or cancel active writes before rotation; the process rejects rotation concurrent with object/settings writes or multipart cleanup. A confirmed or uncertain submitted rotation retires every session and pending task, flushes a restart acknowledgement, and stops the console. Verify credentials and update the alias in your terminal, then restart and reload the page; OC never rewrites the alias automatically. A definite permission rejection does not itself retire the connection. Retirement covers this OC process, without claiming revocation of previously issued STS or service-account credentials; manage those identities separately.
 
-The currently pinned server dependency, `6f6d0835ddff68020f1491c403b958fade22841f`, does not contain P3 or the new transition runtime. Build the matching patched server separately; the reproducible optional patch and its scope are described in [phase three](console-phase-three.md) and [lifecycle transitions](lifecycle-transition.md). Building OC does not apply that patch or upgrade your server. Older servers retain reads while protected mutations remain disabled.
+The pinned server dependency, `6f6d0835ddff68020f1491c403b958fade22841f`, does not contain P3. On a writable copy, apply [console base](../buildscripts/console-server-base.patch) for protected settings and own IAM rotation. For transition execution and restore, apply [lifecycle storage](../buildscripts/lifecycle-storage.patch) and mandatory [lifecycle hardening](../buildscripts/lifecycle-storage-hardening.patch). Current HEAD80 already contains P3 and twelve additional storage-hardening source/test paths, while the independent conditional IAM patch is absent. Do not apply these export patches again there or claim equality with the fixed-pin composition. The frozen `console-server-p3.patch` and its reports remain historical evidence. See [development](development.md#reproduce-the-optional-console-protocol-fixture) for separate builds and acceptance. Building OC does not upgrade storage; older servers retain reads while protected mutations remain disabled.
 
 Stopping OC or returning to the old UI keeps the current server and does not
 undo configuration changes, rotated secrets or transitioned objects. New
 transition references require a server that understands them; validate storage
 compatibility before any server downgrade.
 
+## Buckets, versions, archives, sharing and IAM
+
+Write mode enables **Create bucket** and **Delete empty bucket**. Deletion requires typing the exact name and uses the server's atomic emptiness check. It never clears objects, historical versions, deletion markers or multipart uploads.
+
+**Versions** lists one exact object's historical versions and deletion markers with pagination. Select a version for download, sharing or ZIP; deletion markers cannot be downloaded, and `null` is an explicit version ID. The server must advertise `X-Otterio-Version-Authorization: v1`, authorize `s3:ListBucketVersions` and `s3:GetObjectVersion` separately, and evaluate the actual version ID. Older servers are rejected without a fallback to the current object. Versioning requires an erasure deployment; FS cannot enable it. Version restoration and permanent historical deletion are outside this interface.
+
+**ZIP selected** and **ZIP prefix** also work in read-only mode. A prefix is completely scanned before preparation, with at most 1000 objects and 5 GiB of source bytes by default; lower the byte limit with `--max-archive-size`. Current objects use ETag-conditional reads; explicit historical references retain their version ID. Changed or incomplete objects fail the whole archive. OC builds a complete ZIP before exposing a single download. Safe unique archive paths are mapped back to original buckets, keys, versions and ETags in `manifest.json`.
+
+Only one archive can be preparing or awaiting download. It expires after ten minutes; download completion, cancellation, logout and normal shutdown delete the private 0600 temporary file. **Cancel** closes blocked source reads. Closing the dialog preserves access to the session-owned task; page reload restores an active archive through the session-owned list. Lost create/cancel replies trigger reads without replaying the request. `--archive-dir` selects its temporary directory; a process killed without cleanup can leave a file for the local temporary-file cleanup policy.
+
+Enable **Share** with `--allow-sharing --share-url <recipient-accessible S3 root URL>`. URL precedence is the flag, `OC_SHARE_URL_<alias>`, then `OC_SHARE_URL`. A GET link targets one object or exact version, defaults to one hour and allows one second through seven days, with an optional download filename. OC signs the recipient host directly without contacting it; editing the host afterward invalidates the signature. Links are absent from task history and browser persistent storage. Possession grants access, logout does not revoke issued links, and temporary credentials or account changes can shorten their lifetime.
+
+**IAM management** lists users, groups, service accounts and named policies. Write mode supports native user creation/status/secret/deletion, group creation/membership/status/deletion, and service-account creation/status/secret/restriction-policy/deletion, subject to the selected identity's server permissions. Root and directory identities retain the server's restrictions. User-deletion preflight requires no groups or service accounts; deletion cascades through STS, bindings and relationships, including concurrent associations created after preflight. Groups must be empty. Disabling a group does not remove direct or other-group permissions. Newly generated secrets appear once and are cleared on close, page departure or logout; existing secrets are never returned. Supplying a service-account secret also requires an access key; leave both empty to generate and show the complete pair once.
+
+User/group policy bindings use a read revision followed by a confirmed conditional replacement. The server compares revisions, checks policy existence and validates the native target under the IAM store lock. Conflicts require a fresh read, and writes are never replayed. Older servers retain read-only policy inspection. Changes that invalidate the selected identity, and submitted IAM changes with an uncertain result, stop OC; verify credentials/permissions in the terminal before restarting.
+
+The five-feature server uses [console base](../buildscripts/console-server-base.patch), then [version authorization](../buildscripts/console-features-server.patch) and [conditional IAM](../buildscripts/console-iam-bindings.patch). Its primary acceptance excludes lifecycle storage; a separately built server adds [lifecycle storage](../buildscripts/lifecycle-storage.patch) and mandatory [lifecycle hardening](../buildscripts/lifecycle-storage-hardening.patch) for composition regression. IAM reads, user status/deletion, group membership/status/deletion and service-account operations use existing admin APIs; user/group creation, native-user secret rotation and binding replacement require the advertised IAM protocols. Building OC does not upgrade your server. See [feature validation](console-features.md) for source identities, current report status and preserved historical evidence.
+
+The version/object authorization patch derives `s3:ExistingObjectTag/<key>` only from stored tags, filters injected header/query/claim values, and rechecks GET/HEAD and copy-source access after actual metadata is loaded and before conditional responses or destination commits. Request tags keep their request origin. Existing tagging APIs keep their actions; PUT/DELETE authorization is checked again under the object write lock. Native route/storage and race regressions, standalone and full five-feature/copy acceptance have passed. Full composition lifecycle acceptance has also passed locally. The console base profile remains unchanged.
+
 ## Browsing and operational limits
 
 Every object operation uses the selected identity. Bucket-root Read/Write hints are informational and do not authorize specific keys or prefixes. Root AccountInfo is supported by the pinned server; unavailable management information does not block S3 operations.
 
-Downloads stream through OC into the browser's download manager. Errors open separately, preserving the console; the session is checked before starting. Object version selection, Range, ZIP, presigned sharing, OIDC, user/group/service-account administration and centralized deployment remain outside this milestone.
+Downloads stream through OC into the browser's download manager. Errors open separately, preserving the console; the session is checked before starting. Range, OIDC and centralized deployment remain outside this milestone.
 
 Process limits are 16 sessions, 8 ordinary storage requests, 2 downloads, 2 prefix scans and 2 writes. S3 metadata/delete calls have a 15-second overall deadline; ordinary console metadata has an additional 30-second limit and prefix scanning a 60-second limit. JSON reads have a 10-second limit. Upload reads and download reads/writes use 30-second progress/idle limits, allowing slow uploads that keep making progress.
 
@@ -128,4 +150,4 @@ Shutdown cancels sessions, then allows up to five seconds each for HTTP shutdown
 make test-console
 ```
 
-See [phase-three validation](console-phase-three.md), the later [transition verification](lifecycle-transition-verification.json), and [phase-two validation](console-phase-two.md) for exact evidence and remaining scope. Each report applies to its recorded binaries and patch; older P3 reports rejected noncurrent transitions before the later implementation. Frontend behavior tests require Node in the development environment; running the console does not. `make build` still builds the CLI only; existing release archives and containers do not automatically include this experimental program. Further administration/diagnostics and release/deployment validation and retirement of the old UI remain later migration gates.
+See [feature validation](console-features.md), [phase-three validation](console-phase-three.md), the later [transition verification](lifecycle-transition-verification.json), and [phase-two validation](console-phase-two.md) for exact evidence and remaining scope. Each report applies to its recorded binaries and patches; historical reports are preserved. Frontend behavior tests require Node in the development environment; running the console does not. `make build` still builds the CLI only; existing release archives and containers do not automatically include this experimental program. Diagnostics, release/deployment validation and retirement of the old UI remain later migration gates.

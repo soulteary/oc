@@ -238,3 +238,23 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #c1d8
   .object-controls { gap: 5px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.sidebar-action { margin: 16px 10px 0; min-height: 32px; font-size: 11px; }
+.row-action { padding: 0; border: 0; background: transparent; color: #b4d9bf; font-size: 11px; text-align: left; }
+.row-action:hover { text-decoration: underline; text-underline-offset: 3px; }
+.objects-table .action-column, .objects-table.writable .action-column { width: 195px; }
+.wide-dialog { width: min(820px, calc(100% - 30px)); }
+.record-list { display: grid; gap: 12px; margin-top: 18px; }
+.record-card { background: #131c18; border: 1px solid var(--line); border-radius: 8px; padding: 14px; min-width: 0; }
+.record-card h3 { margin: 0 0 8px; font-size: 14px; overflow-wrap: anywhere; }
+.record-card .scope-key { margin: 0 0 10px; }
+.record-actions { display: flex; flex-wrap: wrap; gap: 16px; }
+.management-form { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 15px; }
+.management-form h3, .secret-confirmation h3 { font-size: 14px; }
+.management-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.management-fields textarea { display: block; width: 100%; margin-top: 8px; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.management-fields > div:has(textarea) { grid-column: 1 / -1; }
+#share-url { display: block; width: 100%; margin-top: 9px; font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+#share-expiry, #iam-action { display: block; width: 100%; margin: 8px 0 17px; }
+.stopped-credential-fields input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+@media (max-width: 650px) { .management-fields { grid-template-columns: minmax(0, 1fr); } .objects-table, .objects-table.writable { min-width: 500px; } }

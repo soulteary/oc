@@ -18,6 +18,7 @@ Start with installation, then configure an alias and transfer a file. Guides des
 - [Command reference](commands.md): the available command families and how to inspect flags.
 - [OtterIO administration](administration.md): server information, identities, policies and diagnostics.
 - [Local Web console](console.md): opt-in source build, one alias, object writes, protected settings and own IAM rotation.
+- [Five console features](console-features.md): buckets, IAM, historical versions, ZIP and presigned sharing.
 - [Lifecycle transitions and restore](lifecycle-transition.md): CLI destination setup, required server protocol and runtime/rollback limits.
 - [Compatibility and validation](compatibility.md): SDK pin, deployment coverage and known limits.
 - [Troubleshooting](troubleshooting.md): authentication, TLS, endpoints, streaming and import failures.

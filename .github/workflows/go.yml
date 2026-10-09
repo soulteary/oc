@@ -150,7 +150,7 @@ jobs:
   core-integration:
     name: OC and pinned OtterIO on ${{ matrix.os }} (cgo=${{ matrix.cgo }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -227,44 +227,153 @@ jobs:
             --server "$RUNNER_TEMP/otterio" --writes \
             --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
             --output "$RUNNER_TEMP/console-write-integration.json"
-      - name: Apply and verify the optional P3 server protocol
+      - name: Verify new console features safely downgrade on the pinned server
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio" --features --features-legacy \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --output "$RUNNER_TEMP/console-features-legacy-integration.json"
+      - name: Build the standalone console base protocol
         env:
           GOTOOLCHAIN: local
           CGO_ENABLED: ${{ matrix.cgo }}
         run: |
-          # P3 remains opt-in until this protocol is released and pinned.
-          cd "$RUNNER_TEMP/otterio-source"
-          git apply "$GITHUB_WORKSPACE/buildscripts/console-server-p3.patch"
-          go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestBucketTarget|TestTransition|TestXLStorageInline|TestLifecycleTransition|TestLifecycleQueues|TestScannerLifecycle|TestExpiry|TestParseRestore|TestRestoreRequest|TestBeginRestore|TestRestoredVersion|TestPutObjectExpiry' -count=1
-          go test -mod=readonly ./pkg/bucket/lifecycle -count=1
+          # Keep the unpatched pin and each protocol composition independent.
+          cp -R "$RUNNER_TEMP/otterio-source" "$RUNNER_TEMP/otterio-console-base-source"
+          cd "$RUNNER_TEMP/otterio-console-base-source"
+          git apply --check "$GITHUB_WORKSPACE/buildscripts/console-server-base.patch"
+          git apply "$GITHUB_WORKSPACE/buildscripts/console-server-base.patch"
+          go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestConfiguration|TestFiber|TestGetBucket|TestPutBucket|TestDeleteBucket|TestAccountInfo|TestBucketMetadata' -count=1
           if [[ "$CGO_ENABLED" == "1" ]]; then
-            go test -mod=readonly -race ./pkg/bucket/lifecycle -count=1
+            go test -mod=readonly -race ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestConfiguration|TestFiber|TestGetBucket|TestPutBucket|TestDeleteBucket|TestAccountInfo|TestBucketMetadata' -count=1
           fi
-          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio-p3" .
-      - name: Verify protected bucket settings and own IAM rotation
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio-console-base" .
+      - name: Verify protected settings against the standalone base
         run: |
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
-            --server "$RUNNER_TEMP/otterio-p3" --settings \
+            --server "$RUNNER_TEMP/otterio-console-base" --settings --settings-base \
             --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
-            --server-patch buildscripts/console-server-p3.patch \
-            --output "$RUNNER_TEMP/console-settings-integration.json"
-      - name: Verify object writes after P3 metadata changes
+            --server-patch buildscripts/console-server-base.patch \
+            --output "$RUNNER_TEMP/console-base-settings-integration.json"
+      - name: Verify object writes against the standalone base
         run: |
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
-            --server "$RUNNER_TEMP/otterio-p3" --writes \
+            --server "$RUNNER_TEMP/otterio-console-base" --writes \
             --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
-            --server-patch buildscripts/console-server-p3.patch \
-            --output "$RUNNER_TEMP/console-p3-object-regression.json"
-      - name: Verify durable lifecycle execution and restore against a separate tier
+            --server-patch buildscripts/console-server-base.patch \
+            --output "$RUNNER_TEMP/console-base-object-integration.json"
+      - name: Build base with version authorization and conditional IAM
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          cp -R "$RUNNER_TEMP/otterio-console-base-source" "$RUNNER_TEMP/otterio-console-features-source"
+          cd "$RUNNER_TEMP/otterio-console-features-source"
+          git apply --check "$GITHUB_WORKSPACE/buildscripts/console-features-server.patch"
+          git apply "$GITHUB_WORKSPACE/buildscripts/console-features-server.patch"
+          git apply --check "$GITHUB_WORKSPACE/buildscripts/console-iam-bindings.patch"
+          git apply "$GITHUB_WORKSPACE/buildscripts/console-iam-bindings.patch"
+          go test -mod=readonly ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+          go test -mod=readonly ./pkg/iam/policy ./pkg/bucket/policy -count=1
+          if [[ "$CGO_ENABLED" == "1" ]]; then
+            go test -mod=readonly -race ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+          fi
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio-console-features" .
+      - name: Verify all five console features without lifecycle storage
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio-console-features" --features --version-copy \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-patch buildscripts/console-server-base.patch \
+            --server-patch buildscripts/console-features-server.patch \
+            --server-patch buildscripts/console-iam-bindings.patch \
+            --output "$RUNNER_TEMP/console-base-features-integration.json"
+      - name: Build the independent base storage and mandatory hardening composition
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          cp -R "$RUNNER_TEMP/otterio-console-base-source" "$RUNNER_TEMP/otterio-lifecycle-storage-source"
+          cd "$RUNNER_TEMP/otterio-lifecycle-storage-source"
+          git apply --check "$GITHUB_WORKSPACE/buildscripts/lifecycle-storage.patch"
+          git apply "$GITHUB_WORKSPACE/buildscripts/lifecycle-storage.patch"
+          git apply --check "$GITHUB_WORKSPACE/buildscripts/lifecycle-storage-hardening.patch"
+          git apply "$GITHUB_WORKSPACE/buildscripts/lifecycle-storage-hardening.patch"
+          go test -mod=readonly ./cmd -run 'TestBucketConfig|TestSelfCredentials|TestConfiguration|TestFiber|TestGetBucket|TestPutBucket|TestDeleteBucket|TestAccountInfo|TestBucketMetadata|TestBucketTarget|TestTransition|TestXLStorageInline|TestLifecycleTransition|TestLifecycleQueues|TestScannerLifecycle|TestExpiry|TestParseRestore|TestRestoreRequest|TestBeginRestore|TestRestoredVersion|TestPutObjectExpiry|TestFindFileInfoInQuorum|TestXLV2FormatData|TestErasureDeleteObjectBasic|TestErasureDeleteObjectsErasureSet' -count=1
+          go test -mod=readonly ./pkg/bucket/lifecycle -count=1
+          go test -mod=readonly ./cmd/config/storageclass -count=1
+          go test -mod=readonly ./cmd -run 'TestErasurePutObject|TestXLStorageReadFile|TestXLStorageHealsPendingTransitionMetadata|TestMonitorAndConnectEndpointsCanceled|TestPutObjectNoQuorum|TestObjectQuorumFromMeta|TestDisksWithAllParts' -count=1
+          if [[ "$CGO_ENABLED" == "1" ]]; then
+            go test -mod=readonly -race ./pkg/bucket/lifecycle ./cmd/config/storageclass -count=1
+            go test -mod=readonly -race ./cmd -run 'TestErasurePutObject|TestXLStorageReadFile|TestXLStorageHealsPendingTransitionMetadata|TestMonitorAndConnectEndpointsCanceled|TestPutObjectNoQuorum|TestObjectQuorumFromMeta|TestDisksWithAllParts' -count=1
+          fi
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio-lifecycle-storage" .
+      - name: Verify lifecycle execution and restore against a separate tier
         run: |
           python3 buildscripts/test-lifecycle-transition-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
-            --server "$RUNNER_TEMP/otterio-p3" \
+            --server "$RUNNER_TEMP/otterio-lifecycle-storage" \
             --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
-            --server-patch buildscripts/console-server-p3.patch \
-            --output "$RUNNER_TEMP/lifecycle-transition-integration.json"
+            --server-patch buildscripts/console-server-base.patch \
+            --server-patch buildscripts/lifecycle-storage.patch \
+            --server-patch buildscripts/lifecycle-storage-hardening.patch \
+            --output "$RUNNER_TEMP/lifecycle-storage-integration.json"
+      - name: Build the independent combined console regression server
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          cp -R "$RUNNER_TEMP/otterio-lifecycle-storage-source" "$RUNNER_TEMP/otterio-console-combined-source"
+          cd "$RUNNER_TEMP/otterio-console-combined-source"
+          git apply --check "$GITHUB_WORKSPACE/buildscripts/console-features-server.patch"
+          git apply "$GITHUB_WORKSPACE/buildscripts/console-features-server.patch"
+          git apply --check "$GITHUB_WORKSPACE/buildscripts/console-iam-bindings.patch"
+          git apply "$GITHUB_WORKSPACE/buildscripts/console-iam-bindings.patch"
+          go test -mod=readonly ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+          if [[ "$CGO_ENABLED" == "1" ]]; then
+            go test -mod=readonly -race ./cmd -run '^TestConsoleVersionAuthorization|^TestConsoleIAM' -count=1
+          fi
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio-console-combined" .
+      - name: Verify five-feature composition after lifecycle storage
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio-console-combined" --features --version-copy \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-patch buildscripts/console-server-base.patch \
+            --server-patch buildscripts/lifecycle-storage.patch \
+            --server-patch buildscripts/lifecycle-storage-hardening.patch \
+            --server-patch buildscripts/console-features-server.patch \
+            --server-patch buildscripts/console-iam-bindings.patch \
+            --output "$RUNNER_TEMP/console-combined-features-integration.json"
+      - name: Verify protected settings and object writes in the combined server
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio-console-combined" --settings --writes \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-patch buildscripts/console-server-base.patch \
+            --server-patch buildscripts/lifecycle-storage.patch \
+            --server-patch buildscripts/lifecycle-storage-hardening.patch \
+            --server-patch buildscripts/console-features-server.patch \
+            --server-patch buildscripts/console-iam-bindings.patch \
+            --output "$RUNNER_TEMP/console-combined-settings-object-integration.json"
+      - name: Verify combined lifecycle execution and restore against a separate tier
+        run: |
+          python3 buildscripts/test-lifecycle-transition-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio-console-combined" \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --server-patch buildscripts/console-server-base.patch \
+            --server-patch buildscripts/lifecycle-storage.patch \
+            --server-patch buildscripts/lifecycle-storage-hardening.patch \
+            --server-patch buildscripts/console-features-server.patch \
+            --server-patch buildscripts/console-iam-bindings.patch \
+            --output "$RUNNER_TEMP/console-combined-lifecycle-integration.json"
       - name: Upload compatibility results
         if: always()
         uses: actions/upload-artifact@v4
@@ -275,9 +384,14 @@ jobs:
             ${{ runner.temp }}/core-evidence/
             ${{ runner.temp }}/console-integration.json
             ${{ runner.temp }}/console-write-integration.json
-            ${{ runner.temp }}/console-settings-integration.json
-            ${{ runner.temp }}/console-p3-object-regression.json
-            ${{ runner.temp }}/lifecycle-transition-integration.json
+            ${{ runner.temp }}/console-base-settings-integration.json
+            ${{ runner.temp }}/console-base-object-integration.json
+            ${{ runner.temp }}/lifecycle-storage-integration.json
+            ${{ runner.temp }}/console-features-legacy-integration.json
+            ${{ runner.temp }}/console-base-features-integration.json
+            ${{ runner.temp }}/console-combined-features-integration.json
+            ${{ runner.temp }}/console-combined-settings-object-integration.json
+            ${{ runner.temp }}/console-combined-lifecycle-integration.json
 
   inventory:
     name: Binary dependency inventory

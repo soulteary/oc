@@ -1,0 +1,1705 @@
+diff --git a/cmd/api-headers.go b/cmd/api-headers.go
+index 15884f3..2485a00 100644
+--- a/cmd/api-headers.go
++++ b/cmd/api-headers.go
+@@ -211,2 +211,5 @@ func setObjectHeaders(w http.ResponseWriter, objInfo ObjectInfo, rs *HTTPRangeSp
+ 
++	// Only emit after storage and policy authorization have succeeded. Console
++	// clients require this response capability before exposing version bytes.
++	w.Header().Set("X-Otterio-Version-Authorization", "v1")
+ 	return nil
+diff --git a/cmd/auth-handler.go b/cmd/auth-handler.go
+index 972cac6..32d9d45 100644
+--- a/cmd/auth-handler.go
++++ b/cmd/auth-handler.go
+@@ -296,6 +296,11 @@ func checkRequestAuthType(ctx context.Context, r *http.Request, action policy.Ac
+ // returns APIErrorCode if any to be replied to the client.
+ // Additionally returns the accessKey used in the request, and if this request is by an admin.
+ func checkRequestAuthTypeCredential(ctx context.Context, r *http.Request, action policy.Action, bucketName, objectName string) (cred auth.Credentials, owner bool, s3Err APIErrorCode) {
++	// GET/HEAD with an explicit version reference use the distinct history
++	// action. Never fall back to current-object authorization, including null.
++	if action == policy.GetObjectAction && (r.Method == http.MethodGet || r.Method == http.MethodHead) && getObjectVersionID(r) != "" {
++		action = policy.GetObjectVersionAction
++	}
+ 	switch getRequestAuthType(r) {
+ 	case authTypeUnknown, authTypeStreamingSigned:
+ 		return cred, owner, ErrSignatureVersionNotSupported
+@@ -365,22 +370,6 @@ func checkRequestAuthTypeCredential(ctx context.Context, r *http.Request, action
+ 			return cred, owner, ErrNone
+ 		}
+ 
+-		if action == policy.ListBucketVersionsAction {
+-			// In AWS S3 s3:ListBucket permission is same as s3:ListBucketVersions permission
+-			// verify as a fallback.
+-			if globalPolicySys.IsAllowed(policy.Args{
+-				AccountName:     cred.AccessKey,
+-				Action:          policy.ListBucketAction,
+-				BucketName:      bucketName,
+-				ConditionValues: getConditionValues(r, locationConstraint, "", nil),
+-				IsOwner:         false,
+-				ObjectName:      objectName,
+-			}) {
+-				// Request is allowed return the appropriate access key.
+-				return cred, owner, ErrNone
+-			}
+-		}
+-
+ 		return cred, owner, ErrAccessDenied
+ 	}
+ 
+@@ -398,25 +387,36 @@ func checkRequestAuthTypeCredential(ctx context.Context, r *http.Request, action
+ 		return cred, owner, ErrNone
+ 	}
+ 
+-	if action == policy.ListBucketVersionsAction {
+-		// In AWS S3 s3:ListBucket permission is same as s3:ListBucketVersions permission
+-		// verify as a fallback.
+-		if globalIAMSys.IsAllowed(iampolicy.Args{
+-			AccountName:     cred.AccessKey,
+-			Groups:          cred.Groups,
+-			Action:          iampolicy.ListBucketAction,
+-			BucketName:      bucketName,
+-			ConditionValues: getConditionValues(r, "", cred.AccessKey, claims),
+-			ObjectName:      objectName,
+-			IsOwner:         owner,
+-			Claims:          claims,
++	return cred, owner, ErrAccessDenied
++}
++
++// checkCopySourceAuthType authorizes exactly the version the copy handler will
++// read. CopyObject and UploadPartCopy are PUT requests, so their source action
++// cannot be inferred from the destination URL or the GET/HEAD request method.
++func checkCopySourceAuthType(ctx context.Context, r *http.Request, bucket, object, versionID, objectTags string) APIErrorCode {
++	action := policy.Action(policy.GetObjectAction)
++	if versionID != "" {
++		action = policy.GetObjectVersionAction
++	}
++	return checkRequestAuthType(ctx, withCopySourceVersionID(withObjectTags(r, objectTags), versionID), action, bucket, object)
++}
++
++// checkObjectReadAuthType evaluates source tags only after storage selected
++// the object/version. Preserve the anonymous missing-key distinction without
++// exposing other source metadata to a caller whose read policy was denied.
++func checkObjectReadAuthType(ctx context.Context, r *http.Request, bucket, object, objectTags string, lookupErr error) APIErrorCode {
++	s3Error := checkRequestAuthType(ctx, withObjectTags(r, objectTags), policy.GetObjectAction, bucket, object)
++	if s3Error == ErrAccessDenied && lookupErr != nil && getRequestAuthType(r) == authTypeAnonymous && toAPIError(ctx, lookupErr).Code == "NoSuchKey" {
++		if globalPolicySys.IsAllowed(policy.Args{
++			Action:          policy.ListBucketAction,
++			BucketName:      bucket,
++			ConditionValues: getConditionValues(r, "", "", nil),
++			IsOwner:         false,
+ 		}) {
+-			// Request is allowed return the appropriate access key.
+-			return cred, owner, ErrNone
++			return ErrNoSuchKey
+ 		}
+ 	}
+-
+-	return cred, owner, ErrAccessDenied
++	return s3Error
+ }
+ 
+ // Verify if request has valid AWS Signature Version '2'.
+diff --git a/cmd/bucket-listobjects-handlers.go b/cmd/bucket-listobjects-handlers.go
+index 2a46338..ee16a61 100644
+--- a/cmd/bucket-listobjects-handlers.go
++++ b/cmd/bucket-listobjects-handlers.go
+@@ -121,6 +121,7 @@ func (api objectAPIHandlers) ListObjectVersionsHandler(w http.ResponseWriter, r
+ 	response := generateListVersionsResponse(bucket, prefix, marker, versionIDMarker, delimiter, encodingType, maxkeys, listObjectVersionsInfo)
+ 
+ 	// Write success response.
++	w.Header().Set("X-Otterio-Version-Authorization", "v1")
+ 	writeSuccessResponseXML(w, encodeResponse(response))
+ }
+ 
+diff --git a/cmd/bucket-policy.go b/cmd/bucket-policy.go
+index 7db416b..e745e5d 100644
+--- a/cmd/bucket-policy.go
++++ b/cmd/bucket-policy.go
+@@ -66,6 +66,14 @@ func NewPolicySys() *PolicySys {
+ }
+ 
+ type objectTaggingContextKey struct{}
++type copySourceVersionIDContextKey struct{}
++
++// withCopySourceVersionID binds source authorization to the version selected
++// by the copy handler without changing signed headers or query parameters.
++// Empty means the current source and must override any destination versionId.
++func withCopySourceVersionID(r *http.Request, versionID string) *http.Request {
++	return r.WithContext(context.WithValue(r.Context(), copySourceVersionIDContextKey{}, versionID))
++}
+ 
+ // withObjectTags carries server-loaded tags without changing signed headers.
+ // An empty stored tag set must also override any client-supplied tags.
+@@ -87,10 +95,11 @@ func getConditionValues(r *http.Request, lc string, username string, claims map[
+ 		}
+ 	}
+ 
+-	vid := r.URL.Query().Get("versionId")
+-	if vid == "" {
+-		if u, err := url.Parse(r.Header.Get(xhttp.AmzCopySource)); err == nil {
+-			vid = u.Query().Get("versionId")
++	vid, isCopySource := r.Context().Value(copySourceVersionIDContextKey{}).(string)
++	if !isCopySource {
++		vid = getObjectVersionID(r)
++		if vid == "" && r.Method != http.MethodGet && r.Method != http.MethodHead {
++			_, vid = getCopySource(r)
+ 		}
+ 	}
+ 
+@@ -146,6 +155,12 @@ func getConditionValues(r *http.Request, lc string, username string, claims map[
+ 	}
+ 
+ 	for key, values := range cloneHeader {
++		// s3:VersionId comes only from the parsed S3 reference. A signed raw
++		// Versionid header must not override the condition evaluator's canonical
++		// lookup and authorize a different version than the one being read.
++		if strings.EqualFold(key, "versionid") {
++			continue
++		}
+ 		if existingValues, found := args[key]; found {
+ 			args[key] = append(existingValues, values...)
+ 		} else {
+@@ -170,6 +185,9 @@ func getConditionValues(r *http.Request, lc string, username string, claims map[
+ 	}
+ 
+ 	for key, values := range cloneURLValues {
++		if strings.EqualFold(key, "versionid") {
++			continue
++		}
+ 		if existingValues, found := args[key]; found {
+ 			args[key] = append(existingValues, values...)
+ 		} else {
+@@ -179,6 +197,10 @@ func getConditionValues(r *http.Request, lc string, username string, claims map[
+ 
+ 	// JWT specific values
+ 	for k, v := range claims {
++		// The selected S3 version cannot be replaced by an identity claim.
++		if strings.EqualFold(k, "versionid") {
++			continue
++		}
+ 		vStr, ok := v.(string)
+ 		if ok {
+ 			// Special case for AD/LDAP STS users
+@@ -190,30 +212,31 @@ func getConditionValues(r *http.Request, lc string, username string, claims map[
+ 		}
+ 	}
+ 
+-	// Per-tag condition values for s3:ExistingObjectTag/<key> and
+-	// s3:RequestObjectTag/<key>. The X-Amz-Tagging header is the single
+-	// source for request tags. The handler supplies the existing object's
+-	// tags through request context after ObjectInfo is loaded (see GetObject /
+-	// HeadObject CheckPrecondFn) so policies that gate on per-object tags
+-	// can be evaluated *before* checkPreconditions runs and leaks any
+-	// metadata. For PutObject / PutObjectTagging the header is set by the
+-	// caller and represents request tags.
+-	rawTags := r.Header.Get(xhttp.AmzObjectTagging)
+-	if objectTags, ok := r.Context().Value(objectTaggingContextKey{}).(string); ok {
+-		rawTags = objectTags
++	// Dynamic tag conditions are derived from their authoritative sources.
++	// Neither raw headers/query keys nor identity claims may supply them.
++	existingPrefix := condition.S3ExistingObjectTag.Name()
++	requestPrefix := condition.S3RequestObjectTag.Name()
++	for key := range args {
++		lowerKey := strings.ToLower(key)
++		if strings.HasPrefix(lowerKey, strings.ToLower(existingPrefix)) || strings.HasPrefix(lowerKey, strings.ToLower(requestPrefix)) {
++			delete(args, key)
++		}
+ 	}
+-	if rawTags != "" {
++	addTags := func(prefix, rawTags string) {
+ 		if parsed, err := tags.ParseObjectTags(rawTags); err == nil {
+-			// Strip the "s3:" prefix because stringEqualsFunc.evaluate
+-			// looks up values by Key.Name(), which itself drops "s3:".
+-			existingPrefix := condition.S3ExistingObjectTag.Name()
+-			requestPrefix := condition.S3RequestObjectTag.Name()
+-			for k, v := range parsed.ToMap() {
+-				args[existingPrefix+k] = []string{v}
+-				args[requestPrefix+k] = []string{v}
++			for key, value := range parsed.ToMap() {
++				args[prefix+key] = []string{value}
+ 			}
+ 		}
+ 	}
++	// Existing tags come only from the selected stored object's metadata.
++	// An empty set must stay empty even if the caller sends target tags.
++	if objectTags, ok := r.Context().Value(objectTaggingContextKey{}).(string); ok {
++		addTags(existingPrefix, objectTags)
++	}
++	// Request tags continue to describe this request, including a copy's
++	// destination. They are independent of the source object's existing tags.
++	addTags(requestPrefix, r.Header.Get(xhttp.AmzObjectTagging))
+ 
+ 	return args
+ }
+diff --git a/cmd/console-version-authorization_test.go b/cmd/console-version-authorization_test.go
+new file mode 100644
+index 0000000..9002fde
+--- /dev/null
++++ b/cmd/console-version-authorization_test.go
+@@ -0,0 +1,269 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"net/http"
++	"net/http/httptest"
++	"net/url"
++	"strings"
++	"testing"
++
++	"github.com/soulteary/otterio-sdk/v7/pkg/signer"
++	"github.com/soulteary/otterio/pkg/auth"
++	"github.com/soulteary/otterio/pkg/bucket/policy"
++	iampolicy "github.com/soulteary/otterio/pkg/iam/policy"
++)
++
++func versionAuthorizationRequest(t *testing.T, method, rawQuery, signature string, user auth.Credentials, headers map[string]string) *http.Request {
++	t.Helper()
++	target := "http://localhost/bucket/key"
++	if rawQuery != "" {
++		target += "?" + rawQuery
++	}
++	var req *http.Request
++	var err error
++	switch signature {
++	case "v2":
++		req, err = newTestSignedRequestV2(method, target, 0, bytes.NewReader(nil), user.AccessKey, user.SecretKey, headers)
++	case "presigned":
++		req, err = newTestRequest(method, target, 0, bytes.NewReader(nil))
++		if err == nil {
++			for key, value := range headers {
++				req.Header.Set(key, value)
++			}
++			req = signer.PreSignV4(*req, user.AccessKey, user.SecretKey, user.SessionToken, globalServerRegion, 60)
++		}
++	default:
++		req, err = newTestSignedRequestV4(method, target, 0, bytes.NewReader(nil), user.AccessKey, user.SecretKey, headers)
++	}
++	if err != nil {
++		t.Fatal(err)
++	}
++	req.RequestURI = req.URL.RequestURI()
++	return req
++}
++
++func TestConsoleVersionAuthorizationPolicyMatrix(t *testing.T) {
++	user := selfCredentialsFixture(t)
++	policies := map[string]string{
++		"current":      `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":["arn:aws:s3:::bucket","arn:aws:s3:::bucket/*"]}]}`,
++		"history":      `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObjectVersion","s3:ListBucketVersions"],"Resource":["arn:aws:s3:::bucket","arn:aws:s3:::bucket/*"]}]}`,
++		"condition":    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObjectVersion"],"Resource":["arn:aws:s3:::bucket/*"],"Condition":{"StringEquals":{"s3:versionid":"allowed"}}}]}`,
++		"deny-history": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:GetObjectVersion"],"Resource":["arn:aws:s3:::bucket/*"]},{"Effect":"Deny","Action":["s3:GetObjectVersion"],"Resource":["arn:aws:s3:::bucket/*"]}]}`,
++	}
++	for name, document := range policies {
++		parsed, err := iampolicy.ParseConfig(strings.NewReader(document))
++		if err != nil {
++			t.Fatal(err)
++		}
++		globalIAMSys.iamPolicyDocsMap[name] = *parsed
++	}
++	for _, signature := range []string{"v4", "v2", "presigned"} {
++		for _, method := range []string{http.MethodGet, http.MethodHead} {
++			for _, test := range []struct {
++				policy, version string
++				want            APIErrorCode
++			}{
++				{"current", "", ErrNone}, {"current", "old", ErrAccessDenied}, {"current", "null", ErrAccessDenied},
++				{"history", "", ErrAccessDenied}, {"history", "old", ErrNone}, {"history", "null", ErrNone},
++				{"condition", "allowed", ErrNone}, {"condition", "other", ErrAccessDenied},
++				{"deny-history", "", ErrNone}, {"deny-history", "old", ErrAccessDenied},
++			} {
++				t.Run(signature+"/"+method+"/"+test.policy+"/"+test.version, func(t *testing.T) {
++					globalIAMSys.iamUserPolicyMap[user.AccessKey] = newMappedPolicy(test.policy)
++					query := ""
++					if test.version != "" {
++						query = url.Values{"versionId": {test.version}}.Encode()
++					}
++					r := versionAuthorizationRequest(t, method, query, signature, user, nil)
++					if got := checkRequestAuthType(context.Background(), r, policy.GetObjectAction, "bucket", "key"); got != test.want {
++						t.Fatalf("authorization=%v want=%v", got, test.want)
++					}
++				})
++			}
++		}
++	}
++	for _, name := range []string{"current", "history"} {
++		globalIAMSys.iamUserPolicyMap[user.AccessKey] = newMappedPolicy(name)
++		r := versionAuthorizationRequest(t, http.MethodGet, "versions=", "v4", user, nil)
++		want := ErrAccessDenied
++		if name == "history" {
++			want = ErrNone
++		}
++		if got := checkRequestAuthType(context.Background(), r, policy.ListBucketVersionsAction, "bucket", ""); got != want {
++			t.Fatalf("%s version listing=%v want=%v", name, got, want)
++		}
++	}
++	for _, method := range []string{http.MethodGet, http.MethodHead} {
++		for _, version := range []string{"", "old", "null"} {
++			query := ""
++			if version != "" {
++				query = url.Values{"versionId": {version}}.Encode()
++			}
++			r := versionAuthorizationRequest(t, method, query, "v4", globalActiveCred, nil)
++			if got := checkRequestAuthType(context.Background(), r, policy.GetObjectAction, "bucket", "key"); got != ErrNone {
++				t.Fatalf("root %s version %q denied: %v", method, version, got)
++			}
++		}
++	}
++}
++
++func TestConsoleVersionAuthorizationActionsAreIndependent(t *testing.T) {
++	if iampolicy.NewActionSet(iampolicy.GetObjectVersionAction).Match(iampolicy.GetObjectAction) || iampolicy.NewActionSet(iampolicy.GetObjectAction).Match(iampolicy.GetObjectVersionAction) {
++		t.Fatal("history and current-object permissions imply one another")
++	}
++	if !iampolicy.NewActionSet(iampolicy.Action("s3:GetObject*")).Match(iampolicy.GetObjectVersionAction) {
++		t.Fatal("explicit wildcard no longer includes history")
++	}
++}
++
++func TestConsoleVersionAuthorizationNullPaginationMarker(t *testing.T) {
++	versions := FileInfoVersions{Versions: []FileInfo{{VersionID: "new"}, {VersionID: ""}}}
++	if index := versions.findVersionIndex(nullVersionID); index != 1 {
++		t.Fatalf("S3 null marker did not identify legacy null version: %d", index)
++	}
++}
++
++func TestConsoleVersionAuthorizationConditionCannotBeSpoofed(t *testing.T) {
++	user := selfCredentialsFixture(t)
++	parsed, err := iampolicy.ParseConfig(strings.NewReader(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObjectVersion"],"Resource":["arn:aws:s3:::bucket/*"],"Condition":{"StringEquals":{"s3:versionid":"allowed"}}}]}`))
++	if err != nil {
++		t.Fatal(err)
++	}
++	globalIAMSys.iamPolicyDocsMap["condition"] = *parsed
++	globalIAMSys.iamUserPolicyMap[user.AccessKey] = newMappedPolicy("condition")
++	for _, signature := range []string{"v4", "presigned"} {
++		for _, test := range []struct {
++			query   string
++			headers map[string]string
++		}{
++			{"versionId=forbidden&versionid=allowed", nil},
++			{"versionId=forbidden&Versionid=allowed", nil},
++			{"versionId=forbidden", map[string]string{"Versionid": "allowed"}},
++		} {
++			r := versionAuthorizationRequest(t, http.MethodGet, test.query, signature, user, test.headers)
++			if got := checkRequestAuthType(context.Background(), r, policy.GetObjectAction, "bucket", "key"); got != ErrAccessDenied {
++				t.Fatalf("spoofed %s version condition authorized: %v", signature, got)
++			}
++			values := getConditionValues(r, "", user.AccessKey, nil)
++			if len(values["versionid"]) != 1 || values["versionid"][0] != "forbidden" || values["Versionid"] != nil {
++				t.Fatal("caller controlled version condition")
++			}
++		}
++	}
++}
++
++func TestConsoleVersionAuthorizationMatchesNormalizedLookup(t *testing.T) {
++	user := selfCredentialsFixture(t)
++	const version = "f34d9787-0892-4d0f-b450-f98371d5de64"
++	policies := map[string]string{
++		"current":   `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::bucket/*"]}]}`,
++		"history":   `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObjectVersion"],"Resource":["arn:aws:s3:::bucket/*"]}]}`,
++		"condition": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObjectVersion"],"Resource":["arn:aws:s3:::bucket/*"],"Condition":{"StringEquals":{"s3:versionid":"` + version + `"}}}]}`,
++	}
++	for name, document := range policies {
++		parsed, err := iampolicy.ParseConfig(strings.NewReader(document))
++		if err != nil {
++			t.Fatal(err)
++		}
++		globalIAMSys.iamPolicyDocsMap[name] = *parsed
++	}
++	for _, signature := range []string{"v4", "v2", "presigned"} {
++		for _, method := range []string{http.MethodGet, http.MethodHead} {
++			for _, test := range []struct {
++				policy, raw, lookup string
++				want                APIErrorCode
++			}{
++				{"history", " \t ", "", ErrAccessDenied},
++				{"history", "\u2003\n", "", ErrAccessDenied},
++				{"history", "", "", ErrAccessDenied},
++				{"current", " \t ", "", ErrNone},
++				{"history", " null\t", "null", ErrNone},
++				{"current", " null\t", "null", ErrAccessDenied},
++				{"condition", " \t" + version + "\u2003", version, ErrNone},
++				{"condition", " \t ", "", ErrAccessDenied},
++			} {
++				t.Run(signature+"/"+method+"/"+test.policy+"/"+url.QueryEscape(test.raw), func(t *testing.T) {
++					globalIAMSys.iamUserPolicyMap[user.AccessKey] = newMappedPolicy(test.policy)
++					// Copy-source is irrelevant to a GET/HEAD lookup and cannot fill
++					// the condition of a whitespace-only current-object reference.
++					headers := map[string]string{"X-Amz-Copy-Source": "/bucket/source?versionId=" + version}
++					r := versionAuthorizationRequest(t, method, url.Values{"versionId": {test.raw}}.Encode(), signature, user, headers)
++					if got := checkRequestAuthType(context.Background(), r, policy.GetObjectAction, "bucket", "key"); got != test.want {
++						t.Fatalf("authorization=%v want=%v", got, test.want)
++					}
++					opts, err := getOpts(context.Background(), r, "bucket", "key")
++					if err != nil || opts.VersionID != test.lookup {
++						t.Fatalf("lookup=%q err=%v want=%q", opts.VersionID, err, test.lookup)
++					}
++					values := getConditionValues(r, "", user.AccessKey, nil)["versionid"]
++					if len(values) != 1 || values[0] != opts.VersionID {
++						t.Fatalf("condition=%v does not match lookup=%q", values, opts.VersionID)
++					}
++				})
++			}
++		}
++	}
++	copyRequest := versionAuthorizationRequest(t, http.MethodPut, "", "v4", user, map[string]string{
++		"X-Amz-Copy-Source": "/bucket/source?versionId=" + url.QueryEscape(" \t"+version+" "),
++	})
++	if values := getConditionValues(copyRequest, "", user.AccessKey, nil)["versionid"]; len(values) != 1 || values[0] != version {
++		t.Fatalf("copy-source version condition changed: %v", values)
++	}
++}
++
++func TestConsoleVersionAuthorizationCopySourceReferenceCannotBeSpoofed(t *testing.T) {
++	user := selfCredentialsFixture(t)
++	for _, test := range []struct {
++		source, want string
++	}{
++		{"/source/key", ""},
++		{"/source/key?versionId=%20%09", ""},
++		{"/source/key?versionId=%20null%09", "null"},
++		{"/source/key?versionId=forbidden&versionid=allowed&Versionid=allowed", "forbidden"},
++		{"/source/key?versionId=forbidden&versionId=allowed", "forbidden"},
++	} {
++		r := versionAuthorizationRequest(t, http.MethodPut, "versionId=allowed&versionid=allowed&Versionid=allowed", "v4", user, map[string]string{
++			"X-Amz-Copy-Source": test.source,
++			"Versionid":         "allowed",
++		})
++		path, version := getCopySource(r)
++		if path != "/source/key" || version != test.want {
++			t.Fatalf("copy source parsed as %q / %q, want %q", path, version, test.want)
++		}
++		values := getConditionValues(withCopySourceVersionID(r, version), "", user.AccessKey, map[string]interface{}{
++			"versionid": "allowed", "Versionid": "allowed",
++		})
++		if len(values["versionid"]) != 1 || values["versionid"][0] != test.want || values["Versionid"] != nil || values["versionId"] != nil {
++			t.Fatalf("source version condition was replaced: %+v", values)
++		}
++	}
++}
++
++func TestConsoleVersionAuthorizationTagConditionOrigins(t *testing.T) {
++	r := httptest.NewRequest(http.MethodGet, "/bucket/key?ExistingObjectTag/environment=prod&Existingobjecttag/environment=prod&RequestObjectTag/environment=injected", nil)
++	r.Header.Set("X-Amz-Tagging", "environment=request")
++	r.Header.Set("ExistingObjectTag/environment", "prod")
++	r.Header.Set("Existingobjecttag/environment", "prod")
++	claims := map[string]interface{}{"ExistingObjectTag/environment": "prod", "Existingobjecttag/environment": "prod", "RequestObjectTag/environment": "injected"}
++	for _, actual := range []string{"", "environment=dev", "environment=prod"} {
++		values := getConditionValues(withObjectTags(r, actual), "", "", claims)
++		want := strings.TrimPrefix(actual, "environment=")
++		if actual == "" {
++			if values["ExistingObjectTag/environment"] != nil {
++				t.Fatal("empty stored tags acquired a caller supplied existing tag")
++			}
++		} else if len(values["ExistingObjectTag/environment"]) != 1 || values["ExistingObjectTag/environment"][0] != want {
++			t.Fatalf("stored tags replaced: %+v", values)
++		}
++		if values["Existingobjecttag/environment"] != nil || len(values["RequestObjectTag/environment"]) != 1 || values["RequestObjectTag/environment"][0] != "request" {
++			t.Fatalf("condition origins confused: %+v", values)
++		}
++	}
++	if values := getConditionValues(r, "", "", claims); values["ExistingObjectTag/environment"] != nil || values["Existingobjecttag/environment"] != nil {
++		t.Fatal("unloaded metadata acquired a caller supplied existing tag")
++	}
++}
+diff --git a/cmd/console-version-copy-authorization_test.go b/cmd/console-version-copy-authorization_test.go
+new file mode 100644
+index 0000000..edfb44a
+--- /dev/null
++++ b/cmd/console-version-copy-authorization_test.go
+@@ -0,0 +1,415 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"encoding/xml"
++	"fmt"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"net/url"
++	"strings"
++	"testing"
++
++	"github.com/soulteary/otterio-sdk/v7/pkg/signer"
++	xhttp "github.com/soulteary/otterio/cmd/http"
++	"github.com/soulteary/otterio/pkg/auth"
++	iampolicy "github.com/soulteary/otterio/pkg/iam/policy"
++	"github.com/soulteary/otterio/pkg/madmin"
++)
++
++type consoleVersionCopyOptions struct {
++	sourceKey string
++	headers   map[string]string
++	query     url.Values
++}
++
++// Exercise the production Fiber routing table and real erasure storage. A
++// helper-only authorization test cannot establish which source bytes a copy
++// actually used, or whether a rejected copy persisted a destination part.
++func TestConsoleVersionAuthorizationCopySourceHTTPStorage(t *testing.T) {
++	defer DetectTestLeak(t)()
++	ExecObjectLayerAPITest(t, testConsoleVersionAuthorizationCopySourceHTTPStorage, nil)
++}
++
++func testConsoleVersionAuthorizationCopySourceHTTPStorage(obj ObjectLayer, instanceType, destination string, router http.Handler, _ auth.Credentials, t *testing.T) {
++	if instanceType == FSTestStr {
++		return // FS cannot enable bucket versioning.
++	}
++	ctx := context.Background()
++	source := getRandomBucketName()
++	const key = "source"
++	const nullData, oldData, currentData, prodData = "null source bytes", "old source bytes", "current source bytes", "prod source bytes"
++	if err := obj.MakeBucketWithLocation(ctx, source, BucketOptions{}); err != nil {
++		t.Fatal(err)
++	}
++	put := func(object, body, tagging string, versioned bool) ObjectInfo {
++		t.Helper()
++		info, err := obj.PutObject(ctx, source, object, mustGetPutObjReader(t, strings.NewReader(body), int64(len(body)), "", ""), ObjectOptions{Versioned: versioned, UserDefined: map[string]string{xhttp.AmzObjectTagging: tagging}})
++		if err != nil {
++			t.Fatal(err)
++		}
++		return info
++	}
++	put(key, nullData, "", false)
++	for _, bucket := range []string{source, destination} {
++		if err := globalBucketMetadataSys.Update(bucket, bucketVersioningConfig, []byte(`<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Status>Enabled</Status></VersioningConfiguration>`)); err != nil {
++			t.Fatal(err)
++		}
++	}
++	old := put(key, oldData, "environment=dev", true)
++	prod := put(key, prodData, "environment=prod", true)
++	current := put(key, currentData, "environment=dev", true)
++	prodCurrent := put("prod-current", prodData, "environment=prod", true)
++	put("untagged", oldData, "", true)
++	if old.VersionID == "" || current.VersionID == "" || old.VersionID == current.VersionID {
++		t.Fatal("fixture did not persist distinct historical/current versions")
++	}
++
++	globalIAMSys.InitStore(obj)
++	user := auth.Credentials{AccessKey: "version-copy-user", SecretKey: "version-copy-secret"}
++	if err := globalIAMSys.CreateUser(user.AccessKey, madmin.UserInfo{SecretKey: user.SecretKey, Status: madmin.AccountEnabled}); err != nil {
++		t.Fatal(err)
++	}
++	policies := map[string]struct {
++		actions, condition, deny, tag, targetTag string
++	}{
++		"current":        {actions: `"s3:GetObject"`},
++		"history":        {actions: `"s3:GetObjectVersion"`},
++		"both":           {actions: `"s3:GetObject","s3:GetObjectVersion"`},
++		"deny-history":   {actions: `"s3:GetObject","s3:GetObjectVersion"`, deny: "s3:GetObjectVersion"},
++		"deny-current":   {actions: `"s3:GetObject","s3:GetObjectVersion"`, deny: "s3:GetObject"},
++		"condition":      {actions: `"s3:GetObject","s3:GetObjectVersion"`, condition: old.VersionID},
++		"condition-null": {actions: `"s3:GetObjectVersion"`, condition: nullVersionID},
++		"tag-current":    {actions: `"s3:GetObject"`, tag: "prod"},
++		"tag-history":    {actions: `"s3:GetObjectVersion"`, tag: "prod"},
++		"tag-both":       {actions: `"s3:GetObject","s3:GetObjectVersion"`, tag: "prod"},
++		"request-tag":    {actions: `"s3:GetObject","s3:GetObjectVersion"`, targetTag: "prod"},
++		"tag-version":    {actions: `"s3:GetObjectVersion"`, condition: prod.VersionID, tag: "prod"},
++	}
++	for name, config := range policies {
++		condition, deny := "", ""
++		var conditions []string
++		if config.condition != "" {
++			conditions = append(conditions, `"s3:versionid":"`+config.condition+`"`)
++		}
++		if config.tag != "" {
++			conditions = append(conditions, `"s3:ExistingObjectTag/environment":"`+config.tag+`"`)
++		}
++		if len(conditions) != 0 {
++			condition = `,"Condition":{"StringEquals":{` + strings.Join(conditions, ",") + `}}`
++		}
++		if config.deny != "" {
++			deny = `,{"Effect":"Deny","Action":["` + config.deny + `"],"Resource":["arn:aws:s3:::` + source + `/*"]}`
++		}
++		targetCondition := ""
++		if config.targetTag != "" {
++			targetCondition = `,"Condition":{"StringEquals":{"s3:RequestObjectTag/environment":"` + config.targetTag + `"}}`
++		}
++		document := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:PutObject"],"Resource":["arn:aws:s3:::` + destination + `/*"]` + targetCondition + `},{"Effect":"Allow","Action":[` + config.actions + `],"Resource":["arn:aws:s3:::` + source + `/*"]` + condition + `}` + deny + `]}`
++		parsed, err := iampolicy.ParseConfig(strings.NewReader(document))
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err = globalIAMSys.SetPolicy("copy-"+name, *parsed); err != nil {
++			t.Fatal(err)
++		}
++	}
++
++	cases := []struct {
++		name, policy, version, destinationVersion, want string
++		options                                         *consoleVersionCopyOptions
++	}{
++		{"current-current", "current", "", "", currentData, nil},
++		{"current-old-denied", "current", old.VersionID, "", "", nil},
++		{"current-null-denied", "current", nullVersionID, "", "", nil},
++		{"current-blank", "current", " \t\u2003", "", currentData, nil},
++		{"current-target-version", "current", "", old.VersionID, currentData, nil},
++		{"history-current-denied", "history", "", "", "", nil},
++		{"history-old", "history", old.VersionID, "", oldData, nil},
++		{"history-null", "history", nullVersionID, "", nullData, nil},
++		{"history-blank-denied", "history", " \t\u2003", "", "", nil},
++		{"history-padded-old", "history", " \t" + old.VersionID + "\u2003", "", oldData, nil},
++		{"history-padded-null", "history", " null\t", "", nullData, nil},
++		{"history-old-target-current", "history", old.VersionID, current.VersionID, oldData, nil},
++		{"both-current", "both", "", "", currentData, nil},
++		{"both-old", "both", old.VersionID, "", oldData, nil},
++		{"both-null", "both", nullVersionID, "", nullData, nil},
++		{"deny-history-current", "deny-history", "", "", currentData, nil},
++		{"deny-history-old", "deny-history", old.VersionID, "", "", nil},
++		{"deny-history-null", "deny-history", nullVersionID, "", "", nil},
++		{"deny-history-old-target-null", "deny-history", old.VersionID, nullVersionID, "", nil},
++		{"deny-current-current", "deny-current", "", "", "", nil},
++		{"deny-current-old", "deny-current", old.VersionID, "", oldData, nil},
++		{"condition-old", "condition", old.VersionID, "", oldData, nil},
++		{"condition-padded-old", "condition", " \t" + old.VersionID + "\u2003", current.VersionID, oldData, nil},
++		{"condition-other-denied", "condition", current.VersionID, "", "", nil},
++		{"condition-other-target-allowed-denied", "condition", current.VersionID, old.VersionID, "", nil},
++		{"condition-current-target-allowed-denied", "condition", "", old.VersionID, "", nil},
++		{"condition-blank-target-allowed-denied", "condition", " \t\u2003", old.VersionID, "", nil},
++		{"condition-null-target-allowed-denied", "condition", nullVersionID, old.VersionID, "", nil},
++		{"condition-null", "condition-null", nullVersionID, "", nullData, nil},
++		{"condition-padded-null", "condition-null", " null\t", old.VersionID, nullData, nil},
++		{"condition-old-target-null-denied", "condition-null", old.VersionID, nullVersionID, "", nil},
++		{"tag-history-prod-no-header", "tag-history", prod.VersionID, "", prodData, nil},
++		{"tag-history-dev-no-header", "tag-history", old.VersionID, "", "", nil},
++		{"tag-history-dev-forged-prod", "tag-history", old.VersionID, "", "", &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod"}}},
++		{"tag-history-prod-request-dev", "tag-history", prod.VersionID, "", prodData, &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=dev"}}},
++		{"tag-history-null-forged-prod", "tag-history", nullVersionID, "", "", &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod"}}},
++		{"tag-history-padded-prod", "tag-history", " \t" + prod.VersionID + "\u2003", "", prodData, nil},
++		{"tag-current-prod-no-header", "tag-current", "", "", prodData, &consoleVersionCopyOptions{sourceKey: "prod-current"}},
++		{"tag-current-prod-request-dev", "tag-current", "", "", prodData, &consoleVersionCopyOptions{sourceKey: "prod-current", headers: map[string]string{xhttp.AmzObjectTagging: "environment=dev"}}},
++		{"tag-current-dev-no-header", "tag-current", "", "", "", nil},
++		{"tag-current-dev-forged-prod", "tag-current", "", "", "", &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod"}}},
++		{"tag-current-untagged-forged-prod", "tag-current", "", "", "", &consoleVersionCopyOptions{sourceKey: "untagged", headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod"}}},
++		{"tag-current-history-denied", "tag-current", prodCurrent.VersionID, "", "", &consoleVersionCopyOptions{sourceKey: "prod-current", headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod"}}},
++		{"tag-both-prod-history-no-header", "tag-both", prod.VersionID, "", prodData, nil},
++		{"tag-both-prod-current-no-header", "tag-both", "", "", prodData, &consoleVersionCopyOptions{sourceKey: "prod-current"}},
++		{"tag-both-dev-history-forged-prod", "tag-both", old.VersionID, "", "", &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod"}}},
++		{"tag-both-dev-current-forged-prod", "tag-both", "", "", "", &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod"}}},
++		{"tag-version-prod-allowed", "tag-version", prod.VersionID, "", prodData, nil},
++		{"tag-version-dev-target-prod-forged-prod", "tag-version", old.VersionID, prod.VersionID, "", &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod"}}},
++		{"tag-precondition-dev-forged-prod", "tag-history", old.VersionID, "", "", &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod", xhttp.AmzCopySourceIfMatch: `"wrong-etag"`}}},
++		{"tag-precondition-current-dev-forged-prod", "tag-current", "", "", "", &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod", xhttp.AmzCopySourceIfMatch: `"wrong-etag"`}}},
++		{"tag-history-null-query-injection", "tag-history", nullVersionID, "", "", &consoleVersionCopyOptions{query: url.Values{"ExistingObjectTag/environment": {"prod"}, "Existingobjecttag/environment": {"prod"}}}},
++		{"tag-history-dev-query-injection", "tag-history", old.VersionID, "", "", &consoleVersionCopyOptions{query: url.Values{"ExistingObjectTag/environment": {"prod"}, "Existingobjecttag/environment": {"prod"}}}},
++		{"tag-current-untagged-query-injection", "tag-current", "", "", "", &consoleVersionCopyOptions{sourceKey: "untagged", query: url.Values{"ExistingObjectTag/environment": {"prod"}, "Existingobjecttag/environment": {"prod"}}}},
++		{"tag-current-dev-query-injection", "tag-current", "", "", "", &consoleVersionCopyOptions{query: url.Values{"ExistingObjectTag/environment": {"prod"}, "Existingobjecttag/environment": {"prod"}}}},
++		{"request-tag-current-dev-target-prod", "request-tag", "", "", currentData, &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod"}}},
++		{"request-tag-old-dev-target-prod", "request-tag", old.VersionID, "", oldData, &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=prod"}}},
++		{"request-tag-source-prod-no-target-tag-denied", "request-tag", "", "", "", &consoleVersionCopyOptions{sourceKey: "prod-current"}},
++		{"request-tag-source-prod-target-dev-denied", "request-tag", prod.VersionID, "", "", &consoleVersionCopyOptions{headers: map[string]string{xhttp.AmzObjectTagging: "environment=dev"}}},
++	}
++	read := func(object, want string) {
++		t.Helper()
++		reader, err := obj.GetObjectNInfo(ctx, destination, object, nil, nil, readLock, ObjectOptions{})
++		if err != nil {
++			t.Fatal(err)
++		}
++		data, err := io.ReadAll(reader)
++		reader.Close()
++		if err != nil || string(data) != want {
++			t.Fatalf("copied bytes=%q, err=%v, want=%q", data, err, want)
++		}
++	}
++	for _, signature := range []string{"v4", "v2", "presigned"} {
++		for _, operation := range []string{"CopyObject", "UploadPartCopy"} {
++			for index, test := range cases {
++				t.Run(signature+"/"+operation+"/"+test.name, func(t *testing.T) {
++					if err := globalIAMSys.PolicyDBSet(user.AccessKey, "copy-"+test.policy, false); err != nil {
++						t.Fatal(err)
++					}
++					object := fmt.Sprintf("copy-%s-%s-%d", signature, operation, index)
++					query := url.Values{}
++					if test.options != nil {
++						for name, values := range test.options.query {
++							query[name] = values
++						}
++					}
++					var uploadID string
++					if operation == "UploadPartCopy" {
++						var err error
++						uploadID, err = obj.NewMultipartUpload(ctx, destination, object, ObjectOptions{Versioned: true, VersionID: test.destinationVersion})
++						if err != nil {
++							t.Fatal(err)
++						}
++						query.Set("partNumber", "1")
++						query.Set("uploadId", uploadID)
++					}
++					if test.destinationVersion != "" {
++						query.Set("versionId", test.destinationVersion)
++					}
++					target := "http://otterio.test/" + destination + "/" + object
++					if len(query) > 0 {
++						target += "?" + query.Encode()
++					}
++					sourceKey := key
++					if test.options != nil && test.options.sourceKey != "" {
++						sourceKey = test.options.sourceKey
++					}
++					copySource := "/" + source + "/" + sourceKey
++					if test.version != "" {
++						copySource += "?" + url.Values{"versionId": {test.version}}.Encode()
++					}
++					headers := map[string]string{xhttp.AmzCopySource: copySource}
++					if test.options != nil {
++						for name, value := range test.options.headers {
++							headers[name] = value
++						}
++					}
++					var request *http.Request
++					var err error
++					switch signature {
++					case "v2":
++						request, err = newTestSignedRequestV2(http.MethodPut, target, 0, bytes.NewReader(nil), user.AccessKey, user.SecretKey, headers)
++					case "presigned":
++						request, err = newTestRequest(http.MethodPut, target, 0, bytes.NewReader(nil))
++						if err == nil {
++							for name, value := range headers {
++								request.Header.Set(name, value)
++							}
++							request = signer.PreSignV4(*request, user.AccessKey, user.SecretKey, "", globalServerRegion, 60)
++						}
++					default:
++						request, err = newTestSignedRequestV4(http.MethodPut, target, 0, bytes.NewReader(nil), user.AccessKey, user.SecretKey, headers)
++					}
++					if err != nil {
++						t.Fatal(err)
++					}
++					recorder := httptest.NewRecorder()
++					router.ServeHTTP(recorder, request)
++					if test.want == "" {
++						var response APIErrorResponse
++						if recorder.Code != http.StatusForbidden || xml.Unmarshal(recorder.Body.Bytes(), &response) != nil || response.Code != "AccessDenied" {
++							t.Fatalf("want AccessDenied, got %d %s", recorder.Code, recorder.Body.String())
++						}
++						if operation == "UploadPartCopy" {
++							parts, err := obj.ListObjectParts(ctx, destination, object, uploadID, 0, 100, ObjectOptions{})
++							if err != nil || len(parts.Parts) != 0 {
++								t.Fatalf("rejected copy persisted parts: %+v, %v", parts.Parts, err)
++							}
++						} else if _, err := obj.GetObjectInfo(ctx, destination, object, ObjectOptions{}); !isErrObjectNotFound(err) {
++							t.Fatalf("rejected copy persisted a destination: %v", err)
++						}
++					} else {
++						if recorder.Code != http.StatusOK {
++							t.Fatalf("want successful copy, got %d %s", recorder.Code, recorder.Body.String())
++						}
++						if operation == "UploadPartCopy" {
++							var response CopyObjectPartResponse
++							if err := xml.Unmarshal(recorder.Body.Bytes(), &response); err != nil || response.ETag == "" {
++								t.Fatalf("invalid successful copy part result: %s, %v", recorder.Body.String(), err)
++							}
++							if _, err := obj.CompleteMultipartUpload(ctx, destination, object, uploadID, []CompletePart{{PartNumber: 1, ETag: canonicalizeETag(response.ETag)}}, ObjectOptions{Versioned: true, VersionID: test.destinationVersion}); err != nil {
++								t.Fatal(err)
++							}
++						}
++						read(object, test.want)
++					}
++					if operation == "UploadPartCopy" && test.want == "" {
++						if err := obj.AbortMultipartUpload(ctx, destination, object, uploadID, ObjectOptions{}); err != nil {
++							t.Fatal(err)
++						}
++					}
++				})
++			}
++		}
++	}
++
++	readCases := []struct {
++		name, policy, object, version, requestTags, conditionHeader, conditionValue string
++		query                                                                       url.Values
++		status                                                                      int
++		want                                                                        string
++	}{
++		{name: "prod-current", policy: "tag-current", object: "prod-current", status: 200, want: prodData},
++		{name: "prod-current-request-dev", policy: "tag-current", object: "prod-current", requestTags: "environment=dev", status: 200, want: prodData},
++		{name: "dev-current", policy: "tag-current", object: key, status: 403},
++		{name: "dev-current-forged-prod", policy: "tag-current", object: key, requestTags: "environment=prod", status: 403},
++		{name: "prod-history", policy: "tag-history", object: key, version: prod.VersionID, status: 200, want: prodData},
++		{name: "prod-history-request-dev", policy: "tag-history", object: key, version: prod.VersionID, requestTags: "environment=dev", status: 200, want: prodData},
++		{name: "dev-history", policy: "tag-history", object: key, version: old.VersionID, status: 403},
++		{name: "dev-history-forged-prod", policy: "tag-history", object: key, version: old.VersionID, requestTags: "environment=prod", status: 403},
++		{name: "null-forged-prod", policy: "tag-history", object: key, version: nullVersionID, requestTags: "environment=prod", status: 403},
++		{name: "null-query-injection", policy: "tag-history", object: key, version: nullVersionID, query: url.Values{"ExistingObjectTag/environment": {"prod"}, "Existingobjecttag/environment": {"prod"}}, status: 403},
++		{name: "dev-query-injection", policy: "tag-current", object: key, query: url.Values{"ExistingObjectTag/environment": {"prod"}, "Existingobjecttag/environment": {"prod"}}, status: 403},
++		{name: "untagged-query-injection", policy: "tag-current", object: "untagged", query: url.Values{"ExistingObjectTag/environment": {"prod"}, "Existingobjecttag/environment": {"prod"}}, status: 403},
++		{name: "prod-not-modified", policy: "tag-history", object: key, version: prod.VersionID, conditionHeader: "If-None-Match", conditionValue: prod.ETag, status: 304},
++		{name: "dev-not-modified-denied", policy: "tag-history", object: key, version: old.VersionID, requestTags: "environment=prod", conditionHeader: "If-None-Match", conditionValue: old.ETag, status: 403},
++		{name: "prod-precondition", policy: "tag-history", object: key, version: prod.VersionID, conditionHeader: "If-Match", conditionValue: `"wrong-etag"`, status: 412},
++		{name: "dev-precondition-denied", policy: "tag-history", object: key, version: old.VersionID, requestTags: "environment=prod", conditionHeader: "If-Match", conditionValue: `"wrong-etag"`, status: 403},
++		{name: "missing-tag-policy", policy: "tag-current", object: "missing", requestTags: "environment=prod", status: 403},
++		{name: "missing-no-list", policy: "history", object: "missing", status: 403},
++		{name: "missing-with-list", policy: "history", object: "missing", status: 404},
++	}
++	for _, signature := range []string{"v4", "v2", "presigned", "anonymous"} {
++		for _, method := range []string{http.MethodGet, http.MethodHead} {
++			for _, test := range readCases {
++				t.Run("StoredTagRead/"+signature+"/"+method+"/"+test.name, func(t *testing.T) {
++					if err := globalIAMSys.PolicyDBSet(user.AccessKey, "copy-"+test.policy, false); err != nil {
++						t.Fatal(err)
++					}
++					if signature == "anonymous" {
++						config := policies[test.policy]
++						condition := ""
++						if config.tag != "" {
++							condition = `,"Condition":{"StringEquals":{"s3:ExistingObjectTag/environment":"` + config.tag + `"}}`
++						}
++						list := ""
++						if test.name == "missing-with-list" {
++							list = `,{"Effect":"Allow","Principal":"*","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::` + source + `"]}`
++						}
++						document := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":[` + config.actions + `],"Resource":["arn:aws:s3:::` + source + `/*"]` + condition + `}` + list + `]}`
++						if err := globalBucketMetadataSys.Update(source, bucketPolicyConfig, []byte(document)); err != nil {
++							t.Fatal(err)
++						}
++					}
++					query := url.Values{}
++					for name, values := range test.query {
++						query[name] = values
++					}
++					if test.version != "" {
++						query.Set("versionId", test.version)
++					}
++					target := "http://otterio.test/" + source + "/" + test.object
++					if len(query) > 0 {
++						target += "?" + query.Encode()
++					}
++					headers := map[string]string{}
++					if test.requestTags != "" {
++						headers[xhttp.AmzObjectTagging] = test.requestTags
++					}
++					if test.conditionHeader != "" {
++						headers[test.conditionHeader] = test.conditionValue
++					}
++					var request *http.Request
++					var err error
++					switch signature {
++					case "v2":
++						request, err = newTestSignedRequestV2(method, target, 0, bytes.NewReader(nil), user.AccessKey, user.SecretKey, headers)
++					case "presigned", "anonymous":
++						request, err = newTestRequest(method, target, 0, bytes.NewReader(nil))
++						if err == nil {
++							for name, value := range headers {
++								request.Header.Set(name, value)
++							}
++							if signature == "presigned" {
++								request = signer.PreSignV4(*request, user.AccessKey, user.SecretKey, "", globalServerRegion, 60)
++							}
++						}
++					default:
++						request, err = newTestSignedRequestV4(method, target, 0, bytes.NewReader(nil), user.AccessKey, user.SecretKey, headers)
++					}
++					if err != nil {
++						t.Fatal(err)
++					}
++					recorder := httptest.NewRecorder()
++					router.ServeHTTP(recorder, request)
++					status := test.status
++					if signature != "anonymous" && test.name == "missing-with-list" {
++						status = 403
++					}
++					if recorder.Code != status {
++						t.Fatalf("want %d got %d %s", status, recorder.Code, recorder.Body.String())
++					}
++					if status == http.StatusOK && method == http.MethodGet && recorder.Body.String() != test.want {
++						t.Fatalf("read bytes %q want %q", recorder.Body.String(), test.want)
++					}
++					if status == http.StatusForbidden {
++						for name := range recorder.Header() {
++							for _, private := range []string{xhttp.ETag, xhttp.LastModified, xhttp.AmzVersionID, xhttp.AmzDeleteMarker} {
++								if strings.EqualFold(name, private) {
++									t.Fatalf("denied read exposed %s", name)
++								}
++							}
++						}
++					}
++				})
++			}
++		}
++	}
++
++}
+diff --git a/cmd/console-version-tagging-authorization_test.go b/cmd/console-version-tagging-authorization_test.go
+new file mode 100644
+index 0000000..7691f70
+--- /dev/null
++++ b/cmd/console-version-tagging-authorization_test.go
+@@ -0,0 +1,146 @@
++// Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
++
++package cmd
++
++import (
++	"bytes"
++	"context"
++	"encoding/xml"
++	"fmt"
++	"net/http"
++	"net/http/httptest"
++	"net/url"
++	"strings"
++	"testing"
++
++	"github.com/soulteary/otterio-sdk/v7/pkg/signer"
++	xhttp "github.com/soulteary/otterio/cmd/http"
++	"github.com/soulteary/otterio/pkg/auth"
++	iampolicy "github.com/soulteary/otterio/pkg/iam/policy"
++	"github.com/soulteary/otterio/pkg/madmin"
++)
++
++// Change stored tags after the handler's metadata read but before its mutation.
++// The real backend must authorize the new metadata under its own write lock.
++type consoleVersionTagMutationObjectLayer struct {
++	ObjectLayer
++	bucket, object string
++	changed        bool
++}
++
++func (o *consoleVersionTagMutationObjectLayer) GetObjectInfo(ctx context.Context, bucket, object string, opts ObjectOptions) (ObjectInfo, error) {
++	info, err := o.ObjectLayer.GetObjectInfo(ctx, bucket, object, opts)
++	if err == nil && bucket == o.bucket && object == o.object && !o.changed {
++		o.changed = true
++		_, err = o.ObjectLayer.PutObjectTags(ctx, bucket, object, "environment=dev", ObjectOptions{VersionID: opts.VersionID})
++	}
++	return info, err
++}
++
++func TestConsoleVersionAuthorizationTaggingHTTPStorage(t *testing.T) {
++	defer DetectTestLeak(t)()
++	ExecObjectLayerAPITest(t, testConsoleVersionAuthorizationTaggingHTTPStorage, nil)
++}
++
++func testConsoleVersionAuthorizationTaggingHTTPStorage(obj ObjectLayer, instanceType, bucket string, router http.Handler, _ auth.Credentials, t *testing.T) {
++	ctx := context.Background()
++	globalIAMSys.InitStore(obj)
++	user := auth.Credentials{AccessKey: "version-tag-user", SecretKey: "version-tag-secret"}
++	if err := globalIAMSys.CreateUser(user.AccessKey, madmin.UserInfo{SecretKey: user.SecretKey, Status: madmin.AccountEnabled}); err != nil {
++		t.Fatal(err)
++	}
++	document := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObjectTagging","s3:PutObjectTagging","s3:DeleteObjectTagging"],"Resource":["arn:aws:s3:::` + bucket + `/*"],"Condition":{"StringEquals":{"s3:ExistingObjectTag/environment":"prod"}}}]}`
++	parsed, err := iampolicy.ParseConfig(strings.NewReader(document))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = globalIAMSys.SetPolicy("stored-tag-operations", *parsed); err != nil {
++		t.Fatal(err)
++	}
++	if err = globalIAMSys.PolicyDBSet(user.AccessKey, "stored-tag-operations", false); err != nil {
++		t.Fatal(err)
++	}
++	for _, signature := range []string{"v4", "v2", "presigned"} {
++		for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
++			for _, state := range []string{"prod", "dev", "changed-before-write"} {
++				if state == "changed-before-write" && method == http.MethodGet {
++					continue
++				}
++				t.Run(instanceType+"/"+signature+"/"+method+"/"+state, func(t *testing.T) {
++					object := fmt.Sprintf("tag-%s-%s-%s", signature, method, state)
++					actual := state
++					if state == "changed-before-write" {
++						actual = "prod"
++					}
++					if _, err := obj.PutObject(ctx, bucket, object, mustGetPutObjReader(t, strings.NewReader("tag data"), 8, "", ""), ObjectOptions{UserDefined: map[string]string{xhttp.AmzObjectTagging: "environment=" + actual}}); err != nil {
++						t.Fatal(err)
++					}
++					var mutation *consoleVersionTagMutationObjectLayer
++					if state == "changed-before-write" {
++						mutation = &consoleVersionTagMutationObjectLayer{ObjectLayer: obj, bucket: bucket, object: object}
++						setObjectLayer(mutation)
++						defer setObjectLayer(obj)
++					}
++					query := url.Values{"tagging": {""}}
++					headers := map[string]string{}
++					if state != "prod" {
++						headers[xhttp.AmzObjectTagging] = "environment=prod"
++						query.Set("ExistingObjectTag/environment", "prod")
++						query.Set("Existingobjecttag/environment", "prod")
++					}
++					body := ""
++					if method == http.MethodPut {
++						body = `<Tagging><TagSet><Tag><Key>environment</Key><Value>stage</Value></Tag></TagSet></Tagging>`
++					}
++					target := "http://otterio.test/" + bucket + "/" + object + "?" + query.Encode()
++					var request *http.Request
++					var err error
++					switch signature {
++					case "v2":
++						request, err = newTestSignedRequestV2(method, target, int64(len(body)), bytes.NewReader([]byte(body)), user.AccessKey, user.SecretKey, headers)
++					case "presigned":
++						request, err = newTestRequest(method, target, int64(len(body)), bytes.NewReader([]byte(body)))
++						if err == nil {
++							for key, value := range headers {
++								request.Header.Set(key, value)
++							}
++							request = signer.PreSignV4(*request, user.AccessKey, user.SecretKey, "", globalServerRegion, 60)
++						}
++					default:
++						request, err = newTestSignedRequestV4(method, target, int64(len(body)), bytes.NewReader([]byte(body)), user.AccessKey, user.SecretKey, headers)
++					}
++					if err != nil {
++						t.Fatal(err)
++					}
++					recorder := httptest.NewRecorder()
++					router.ServeHTTP(recorder, request)
++					status, want := http.StatusForbidden, "environment=dev"
++					if state == "prod" {
++						status, want = http.StatusOK, "environment=prod"
++						if method == http.MethodPut {
++							want = "environment=stage"
++						} else if method == http.MethodDelete {
++							status, want = http.StatusNoContent, ""
++						}
++					}
++					if recorder.Code != status {
++						t.Fatalf("want %d got %d %s", status, recorder.Code, recorder.Body.String())
++					}
++					if status == http.StatusForbidden {
++						var response APIErrorResponse
++						if xml.Unmarshal(recorder.Body.Bytes(), &response) != nil || response.Code != "AccessDenied" {
++							t.Fatalf("want AccessDenied: %s", recorder.Body.String())
++						}
++					}
++					if mutation != nil && !mutation.changed {
++						t.Fatal("fixture did not change tags between metadata read and mutation")
++					}
++					stored, err := obj.GetObjectTags(ctx, bucket, object, ObjectOptions{})
++					if err != nil || stored.String() != want {
++						t.Fatalf("stored tags %v err=%v want=%s", stored, err, want)
++					}
++				})
++			}
++		}
++	}
++}
+diff --git a/cmd/erasure-object.go b/cmd/erasure-object.go
+index 399fab2..d44d374 100644
+--- a/cmd/erasure-object.go
++++ b/cmd/erasure-object.go
+@@ -1415,6 +1415,9 @@ func (er erasureObjects) PutObjectTags(ctx context.Context, bucket, object strin
+ 	if err != nil {
+ 		return ObjectInfo{}, toObjectErr(err, bucket, object)
+ 	}
++	if opts.CheckPrecondFn != nil && opts.CheckPrecondFn(fi.ToObjectInfo(bucket, object)) {
++		return ObjectInfo{}, PreConditionFailed{}
++	}
+ 	if fi.Deleted {
+ 		if opts.VersionID == "" {
+ 			return ObjectInfo{}, toObjectErr(errFileNotFound, bucket, object)
+diff --git a/cmd/fs-v1.go b/cmd/fs-v1.go
+index 294488e..40ca89f 100644
+--- a/cmd/fs-v1.go
++++ b/cmd/fs-v1.go
+@@ -1544,6 +1544,15 @@ func (fs *FSObjects) PutObjectTags(ctx context.Context, bucket, object string, t
+ 		fsMeta = fs.defaultFsJSON(object)
+ 	}
+ 
++	// Authorize the actual old metadata while the metadata write lock is held.
++	fi, err := fsStatFile(ctx, pathJoin(fs.fsPath, bucket, object))
++	if err != nil {
++		return ObjectInfo{}, toObjectErr(err, bucket, object)
++	}
++	if opts.CheckPrecondFn != nil && opts.CheckPrecondFn(fsMeta.ToObjectInfo(bucket, object, fi)) {
++		return ObjectInfo{}, PreConditionFailed{}
++	}
++
+ 	// clean fsMeta.Meta of tag key, before updating the new tags
+ 	delete(fsMeta.Meta, xhttp.AmzObjectTagging)
+ 
+@@ -1556,12 +1565,6 @@ func (fs *FSObjects) PutObjectTags(ctx context.Context, bucket, object string, t
+ 		return ObjectInfo{}, toObjectErr(err, bucket, object)
+ 	}
+ 
+-	// Stat the file to get file size.
+-	fi, err := fsStatFile(ctx, pathJoin(fs.fsPath, bucket, object))
+-	if err != nil {
+-		return ObjectInfo{}, err
+-	}
+-
+ 	return fsMeta.ToObjectInfo(bucket, object, fi), nil
+ }
+ 
+diff --git a/cmd/object-api-options.go b/cmd/object-api-options.go
+index e61a9fc..68cf671 100644
+--- a/cmd/object-api-options.go
++++ b/cmd/object-api-options.go
+@@ -21,6 +21,7 @@ import (
+ 	"errors"
+ 	"fmt"
+ 	"net/http"
++	"net/url"
+ 	"strconv"
+ 	"strings"
+ 	"time"
+@@ -182,6 +183,24 @@ func getDefaultOpts(header http.Header, copySource bool, metadata map[string]str
+ }
+ 
+ // get ObjectOptions for GET calls from encryption headers
++// getObjectVersionID is the authoritative version reference used for both
++// storage lookup and authorization. Whitespace-only values select the current
++// object, exactly as getOpts has always interpreted them.
++func getObjectVersionID(r *http.Request) string {
++	return strings.TrimSpace(r.URL.Query().Get(xhttp.VersionID))
++}
++
++// getCopySource returns the same source path and normalized version reference
++// for storage lookup and authorization. The destination URL is not a source.
++func getCopySource(r *http.Request) (sourcePath, versionID string) {
++	sourcePath = r.Header.Get(xhttp.AmzCopySource)
++	if u, err := url.Parse(sourcePath); err == nil {
++		sourcePath = u.Path
++		versionID = strings.TrimSpace(u.Query().Get(xhttp.VersionID))
++	}
++	return sourcePath, versionID
++}
++
+ func getOpts(ctx context.Context, r *http.Request, bucket, object string) (ObjectOptions, error) {
+ 	var (
+ 		encryption encrypt.ServerSide
+@@ -204,7 +223,7 @@ func getOpts(ctx context.Context, r *http.Request, bucket, object string) (Objec
+ 		}
+ 	}
+ 
+-	vid := strings.TrimSpace(r.URL.Query().Get(xhttp.VersionID))
++	vid := getObjectVersionID(r)
+ 	if vid != "" && vid != nullVersionID {
+ 		_, err := uuid.Parse(vid)
+ 		if err != nil {
+diff --git a/cmd/object-handlers.go b/cmd/object-handlers.go
+index 0fb6140..d1b65fb 100644
+--- a/cmd/object-handlers.go
++++ b/cmd/object-handlers.go
+@@ -336,40 +336,9 @@ func (api objectAPIHandlers) GetObjectHandler(w http.ResponseWriter, r *http.Req
+ 		return
+ 	}
+ 
+-	// Check for auth type to return S3 compatible error.
+-	// type to return the correct error (NoSuchKey vs AccessDenied)
+-	if s3Error := checkRequestAuthType(ctx, r, policy.GetObjectAction, bucket, object); s3Error != ErrNone {
+-		if getRequestAuthType(r) == authTypeAnonymous {
+-			// As per "Permission" section in
+-			// https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectGET.html
+-			// If the object you request does not exist,
+-			// the error Amazon S3 returns depends on
+-			// whether you also have the s3:ListBucket
+-			// permission.
+-			// * If you have the s3:ListBucket permission
+-			//   on the bucket, Amazon S3 will return an
+-			//   HTTP status code 404 ("no such key")
+-			//   error.
+-			// * if you don’t have the s3:ListBucket
+-			//   permission, Amazon S3 will return an HTTP
+-			//   status code 403 ("access denied") error.`
+-			if globalPolicySys.IsAllowed(policy.Args{
+-				Action:          policy.ListBucketAction,
+-				BucketName:      bucket,
+-				ConditionValues: getConditionValues(r, "", "", nil),
+-				IsOwner:         false,
+-			}) {
+-				getObjectInfo := objectAPI.GetObjectInfo
+-				if api.CacheAPI() != nil {
+-					getObjectInfo = api.CacheAPI().GetObjectInfo
+-				}
+-
+-				_, err = getObjectInfo(ctx, bucket, object, opts)
+-				if toAPIError(ctx, err).Code == "NoSuchKey" {
+-					s3Error = ErrNoSuchKey
+-				}
+-			}
+-		}
++	// Validate the signature/identity before storage access. A policy denial
++	// may depend on stored tags and is finalized after metadata is available.
++	if s3Error := checkRequestAuthType(ctx, withObjectTags(r, ""), policy.GetObjectAction, bucket, object); s3Error != ErrNone && s3Error != ErrAccessDenied {
+ 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
+ 		return
+ 	}
+@@ -403,28 +372,27 @@ func (api objectAPIHandlers) GetObjectHandler(w http.ResponseWriter, r *http.Req
+ 		return
+ 	}
+ 
+-	// Validate pre-conditions if any.
++	objectAuthorizationChecked := false
++	authorizeObject := func(oi ObjectInfo, lookupErr error) bool {
++		if s3Error := checkObjectReadAuthType(ctx, r, bucket, object, oi.UserTags, lookupErr); s3Error != ErrNone {
++			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
++			return false
++		}
++		return true
++	}
++	// Authorize the stored version before decryption errors, conditional
++	// responses, or any other object metadata can be returned to the caller.
+ 	opts.CheckPrecondFn = func(oi ObjectInfo) bool {
++		objectAuthorizationChecked = true
++		if !authorizeObject(oi, nil) {
++			return true
++		}
+ 		if objectAPI.IsEncryptionSupported() {
+ 			if _, err := DecryptObjectInfo(&oi, r); err != nil {
+ 				writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+ 				return true
+ 			}
+ 		}
+-
+-		// SECURITY: GHSA-95fr-cm4m-q5p9 / CVE-2024-36107.
+-		// Re-evaluate authorization with the existing object's tags now
+-		// supplied through request context, so policies that gate on
+-		// s3:ExistingObjectTag/<k> can deny access *before* checkPreconditions
+-		// has a chance to write Last-Modified / ETag (or any other object
+-		// metadata) on a 304 / 412 response. Without this second check, an
+-		// "If-None-Match: *" probe could leak whether the object exists / its
+-		// ETag even though the per-tag policy would otherwise deny GetObject.
+-		if s3Error := checkRequestAuthType(ctx, withObjectTags(r, oi.UserTags), policy.GetObjectAction, bucket, object); s3Error != ErrNone {
+-			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
+-			return true
+-		}
+-
+ 		return checkPreconditions(ctx, w, r, oi, opts)
+ 	}
+ 
+@@ -442,6 +410,18 @@ func (api objectAPIHandlers) GetObjectHandler(w http.ResponseWriter, r *http.Req
+ 			}
+ 		}
+ 		if reader == nil || !proxy {
++			if !objectAuthorizationChecked {
++				var oi ObjectInfo
++				if gr != nil {
++					oi = gr.ObjInfo
++				}
++				if !authorizeObject(oi, err) {
++					if gr != nil {
++						gr.Close()
++					}
++					return
++				}
++			}
+ 			if isErrPreconditionFailed(err) {
+ 				return
+ 			}
+@@ -465,6 +445,12 @@ func (api objectAPIHandlers) GetObjectHandler(w http.ResponseWriter, r *http.Req
+ 			return
+ 		}
+ 	}
++	// Proxy/cache implementations may return a reader without invoking the
++	// local precondition callback. Their selected metadata needs the same gate.
++	if !objectAuthorizationChecked && !authorizeObject(gr.ObjInfo, nil) {
++		gr.Close()
++		return
++	}
+ 	defer gr.Close()
+ 
+ 	objInfo := gr.ObjInfo
+@@ -591,33 +577,9 @@ func (api objectAPIHandlers) HeadObjectHandler(w http.ResponseWriter, r *http.Re
+ 		return
+ 	}
+ 
+-	if s3Error := checkRequestAuthType(ctx, r, policy.GetObjectAction, bucket, object); s3Error != ErrNone {
+-		if getRequestAuthType(r) == authTypeAnonymous {
+-			// As per "Permission" section in
+-			// https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectHEAD.html
+-			// If the object you request does not exist,
+-			// the error Amazon S3 returns depends on
+-			// whether you also have the s3:ListBucket
+-			// permission.
+-			// * If you have the s3:ListBucket permission
+-			//   on the bucket, Amazon S3 will return an
+-			//   HTTP status code 404 ("no such key")
+-			//   error.
+-			// * if you don’t have the s3:ListBucket
+-			//   permission, Amazon S3 will return an HTTP
+-			//   status code 403 ("access denied") error.`
+-			if globalPolicySys.IsAllowed(policy.Args{
+-				Action:          policy.ListBucketAction,
+-				BucketName:      bucket,
+-				ConditionValues: getConditionValues(r, "", "", nil),
+-				IsOwner:         false,
+-			}) {
+-				_, err = getObjectInfo(ctx, bucket, object, opts)
+-				if toAPIError(ctx, err).Code == "NoSuchKey" {
+-					s3Error = ErrNoSuchKey
+-				}
+-			}
+-		}
++	// Validate the signature/identity now; stored-tag policy conditions must
++	// be finalized after the requested object/version metadata is loaded.
++	if s3Error := checkRequestAuthType(ctx, withObjectTags(r, ""), policy.GetObjectAction, bucket, object); s3Error != ErrNone && s3Error != ErrAccessDenied {
+ 		writeErrorResponseHeadersOnly(w, errorCodes.ToAPIErr(s3Error))
+ 		return
+ 	}
+@@ -637,6 +599,10 @@ func (api objectAPIHandlers) HeadObjectHandler(w http.ResponseWriter, r *http.Re
+ 			}
+ 		}
+ 		if !proxy || perr != nil {
++			if s3Error := checkObjectReadAuthType(ctx, r, bucket, object, objInfo.UserTags, err); s3Error != ErrNone {
++				writeErrorResponseHeadersOnly(w, errorCodes.ToAPIErr(s3Error))
++				return
++			}
+ 			if globalBucketVersioningSys.Enabled(bucket) {
+ 				if !objInfo.VersionPurgeStatus.Empty() {
+ 					// Shows the replication status of a permanent delete of a version
+@@ -657,6 +623,13 @@ func (api objectAPIHandlers) HeadObjectHandler(w http.ResponseWriter, r *http.Re
+ 		}
+ 	}
+ 
++	// Authorize the exact stored version before lifecycle, decryption,
++	// conditional responses, or metadata-bearing errors are evaluated.
++	if s3Error := checkObjectReadAuthType(ctx, r, bucket, object, objInfo.UserTags, nil); s3Error != ErrNone {
++		writeErrorResponseHeadersOnly(w, errorCodes.ToAPIErr(s3Error))
++		return
++	}
++
+ 	// Automatically remove the object/version is an expiry lifecycle rule can be applied
+ 	if lc, err := globalLifecycleSys.Get(bucket); err == nil {
+ 		action := evalActionFromLifecycle(ctx, *lc, objInfo, false)
+@@ -681,17 +654,6 @@ func (api objectAPIHandlers) HeadObjectHandler(w http.ResponseWriter, r *http.Re
+ 		}
+ 	}
+ 
+-	// SECURITY: GHSA-95fr-cm4m-q5p9 / CVE-2024-36107.
+-	// Supply the existing object's tags through request context and re-evaluate
+-	// authorization before checkPreconditions runs, so policies that gate on
+-	// s3:ExistingObjectTag/<k> can deny the request *before* any object
+-	// metadata (Last-Modified / ETag / version-id) is written to the
+-	// response. See the matching block in GetObjectHandler.
+-	if s3Error := checkRequestAuthType(ctx, withObjectTags(r, objInfo.UserTags), policy.GetObjectAction, bucket, object); s3Error != ErrNone {
+-		writeErrorResponseHeadersOnly(w, errorCodes.ToAPIErr(s3Error))
+-		return
+-	}
+-
+ 	// Validate pre-conditions if any.
+ 	if checkPreconditions(ctx, w, r, objInfo, opts) {
+ 		return
+@@ -916,13 +878,7 @@ func (api objectAPIHandlers) CopyObjectHandler(w http.ResponseWriter, r *http.Re
+ 	}
+ 
+ 	// Read escaped copy source path to check for parameters.
+-	cpSrcPath := r.Header.Get(xhttp.AmzCopySource)
+-	var vid string
+-	if u, err := url.Parse(cpSrcPath); err == nil {
+-		vid = strings.TrimSpace(u.Query().Get(xhttp.VersionID))
+-		// Note that url.Parse does the unescaping
+-		cpSrcPath = u.Path
+-	}
++	cpSrcPath, vid := getCopySource(r)
+ 
+ 	srcBucket, srcObject := path2BucketObject(cpSrcPath)
+ 	// If source object is empty or bucket is empty, reply back invalid copy source.
+@@ -943,11 +899,6 @@ func (api objectAPIHandlers) CopyObjectHandler(w http.ResponseWriter, r *http.Re
+ 		}
+ 	}
+ 
+-	if s3Error := checkRequestAuthType(ctx, r, policy.GetObjectAction, srcBucket, srcObject); s3Error != ErrNone {
+-		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
+-		return
+-	}
+-
+ 	// Check if metadata directive is valid.
+ 	if !isDirectiveValid(r.Header.Get(xhttp.AmzMetadataDirective)) {
+ 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidMetadataDirective), r.URL, guessIsBrowserReq(r))
+@@ -1003,7 +954,17 @@ func (api objectAPIHandlers) CopyObjectHandler(w http.ResponseWriter, r *http.Re
+ 		getObjectNInfo = api.CacheAPI().GetObjectNInfo
+ 	}
+ 
++	// Source policy conditions require tags from the selected stored version.
++	// The destination authorization above already validated the signature;
++	// defer source policy evaluation until metadata is available rather than
++	// rejecting valid tag-restricted reads against empty or client-supplied tags.
++	sourceAuthorizationChecked := false
+ 	checkCopyPrecondFn := func(o ObjectInfo) bool {
++		sourceAuthorizationChecked = true
++		if s3Error := checkCopySourceAuthType(ctx, r, srcBucket, srcObject, vid, o.UserTags); s3Error != ErrNone {
++			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
++			return true
++		}
+ 		if objectAPI.IsEncryptionSupported() {
+ 			if _, err := DecryptObjectInfo(&o, r); err != nil {
+ 				writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+@@ -1026,6 +987,21 @@ func (api objectAPIHandlers) CopyObjectHandler(w http.ResponseWriter, r *http.Re
+ 
+ 	var rs *HTTPRangeSpec
+ 	gr, err := getObjectNInfo(ctx, srcBucket, srcObject, rs, r.Header, lock, getOpts)
++	// A missing version, delete marker, or backend without a precondition
++	// callback must not expose source errors/metadata before authorization.
++	if !sourceAuthorizationChecked {
++		objectTags := ""
++		if gr != nil {
++			objectTags = gr.ObjInfo.UserTags
++		}
++		if s3Error := checkCopySourceAuthType(ctx, r, srcBucket, srcObject, vid, objectTags); s3Error != ErrNone {
++			if gr != nil {
++				gr.Close()
++			}
++			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
++			return
++		}
++	}
+ 	if err != nil {
+ 		if isErrPreconditionFailed(err) {
+ 			return
+@@ -2220,13 +2196,7 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
+ 	}
+ 
+ 	// Read escaped copy source path to check for parameters.
+-	cpSrcPath := r.Header.Get(xhttp.AmzCopySource)
+-	var vid string
+-	if u, err := url.Parse(cpSrcPath); err == nil {
+-		vid = strings.TrimSpace(u.Query().Get(xhttp.VersionID))
+-		// Note that url.Parse does the unescaping
+-		cpSrcPath = u.Path
+-	}
++	cpSrcPath, vid := getCopySource(r)
+ 
+ 	srcBucket, srcObject := path2BucketObject(cpSrcPath)
+ 	// If source object is empty or bucket is empty, reply back invalid copy source.
+@@ -2247,11 +2217,6 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
+ 		}
+ 	}
+ 
+-	if s3Error := checkRequestAuthType(ctx, r, policy.GetObjectAction, srcBucket, srcObject); s3Error != ErrNone {
+-		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
+-		return
+-	}
+-
+ 	uploadID := r.URL.Query().Get(xhttp.UploadID)
+ 	partIDString := r.URL.Query().Get(xhttp.PartNumber)
+ 
+@@ -2299,7 +2264,17 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
+ 		rs, parseRangeErr = parseCopyPartRangeSpec(rangeHeader)
+ 	}
+ 
++	// Source policy conditions require tags from the selected stored version.
++	// The destination authorization above already validated the signature;
++	// defer source policy evaluation until metadata is available rather than
++	// rejecting valid tag-restricted reads against empty or client-supplied tags.
++	sourceAuthorizationChecked := false
+ 	checkCopyPartPrecondFn := func(o ObjectInfo) bool {
++		sourceAuthorizationChecked = true
++		if s3Error := checkCopySourceAuthType(ctx, r, srcBucket, srcObject, vid, o.UserTags); s3Error != ErrNone {
++			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
++			return true
++		}
+ 		if objectAPI.IsEncryptionSupported() {
+ 			if _, err := DecryptObjectInfo(&o, r); err != nil {
+ 				writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+@@ -2320,6 +2295,21 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
+ 	}
+ 	getOpts.CheckPrecondFn = checkCopyPartPrecondFn
+ 	gr, err := getObjectNInfo(ctx, srcBucket, srcObject, rs, r.Header, readLock, getOpts)
++	// A missing version, delete marker, or backend without a precondition
++	// callback must not expose source errors/metadata before authorization.
++	if !sourceAuthorizationChecked {
++		objectTags := ""
++		if gr != nil {
++			objectTags = gr.ObjInfo.UserTags
++		}
++		if s3Error := checkCopySourceAuthType(ctx, r, srcBucket, srcObject, vid, objectTags); s3Error != ErrNone {
++			if gr != nil {
++				gr.Close()
++			}
++			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
++			return
++		}
++	}
+ 	if err != nil {
+ 		if isErrPreconditionFailed(err) {
+ 			return
+@@ -3695,7 +3685,7 @@ func (api objectAPIHandlers) GetObjectTaggingHandler(w http.ResponseWriter, r *h
+ 	}
+ 
+ 	// Allow getObjectTagging if policy action is set.
+-	if s3Error := checkRequestAuthType(ctx, r, policy.GetObjectTaggingAction, bucket, object); s3Error != ErrNone {
++	if s3Error := checkRequestAuthType(ctx, withObjectTags(r, ""), policy.GetObjectTaggingAction, bucket, object); s3Error != ErrNone && s3Error != ErrAccessDenied {
+ 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
+ 		return
+ 	}
+@@ -3708,6 +3698,14 @@ func (api objectAPIHandlers) GetObjectTaggingHandler(w http.ResponseWriter, r *h
+ 
+ 	// Get object tags
+ 	tags, err := objAPI.GetObjectTags(ctx, bucket, object, opts)
++	storedTags := ""
++	if tags != nil {
++		storedTags = tags.String()
++	}
++	if s3Error := checkRequestAuthType(ctx, withObjectTags(r, storedTags), policy.GetObjectTaggingAction, bucket, object); s3Error != ErrNone {
++		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
++		return
++	}
+ 	if err != nil {
+ 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+ 		return
+@@ -3743,7 +3741,7 @@ func (api objectAPIHandlers) PutObjectTaggingHandler(w http.ResponseWriter, r *h
+ 	}
+ 
+ 	// Allow putObjectTagging if policy action is set
+-	if s3Error := checkRequestAuthType(ctx, r, policy.PutObjectTaggingAction, bucket, object); s3Error != ErrNone {
++	if s3Error := checkRequestAuthType(ctx, withObjectTags(r, ""), policy.PutObjectTaggingAction, bucket, object); s3Error != ErrNone && s3Error != ErrAccessDenied {
+ 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
+ 		return
+ 	}
+@@ -3760,6 +3758,22 @@ func (api objectAPIHandlers) PutObjectTaggingHandler(w http.ResponseWriter, r *h
+ 		return
+ 	}
+ 
++	oi, lookupErr := objAPI.GetObjectInfo(ctx, bucket, object, opts)
++	if s3Error := checkRequestAuthType(ctx, withObjectTags(r, oi.UserTags), policy.PutObjectTaggingAction, bucket, object); s3Error != ErrNone {
++		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
++		return
++	}
++	if lookupErr != nil {
++		writeErrorResponse(ctx, w, toAPIError(ctx, lookupErr), r.URL, guessIsBrowserReq(r))
++		return
++	}
++	// Storage rechecks the selected object's tags while holding its write lock.
++	authCode := ErrNone
++	opts.CheckPrecondFn = func(actual ObjectInfo) bool {
++		authCode = checkRequestAuthType(ctx, withObjectTags(r, actual.UserTags), policy.PutObjectTaggingAction, bucket, object)
++		return authCode != ErrNone
++	}
++
+ 	replicate, sync := mustReplicate(ctx, r, bucket, object, map[string]string{xhttp.AmzObjectTagging: tags.String()}, "")
+ 	if replicate {
+ 		opts.UserDefined = make(map[string]string)
+@@ -3770,6 +3784,10 @@ func (api objectAPIHandlers) PutObjectTaggingHandler(w http.ResponseWriter, r *h
+ 
+ 	// Put object tags
+ 	objInfo, err := objAPI.PutObjectTags(ctx, bucket, object, tagsStr, opts)
++	if authCode != ErrNone {
++		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(authCode), r.URL, guessIsBrowserReq(r))
++		return
++	}
+ 	if err != nil {
+ 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+ 		return
+@@ -3820,7 +3838,7 @@ func (api objectAPIHandlers) DeleteObjectTaggingHandler(w http.ResponseWriter, r
+ 	}
+ 
+ 	// Allow deleteObjectTagging if policy action is set
+-	if s3Error := checkRequestAuthType(ctx, r, policy.DeleteObjectTaggingAction, bucket, object); s3Error != ErrNone {
++	if s3Error := checkRequestAuthType(ctx, withObjectTags(r, ""), policy.DeleteObjectTaggingAction, bucket, object); s3Error != ErrNone && s3Error != ErrAccessDenied {
+ 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
+ 		return
+ 	}
+@@ -3832,6 +3850,10 @@ func (api objectAPIHandlers) DeleteObjectTaggingHandler(w http.ResponseWriter, r
+ 	}
+ 
+ 	oi, err := objAPI.GetObjectInfo(ctx, bucket, object, opts)
++	if s3Error := checkRequestAuthType(ctx, withObjectTags(r, oi.UserTags), policy.DeleteObjectTaggingAction, bucket, object); s3Error != ErrNone {
++		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
++		return
++	}
+ 	if err != nil {
+ 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+ 		return
+@@ -3842,7 +3864,16 @@ func (api objectAPIHandlers) DeleteObjectTaggingHandler(w http.ResponseWriter, r
+ 		opts.UserDefined[xhttp.AmzBucketReplicationStatus] = replication.Pending.String()
+ 	}
+ 
++	authCode := ErrNone
++	opts.CheckPrecondFn = func(actual ObjectInfo) bool {
++		authCode = checkRequestAuthType(ctx, withObjectTags(r, actual.UserTags), policy.DeleteObjectTaggingAction, bucket, object)
++		return authCode != ErrNone
++	}
+ 	oi, err = objAPI.DeleteObjectTags(ctx, bucket, object, opts)
++	if authCode != ErrNone {
++		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(authCode), r.URL, guessIsBrowserReq(r))
++		return
++	}
+ 	if err != nil {
+ 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
+ 		return
+diff --git a/cmd/precondition_leak_security_test.go b/cmd/precondition_leak_security_test.go
+index b36d818..d9b1670 100644
+--- a/cmd/precondition_leak_security_test.go
++++ b/cmd/precondition_leak_security_test.go
+@@ -39,22 +39,22 @@ import (
+ // 403 with no Last-Modified / ETag / X-Amz-Version-Id leaked.
+ 
+ // TestGetConditionValuesExpandsObjectTagsForPolicyEvaluation pins the
+-// contract that getConditionValues parses the X-Amz-Tagging header and
++// contract that getConditionValues parses stored tags and request tags into
+ // surfaces each tag under the s3:-stripped lookup keys
+ // "ExistingObjectTag/<k>" and "RequestObjectTag/<k>" used by
+ // stringEqualsFunc.evaluate. This is the policy-side primitive that lets
+ // handler-injected tags participate in IAM evaluation.
+ func TestGetConditionValuesExpandsObjectTagsForPolicyEvaluation(t *testing.T) {
+ 	r := httptest.NewRequest(http.MethodGet, "/bucket/object", nil)
+-	r.Header.Set(xhttp.AmzObjectTagging, "dept=finance&customer=alice")
++	r.Header.Set(xhttp.AmzObjectTagging, "dept=engineering&customer=bob")
+ 
+-	values := getConditionValues(r, "", "", nil)
++	values := getConditionValues(withObjectTags(r, "dept=finance&customer=alice"), "", "", nil)
+ 
+ 	cases := map[string]string{
+ 		"ExistingObjectTag/dept":     "finance",
+ 		"ExistingObjectTag/customer": "alice",
+-		"RequestObjectTag/dept":      "finance",
+-		"RequestObjectTag/customer":  "alice",
++		"RequestObjectTag/dept":      "engineering",
++		"RequestObjectTag/customer":  "bob",
+ 	}
+ 	for key, want := range cases {
+ 		got := values[key]
+diff --git a/cmd/storage-datatypes.go b/cmd/storage-datatypes.go
+index a68b96e..b14a4b1 100644
+--- a/cmd/storage-datatypes.go
++++ b/cmd/storage-datatypes.go
+@@ -104,7 +104,10 @@ func (f *FileInfoVersions) findVersionIndex(v string) int {
+ 		return -1
+ 	}
+ 	for i, ver := range f.Versions {
+-		if ver.VersionID == v {
++		// Legacy object metadata stores an empty ID, while the S3 listing
++		// serializes it as "null". Recognize that marker rather than restarting
++		// at the newest version and producing an endless pagination cycle.
++		if ver.VersionID == v || (v == nullVersionID && ver.VersionID == "") {
+ 			return i
+ 		}
+ 	}
+diff --git a/pkg/iam/policy/actionset.go b/pkg/iam/policy/actionset.go
+index 0224d92..871e3f3 100644
+--- a/pkg/iam/policy/actionset.go
++++ b/pkg/iam/policy/actionset.go
+@@ -49,14 +49,6 @@ func (actionSet ActionSet) Match(action Action) bool {
+ 			return true
+ 		}
+ 
+-		// This is a special case where GetObjectVersion
+-		// means GetObject is enabled implicitly.
+-		switch r {
+-		case GetObjectVersionAction:
+-			if action == GetObjectAction {
+-				return true
+-			}
+-		}
+ 	}
+ 
+ 	return false
+diff --git a/pkg/iam/policy/policy_test.go b/pkg/iam/policy/policy_test.go
+index 767ab64..eb4b14e 100644
+--- a/pkg/iam/policy/policy_test.go
++++ b/pkg/iam/policy/policy_test.go
+@@ -597,7 +597,7 @@ func TestPolicyParseConfig(t *testing.T) {
+ 			allowed: true,
+ 			args: Args{
+ 				AccountName:     "allowed",
+-				Action:          GetObjectAction,
++				Action:          GetObjectVersionAction,
+ 				BucketName:      "test",
+ 				ObjectName:      "HappyFace.jpg",
+ 				ConditionValues: map[string][]string{"versionid": {"AaaHbAQitwiL_h47_44lRO2DDfLlBO5e"}},
+@@ -608,7 +608,7 @@ func TestPolicyParseConfig(t *testing.T) {
+ 			allowed: false,
+ 			args: Args{
+ 				AccountName:     "disallowed",
+-				Action:          GetObjectAction,
++				Action:          GetObjectVersionAction,
+ 				BucketName:      "test",
+ 				ObjectName:      "HappyFace.jpg",
+ 				ConditionValues: map[string][]string{"versionid": {"AaaHbAQitwiL_h47_44lRO2DDfLlBO5f"}},
