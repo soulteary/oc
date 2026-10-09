@@ -6,7 +6,7 @@ This guide is for changing OC and reproducing its checks. For installing a publi
 
 ## Toolchain and source layout
 
-Use the Go version declared in [go.mod](../go.mod), currently `1.27.1`. The [compatibility manifest](compatibility.json) records the same toolchain, the independent S3 SDK and kits, and the separate server/admin source pin. CI and the Makefile use `GOTOOLCHAIN=local`, so an older installed toolchain will fail instead of downloading a newer one automatically. Install the required version before running checks.
+Use the Go version declared in [go.mod](../go.mod), currently `1.27.2`. The [compatibility manifest](compatibility.json) records the same toolchain, the independent S3 SDK and kits, and the separate server/admin source pin. CI and the Makefile use `GOTOOLCHAIN=local`, so an older installed toolchain will fail instead of downloading a newer one automatically. Install the required version before running checks.
 
 You also need Git and Python 3.11 or newer (the fixtures use `hashlib.file_digest`). Console frontend behavior checks require Node.js; building and running `oc-console` does not. The examples below use a POSIX shell on Linux or macOS. Makefile and cross-compilation targets need Bash; the Make dependency check also uses Perl, and the server integration fixture needs OpenSSL with `req -addext` support. Race tests and `CGO_ENABLED=1` runs require the platform's C compiler. Windows build/test commands are recorded in the [Go workflow](../.github/workflows/go.yml); use an `oc.exe` output when building natively there.
 

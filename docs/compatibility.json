@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "goToolchain": "1.27.1",
+  "goToolchain": "1.27.2",
   "otterioSDK": "v0.0.0-20261008035209-6f6d0835ddff",
   "otterioSource": "6f6d0835ddff68020f1491c403b958fade22841f",
   "storageSDK": {
@@ -132,7 +132,7 @@
       "nativeVerification": {
         "repository": "otterio",
         "path": "docs/console-authorization-review-results.json",
-        "sha256": "124eef7e71f35f646bc89580b343ec21767ddda2f11d25b9cbd771bbe782d69e",
+        "sha256": "fb5df77ed3d6ff3017a0fe0d2c12e4b403872519f5a33c2a6ce6c11db162a666",
         "httpStorageCasesByProfile": {
           "current": {
             "CopyObjectAndUploadPartCopy": 396,
@@ -219,6 +219,16 @@
       "groups": 61,
       "scope": "actual application DOM behavior including no-list known-bucket deletion",
       "sha256": "1209f942700c220f950a62cfdfa55671377fc4d4e08010f67ced0c86d67ee08b"
+    },
+    "testHelperLintFollowup": {
+      "repository": "otterio",
+      "path": "docs/console-authorization-lint-results.json",
+      "sha256": "919e2f0b7c7be34e72f89ccdbbbf8dda7f219c0e7b48e7292bee63c7b186cf56",
+      "status": "passed",
+      "featurePatchSHA256": "ea620befaad0c09abc0f91396c04c1d7666e527ec7ed24e5916fb14bedcc1d1c",
+      "currentSourceSHA256": "860041e350ea4afab03ea693bf9a68468d99b8fabcfd696f47876bdd6410900e",
+      "sourceTreeDigestAlgorithm": "SHA256 over relative POSIX path-sorted entries: UTF-8 path + NUL + ASCII decimal byte length + NUL + raw file bytes; all recursive Go files and root go.mod/go.sum, excluding .git; no per-entry suffix, mode or mtime",
+      "productionSourceChanged": false
     }
   },
   "consoleSettingsProtocol": {
@@ -426,9 +436,10 @@
         "nativeVerification": {
           "repository": "otterio",
           "path": "docs/console-authorization-review-results.json",
-          "sha256": "124eef7e71f35f646bc89580b343ec21767ddda2f11d25b9cbd771bbe782d69e"
+          "sha256": "fb5df77ed3d6ff3017a0fe0d2c12e4b403872519f5a33c2a6ce6c11db162a666"
         },
-        "historicalVerification": "docs/console-base-features-results.json"
+        "historicalVerification": "docs/console-base-features-results.json",
+        "sourceState": "before-test-helper-lint-fix; current helper-only delta verified by lintFollowup"
       },
       "baseLifecycleStorage": {
         "patches": [
@@ -626,13 +637,14 @@
         "nativeVerification": {
           "repository": "otterio",
           "path": "docs/console-authorization-review-results.json",
-          "sha256": "124eef7e71f35f646bc89580b343ec21767ddda2f11d25b9cbd771bbe782d69e"
+          "sha256": "fb5df77ed3d6ff3017a0fe0d2c12e4b403872519f5a33c2a6ce6c11db162a666"
         },
         "historicalVerification": [
           "docs/console-combined-features-results.json",
           "docs/console-combined-settings-object-results.json",
           "docs/console-combined-lifecycle-results.json"
-        ]
+        ],
+        "sourceState": "before-test-helper-lint-fix; current helper-only delta verified by lintFollowup"
       },
       "actualCurrentVersion": {
         "patches": [],
@@ -652,19 +664,20 @@
         "nativeVerification": {
           "repository": "otterio",
           "path": "docs/console-authorization-review-results.json",
-          "sha256": "124eef7e71f35f646bc89580b343ec21767ddda2f11d25b9cbd771bbe782d69e"
+          "sha256": "fb5df77ed3d6ff3017a0fe0d2c12e4b403872519f5a33c2a6ce6c11db162a666"
         },
         "sourceKind": "actual-git-checkout-with-uncommitted-changes",
         "sourceRevision": "80f10b3109554efe75368a3a50b481fd4f585139",
         "goRootModuleTreeSHA256": "34dd3c235c33a00521a8d91d1f59e8e1317f2003fa2b8870487dbf06312d38a6",
         "goRootModuleTreeDigestAlgorithm": "SHA256 over relative POSIX path-sorted entries: UTF-8 path + NUL + ASCII decimal byte length + NUL + raw file bytes; all recursive Go files and root go.mod/go.sum, excluding .git; no per-entry suffix, mode or mtime",
-        "historicalVerification": "docs/console-version-copy-results.json"
+        "historicalVerification": "docs/console-version-copy-results.json",
+        "sourceState": "before-test-helper-lint-fix; current helper-only delta verified by lintFollowup"
       }
     },
     "patchSHA256": {
       "buildscripts/console-server-base.patch": "8cf08e797c2d5fff2aff0fd78202bc9e94d03ecd609f26e171fc62c7b6d58d18",
       "buildscripts/lifecycle-storage.patch": "7fc7e76a3a67968d1b3f3ac61c4a38c82c698ba3e1fd3aa6020cf07089167539",
-      "buildscripts/console-features-server.patch": "2593137946949d77600b765498c26b6dd39cb6cf1271da6c9a5feba04439b6bd",
+      "buildscripts/console-features-server.patch": "ea620befaad0c09abc0f91396c04c1d7666e527ec7ed24e5916fb14bedcc1d1c",
       "buildscripts/console-iam-bindings.patch": "a578a7bd8df24e28e5bfd429152e919c1cb5b0b539ffb80413a3047f831ad338",
       "buildscripts/lifecycle-storage-hardening.patch": "2a7e451617daa1895f0e7f96f86c9d08b9bf896702c4251c5bc4c7183cc14a05"
     },
@@ -672,7 +685,7 @@
       "native": {
         "repository": "otterio",
         "path": "docs/console-authorization-review-results.json",
-        "sha256": "124eef7e71f35f646bc89580b343ec21767ddda2f11d25b9cbd771bbe782d69e",
+        "sha256": "fb5df77ed3d6ff3017a0fe0d2c12e4b403872519f5a33c2a6ce6c11db162a666",
         "httpStorageCases": {
           "CopyObjectAndUploadPartCopy": 396,
           "GetAndHeadIncludingRange": 170,
@@ -689,7 +702,8 @@
       "sourceHead": "80f10b3109554efe75368a3a50b481fd4f585139",
       "vcsModified": true,
       "independentIAMProtocolPresent": false,
-      "sourceIdentityBoundary": "binary confirms actual base VCS revision and modified state; reviewed source hash records repairs separately"
+      "sourceIdentityBoundary": "binary confirms actual base VCS revision and modified state; reviewed source hash records repairs separately",
+      "sourceState": "before-test-helper-lint-fix"
     },
     "evidencePolicy": "Historical reports retain their original source, patch and binary identities; no split-profile success is inferred from them.",
     "staticVerification": {
@@ -710,7 +724,7 @@
     "aggregateVerification": {
       "repository": "otterio",
       "path": "docs/console-server-acceptance-results.json",
-      "sha256": "b8f8b2711699233301374ccb22f2aee5951f8787f352e5908b5f7d1a87307c53",
+      "sha256": "70d34f77222b46c26475f130515f15df66fdcbdca1e326d06f6509bf2f2f1c66",
       "status": "passed",
       "scope": "Latest targeted repair plus unchanged independent base/storage historical validation; prior binaries are not relabeled as the reviewed source"
     },
@@ -3473,19 +3487,40 @@
     "latestReview": {
       "repository": "otterio",
       "path": "docs/console-authorization-review-results.json",
-      "sha256": "124eef7e71f35f646bc89580b343ec21767ddda2f11d25b9cbd771bbe782d69e",
+      "sha256": "fb5df77ed3d6ff3017a0fe0d2c12e4b403872519f5a33c2a6ce6c11db162a666",
       "status": "passed",
-      "currentSourceSHA256": "34dd3c235c33a00521a8d91d1f59e8e1317f2003fa2b8870487dbf06312d38a6",
-      "currentSourceDigestAlgorithm": "SHA256 over relative POSIX path-sorted entries: UTF-8 path + NUL + ASCII decimal byte length + NUL + raw file bytes; all recursive Go files and root go.mod/go.sum, excluding .git; no per-entry suffix, mode or mtime",
       "currentPlusIAMEqualsFullGoRootModule": true,
       "sourceScope": "all Go files plus root go.mod and go.sum",
-      "versionPatchSHA256": "2593137946949d77600b765498c26b6dd39cb6cf1271da6c9a5feba04439b6bd"
+      "versionPatchSHA256": "2593137946949d77600b765498c26b6dd39cb6cf1271da6c9a5feba04439b6bd",
+      "acceptedSourceSHA256": "34dd3c235c33a00521a8d91d1f59e8e1317f2003fa2b8870487dbf06312d38a6",
+      "acceptedSourceDigestAlgorithm": "SHA256 over relative POSIX path-sorted entries: UTF-8 path + NUL + ASCII decimal byte length + NUL + raw file bytes; all recursive Go files and root go.mod/go.sum, excluding .git; no per-entry suffix, mode or mtime",
+      "sourceState": "before-test-helper-lint-fix"
     },
     "finalSummary": {
       "repository": "otterio",
       "path": "docs/console-server-acceptance-results.json",
-      "sha256": "b8f8b2711699233301374ccb22f2aee5951f8787f352e5908b5f7d1a87307c53",
+      "sha256": "70d34f77222b46c26475f130515f15df66fdcbdca1e326d06f6509bf2f2f1c66",
       "status": "passed"
+    },
+    "lintFollowup": {
+      "repository": "otterio",
+      "path": "docs/console-authorization-lint-results.json",
+      "sha256": "919e2f0b7c7be34e72f89ccdbbbf8dda7f219c0e7b48e7292bee63c7b186cf56",
+      "status": "passed",
+      "featurePatchSHA256": "ea620befaad0c09abc0f91396c04c1d7666e527ec7ed24e5916fb14bedcc1d1c",
+      "currentSourceSHA256": "860041e350ea4afab03ea693bf9a68468d99b8fabcfd696f47876bdd6410900e",
+      "sourceTreeDigestAlgorithm": "SHA256 over relative POSIX path-sorted entries: UTF-8 path + NUL + ASCII decimal byte length + NUL + raw file bytes; all recursive Go files and root go.mod/go.sum, excluding .git; no per-entry suffix, mode or mtime",
+      "productionSourceChanged": false
+    },
+    "latestValidation": {
+      "repository": "otterio",
+      "path": "docs/console-authorization-lint-results.json",
+      "sha256": "919e2f0b7c7be34e72f89ccdbbbf8dda7f219c0e7b48e7292bee63c7b186cf56",
+      "status": "passed",
+      "featurePatchSHA256": "ea620befaad0c09abc0f91396c04c1d7666e527ec7ed24e5916fb14bedcc1d1c",
+      "currentSourceSHA256": "860041e350ea4afab03ea693bf9a68468d99b8fabcfd696f47876bdd6410900e",
+      "sourceTreeDigestAlgorithm": "SHA256 over relative POSIX path-sorted entries: UTF-8 path + NUL + ASCII decimal byte length + NUL + raw file bytes; all recursive Go files and root go.mod/go.sum, excluding .git; no per-entry suffix, mode or mtime",
+      "productionSourceChanged": false
     }
   }
 }

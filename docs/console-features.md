@@ -91,9 +91,12 @@ ZIP 默认最多 1000 个对象、5 GiB 源内容与一个活动/待下载任务
 ## 本轮授权复核
 
 本轮服务端版本补丁为 `buildscripts/console-features-server.patch`，SHA-256：
-`2593137946949d77600b765498c26b6dd39cb6cf1271da6c9a5feba04439b6bd`。base、storage、hardening 与 IAM 补丁均未改。
+`ea620befaad0c09abc0f91396c04c1d7666e527ec7ed24e5916fb14bedcc1d1c`。base、storage、hardening 与 IAM 补丁均未改。
 旧版本补丁 `c938ec24d3bd48b0eed7633abe876df9dda3cee6b5facd08833aa49a6e772d4f` 原样保存在
 [修正前补丁](console-features-evidence/console-features-server-before-review.patch)。
+
+
+本次测试辅助函数 lint 跟进只调整 context 参数顺序及未使用的 bucket 参数，完整 lint 为 0 issues，受影响的 198 个 HTTP/race 用例通过，见 OtterIO [lint 跟进记录](https://github.com/soulteary/otterio/blob/main/docs/console-authorization-lint-results.json)。下列完整运行报告仍对应修正前 `259313` 补丁及原程序；该补丁原样保存在[lint 前补丁](console-features-evidence/console-features-server-before-lint.patch)。当前补丁应用顺序及源码等价另有 OtterIO [静态记录](https://github.com/soulteary/otterio/blob/main/docs/console-authorization-lint-static-results.json)。
 
 本轮按实际读写的数据重新绑定标签条件：
 

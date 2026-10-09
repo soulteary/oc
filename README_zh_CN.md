@@ -87,7 +87,7 @@ oc --json doctor store
 
 ## 从源码构建
 
-准备 `go.mod` 声明的 Go 版本（目前为 `1.27.1`）、Git 和 Make：
+准备 `go.mod` 声明的 Go 版本（目前为 `1.27.2`）、Git 和 Make：
 
 ```sh
 git clone https://github.com/soulteary/oc.git

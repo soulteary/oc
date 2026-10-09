@@ -1,6 +1,6 @@
 module github.com/soulteary/mc
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/cheggaaa/pb v1.0.30
@@ -22,7 +22,7 @@ require (
 	github.com/soulteary/otterio v0.0.0-20261008035209-6f6d0835ddff
 	github.com/soulteary/otterio-sdk/v7 v7.3.1
 	github.com/urfave/cli/v3 v3.14.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/term v0.46.0
 	golang.org/x/text v0.42.0

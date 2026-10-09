@@ -89,7 +89,7 @@ The [documentation index](docs/README.md) also links the dated implementation an
 
 ## Build from source
 
-Use the Go version declared in `go.mod` (currently `1.27.1`), Git and Make:
+Use the Go version declared in `go.mod` (currently `1.27.2`), Git and Make:
 
 ```sh
 git clone https://github.com/soulteary/oc.git

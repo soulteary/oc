@@ -63,7 +63,7 @@ not reserve a tag or publish archives or images.
 
 ## Compatibility and upgrade
 
-The OC module remains `github.com/soulteary/mc`; source builds require Go 1.27.1.
+The OC module remains `github.com/soulteary/mc`; source builds require Go 1.27.2.
 OC's S3 client SDK is separate from its OtterIO server/admin module. Exact pins,
 source identities and validation limits are recorded in
 [compatibility.json](docs/compatibility.json) and the
@@ -178,7 +178,7 @@ establish native runtime acceptance on every target. See the
 
 ## 升级与兼容性
 
-OC 的 Go 模块仍为 `github.com/soulteary/mc`，源码构建要求 Go 1.27.1。
+OC 的 Go 模块仍为 `github.com/soulteary/mc`，源码构建要求 Go 1.27.2。
 S3 客户端 SDK 与 OtterIO 服务端 / 管理模块是独立依赖，准确版本、源码身份和验证边界
 见[兼容清单](docs/compatibility.json)及[兼容说明](docs/zh_CN/compatibility.md)。
 SDK 提取和独立发布已经完成；通知流投递修复仍延期，实时通知仍无持久化重放游标。

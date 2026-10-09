@@ -524,7 +524,7 @@ index 0000000..dae0e40
 +}
 diff --git a/cmd/console-version-cache-authorization_test.go b/cmd/console-version-cache-authorization_test.go
 new file mode 100644
-index 0000000..54c6394
+index 0000000..1b266ba
 --- /dev/null
 +++ b/cmd/console-version-cache-authorization_test.go
 @@ -0,0 +1,347 @@
@@ -559,7 +559,7 @@ index 0000000..54c6394
 +	bodyReads     atomic.Int64
 +}
 +
-+func newConsoleVersionCacheFixture(ctx context.Context, t *testing.T, obj ObjectLayer) *consoleVersionCacheFixture {
++func newConsoleVersionCacheFixture(t *testing.T, ctx context.Context, obj ObjectLayer) *consoleVersionCacheFixture {
 +	t.Helper()
 +	disk, err := newDiskCache(ctx, t.TempDir(), cache.Config{Quota: 100, WatermarkLow: 100, WatermarkHigh: 100})
 +	if err != nil {
@@ -583,7 +583,7 @@ index 0000000..54c6394
 +	return fixture
 +}
 +
-+func (f *consoleVersionCacheFixture) seed(ctx context.Context, t *testing.T, bucket, object, body string, info ObjectInfo) {
++func (f *consoleVersionCacheFixture) seed(t *testing.T, ctx context.Context, bucket, object, body string, info ObjectInfo) {
 +	t.Helper()
 +	if _, err := f.disk.Put(ctx, bucket, object, strings.NewReader(body), int64(len(body)), nil, ObjectOptions{UserDefined: getMetadata(info)}, false); err != nil {
 +		t.Fatal(err)
@@ -679,7 +679,7 @@ index 0000000..54c6394
 +	denyProd := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::` + bucket + `/*"]},{"Effect":"Deny","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::` + bucket + `/*"],"Condition":{"StringEquals":{"s3:ExistingObjectTag/environment":"prod"}}}]}`
 +	consoleVersionCachePolicy(t, user, "cache-allow-prod", allowProd)
 +	consoleVersionCachePolicy(t, user, "cache-deny-prod", denyProd)
-+	fixture := newConsoleVersionCacheFixture(ctx, t, obj)
++	fixture := newConsoleVersionCacheFixture(t, ctx, obj)
 +	setCacheObjectLayer(fixture.layer)
 +	for _, signature := range []string{"v4", "v2", "presigned"} {
 +		for _, method := range []string{http.MethodGet, http.MethodHead} {
@@ -704,7 +704,7 @@ index 0000000..54c6394
 +					if err != nil {
 +						t.Fatal(err)
 +					}
-+					fixture.seed(ctx, t, bucket, object, body, info)
++					fixture.seed(t, ctx, bucket, object, body, info)
 +					if test.actualTag == "" {
 +						_, err = obj.DeleteObjectTags(ctx, bucket, object, ObjectOptions{})
 +					} else {
@@ -780,8 +780,8 @@ index 0000000..54c6394
 +	}
 +	document := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObjectVersion"],"Resource":["arn:aws:s3:::` + bucket + `/*"],"Condition":{"StringEquals":{"s3:versionid":["` + old.VersionID + `","null"]}}}]}`
 +	consoleVersionCachePolicy(t, user, "cache-only-old-history", document)
-+	fixture := newConsoleVersionCacheFixture(ctx, t, obj)
-+	fixture.seed(ctx, t, bucket, object, currentData, current)
++	fixture := newConsoleVersionCacheFixture(t, ctx, obj)
++	fixture.seed(t, ctx, bucket, object, currentData, current)
 +	setCacheObjectLayer(fixture.layer)
 +	for _, signature := range []string{"v4", "v2", "presigned"} {
 +		for _, method := range []string{http.MethodGet, http.MethodHead} {
@@ -834,7 +834,7 @@ index 0000000..54c6394
 +	defer cancel()
 +	previousCache := newCachedObjectLayerFn()
 +	defer setCacheObjectLayer(previousCache)
-+	fixture := newConsoleVersionCacheFixture(ctx, t, obj)
++	fixture := newConsoleVersionCacheFixture(t, ctx, obj)
 +	setCacheObjectLayer(fixture.layer)
 +	const object, body = "cache-identity", "identical bytes with different write timestamps"
 +	put := func(mtime time.Time) ObjectInfo {
@@ -846,7 +846,7 @@ index 0000000..54c6394
 +		return info
 +	}
 +	before := put(time.Time{})
-+	fixture.seed(ctx, t, bucket, object, body, before)
++	fixture.seed(t, ctx, bucket, object, body, before)
 +	after := put(before.ModTime.Add(time.Nanosecond))
 +	if before.ETag != after.ETag || before.Size != after.Size || before.ModTime.Equal(after.ModTime) {
 +		t.Fatal("fixture requires same ETag/size and a distinct subsecond backend write timestamp")
@@ -858,7 +858,7 @@ index 0000000..54c6394
 +			t.Fatalf("different actual write reused the cached entry: status=%d backendReads=%d hits=%d", response.Code, fixture.bodyReads.Load(), fixture.layer.cacheStats.getHits())
 +		}
 +	})
-+	fixture.seed(ctx, t, bucket, object, body, after)
++	fixture.seed(t, ctx, bucket, object, body, after)
 +	fixture.layer.InnerGetObjectInfoFn = func(context.Context, string, string, ObjectOptions) (ObjectInfo, error) {
 +		return ObjectInfo{}, BackendDown{}
 +	}
@@ -1302,7 +1302,7 @@ index 0000000..cbdf2c8
 +}
 diff --git a/cmd/console-version-review-authorization_test.go b/cmd/console-version-review-authorization_test.go
 new file mode 100644
-index 0000000..2c1b83a
+index 0000000..ad116df
 --- /dev/null
 +++ b/cmd/console-version-review-authorization_test.go
 @@ -0,0 +1,185 @@
@@ -1349,7 +1349,7 @@ index 0000000..2c1b83a
 +	return request
 +}
 +
-+func consoleReviewUser(t *testing.T, obj ObjectLayer, name, document string) auth.Credentials {
++func consoleReviewUser(t *testing.T, obj ObjectLayer, bucket, name, document string) auth.Credentials {
 +	t.Helper()
 +	globalIAMSys.InitStore(obj)
 +	user := auth.Credentials{AccessKey: name, SecretKey: name + "-secret"}
@@ -1373,7 +1373,7 @@ index 0000000..2c1b83a
 +	defer DetectTestLeak(t)()
 +	ExecObjectLayerAPITest(t, func(obj ObjectLayer, backend, bucket string, router http.Handler, _ auth.Credentials, t *testing.T) {
 +		ctx := context.Background()
-+		user := consoleReviewUser(t, obj, "review-copy-tags", `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:PutObject"],"Resource":["arn:aws:s3:::`+bucket+`/dest-*"],"Condition":{"StringEquals":{"s3:RequestObjectTag/environment":"prod"}}},{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::`+bucket+`/source-*"]}]}`)
++		user := consoleReviewUser(t, obj, bucket, "review-copy-tags", `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:PutObject"],"Resource":["arn:aws:s3:::`+bucket+`/dest-*"],"Condition":{"StringEquals":{"s3:RequestObjectTag/environment":"prod"}}},{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::`+bucket+`/source-*"]}]}`)
 +		cases := []struct {
 +			name, sourceTag, headerTag, directive string
 +			want                                  int
@@ -1425,7 +1425,7 @@ index 0000000..2c1b83a
 +	defer DetectTestLeak(t)()
 +	ExecObjectLayerAPITest(t, func(obj ObjectLayer, backend, bucket string, router http.Handler, _ auth.Credentials, t *testing.T) {
 +		ctx := context.Background()
-+		user := consoleReviewUser(t, obj, "review-range-tags", `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::`+bucket+`/*"],"Condition":{"StringEquals":{"s3:ExistingObjectTag/environment":"prod"}}}]}`)
++		user := consoleReviewUser(t, obj, bucket, "review-range-tags", `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::`+bucket+`/*"],"Condition":{"StringEquals":{"s3:ExistingObjectTag/environment":"prod"}}}]}`)
 +		for _, tag := range []string{"prod", "dev"} {
 +			if _, err := obj.PutObject(ctx, bucket, tag, mustGetPutObjReader(t, strings.NewReader("tag data"), 8, "", ""), ObjectOptions{UserDefined: map[string]string{xhttp.AmzObjectTagging: "environment=" + tag}}); err != nil {
 +				t.Fatal(err)
@@ -1756,7 +1756,7 @@ index 0000000..88a0a54
 +}
 diff --git a/cmd/console-version-tier-authorization_test.go b/cmd/console-version-tier-authorization_test.go
 new file mode 100644
-index 0000000..7b7f06b
+index 0000000..252f73a
 --- /dev/null
 +++ b/cmd/console-version-tier-authorization_test.go
 @@ -0,0 +1,130 @@
@@ -1793,7 +1793,7 @@ index 0000000..7b7f06b
 +		ctx := context.Background()
 +		allowPolicy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::` + bucket + `/*"],"Condition":{"StringEquals":{"s3:ExistingObjectTag/environment":"prod"}}}]}`
 +		denyPolicy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::` + bucket + `/*"]},{"Effect":"Deny","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::` + bucket + `/*"],"Condition":{"StringEquals":{"s3:ExistingObjectTag/environment":"prod"}}}]}`
-+		user := consoleReviewUser(t, obj, "review-tier-allow", allowPolicy)
++		user := consoleReviewUser(t, obj, bucket, "review-tier-allow", allowPolicy)
 +		consoleVersionCachePolicy(t, user, "review-tier-deny", denyPolicy)
 +		for _, corruptReference := range []bool{false, true} {
 +			object := "missing-tier-client"

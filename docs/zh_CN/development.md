@@ -6,7 +6,7 @@
 
 ## 工具链与代码布局
 
-Go 版本以 [go.mod](../../go.mod) 为准，当前为 `1.27.1`。[兼容清单](../compatibility.json)记录相同工具链、独立 S3 SDK 与 kits，以及单独的服务端/管理包源码 pin。CI 和 Makefile 使用 `GOTOOLCHAIN=local`，本机版本过旧时会失败，不会自动下载更新版本；运行检查前先安装要求的工具链。
+Go 版本以 [go.mod](../../go.mod) 为准，当前为 `1.27.2`。[兼容清单](../compatibility.json)记录相同工具链、独立 S3 SDK 与 kits，以及单独的服务端/管理包源码 pin。CI 和 Makefile 使用 `GOTOOLCHAIN=local`，本机版本过旧时会失败，不会自动下载更新版本；运行检查前先安装要求的工具链。
 
 此外需要 Git 和 Python 3.11 或更新版本（测试实例使用 `hashlib.file_digest`）。控制台前端行为测试需要 Node.js，但构建和运行 `oc-console` 不需要。下面的命令使用 Linux 或 macOS 上的 POSIX shell；Makefile 和交叉编译脚本需要 Bash，Make 的依赖检查还使用 Perl。服务端集成测试需要支持 `req -addext` 的 OpenSSL，竞态测试和 `CGO_ENABLED=1` 需要对应平台的 C 编译器。Windows 的原生构建和测试命令见 [Go 工作流](../../.github/workflows/go.yml)，输出文件应使用 `oc.exe`。
 

@@ -97,7 +97,7 @@ Add `$InstallDir` to your user `PATH` to run `oc` from another directory. OC's d
 
 ## Build from source
 
-Use Git and the Go toolchain declared in `go.mod` (`1.27.1` for this baseline). Make and CI set `GOTOOLCHAIN=local`; prepare the correct Go installation before building. Read [Go's installation instructions](https://go.dev/doc/install) when needed.
+Use Git and the Go toolchain declared in `go.mod` (`1.27.2` for this baseline). Make and CI set `GOTOOLCHAIN=local`; prepare the correct Go installation before building. Read [Go's installation instructions](https://go.dev/doc/install) when needed.
 
 On Unix with Make:
 

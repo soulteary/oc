@@ -97,7 +97,7 @@ Copy-Item (Join-Path $WorkDir "oc-$Tag-$Platform/oc.exe") (Join-Path $InstallDir
 
 ## 从源码构建
 
-准备 Git，以及 `go.mod` 声明的 Go 工具链（本基线为 `1.27.1`）。Make 和 CI 配置使用 `GOTOOLCHAIN=local`，应先安装所需 Go 版本。安装步骤可参考 [Go 官方说明](https://go.dev/doc/install)。
+准备 Git，以及 `go.mod` 声明的 Go 工具链（本基线为 `1.27.2`）。Make 和 CI 配置使用 `GOTOOLCHAIN=local`，应先安装所需 Go 版本。安装步骤可参考 [Go 官方说明](https://go.dev/doc/install)。
 
 Unix 环境安装 Make 后：
 
