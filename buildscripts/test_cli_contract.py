@@ -17,6 +17,34 @@ import cli_contract
 
 
 class ReviewedHelpAdditionTests(unittest.TestCase):
+    def test_branding_help_deltas_cover_both_platforms_exactly(self):
+        baseline = cli_contract.load(cli_contract.CONTRACT_DIR / "baseline.json")
+        approvals = cli_contract.load(cli_contract.CONTRACT_DIR / "approved-deltas.json")
+        archived = {case["id"]: case for case in baseline["cases"]}
+        for case_id in ("help/sql", "help/admin", "help/admin/subnet", "help/admin/subnet/health"):
+            change = approvals["cases"][case_id]
+            self.assertEqual(change["fields_before"], {"stdout": archived[case_id]["stdout"]})
+            for platform in ("unix", "windows"):
+                with self.subTest(case=case_id, platform=platform):
+                    before_fields = change["fields_before"] if platform == "unix" else change["fields_before_by_platform"][platform]
+                    after_fields = change["fields_after"] if platform == "unix" else change["fields_after_by_platform"][platform]
+                    if platform == "windows":
+                        for fields in (before_fields, after_fields):
+                            self.assertIn(r'{sandbox}/home\\oc', fields["stdout"])
+                            self.assertIn("[%OC_CONFIG_DIR%, %MC_CONFIG_DIR%]", fields["stdout"])
+                            self.assertNotIn("$OC_", fields["stdout"])
+                            self.assertNotIn("$ oc ", fields["stdout"])
+                    old = dict(archived[case_id], **before_fields)
+                    new = dict(old, **after_fields)
+                    before = {"platform_family": platform, "cases": [old]}
+                    after = dict(before, cases=[new])
+                    self.assertFalse(cli_contract.differences(before, after, {case_id: change}))
+                    for field, value in (("stdout", new["stdout"] + "unexpected"),
+                                         ("stderr", "unexpected"), ("exit_code", 1),
+                                         ("side_effects", [{"path": "unexpected"}])):
+                        altered = dict(after, cases=[dict(new, **{field: value})])
+                        self.assertTrue(cli_contract.differences(before, altered, {case_id: change}))
+
     def fixture(self):
         case = {"id": "help/admin/subnet/health", "argv": ["admin", "subnet", "health", "--help"],
                 "stdout": "oc admin subnet health TARGET", "stderr": "", "exit_code": 0,
