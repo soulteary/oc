@@ -9,6 +9,7 @@ from check_budgets import budgets
 # Published tag sources are fixed independently of the compatibility manifest.
 REVIEWED_STORAGE_SDK_SOURCES = {
     'v7.3.1': 'c11549d350d8d1f7474bc26037616e912f344c15',
+    'v7.3.2': 'afb5be789cad5dda6c5daeffb227e5ea1724888c',
 }
 
 root = Path(__file__).resolve().parents[1]
