@@ -30,6 +30,9 @@ class ReviewedHelpAdditionTests(unittest.TestCase):
                     after_fields = change["fields_after"] if platform == "unix" else change["fields_after_by_platform"][platform]
                     if platform == "windows":
                         for fields in (before_fields, after_fields):
+                            if case_id == "help/sql":
+                                self.assertIn("oc.exe sql ", fields["stdout"])
+                                self.assertNotIn("oc sql ", fields["stdout"])
                             self.assertIn(r'{sandbox}/home\\oc', fields["stdout"])
                             self.assertIn("[%OC_CONFIG_DIR%, %MC_CONFIG_DIR%]", fields["stdout"])
                             self.assertNotIn("$OC_", fields["stdout"])
