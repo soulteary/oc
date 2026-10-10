@@ -4,6 +4,8 @@ services:
     restart: unless-stopped
     command: [server, --address, ':9000', --console-address, ':9001', /data]
     environment:
+      # Keep the internal Admin API on :9001; only disable the legacy Web UI.
+      OTTERIO_BROWSER: 'off'
       OTTERIO_ROOT_USER: '${OTTERIO_ROOT_USER:?请在 .env 中设置用户名}'
       OTTERIO_ROOT_PASSWORD: '${OTTERIO_ROOT_PASSWORD:?请在 .env 中设置密码}'
     ports:

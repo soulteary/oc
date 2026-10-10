@@ -129,3 +129,9 @@ P1–P4 遇到问题时可以关闭 `oc-console`，保留当前服务端并继�
 P1 的实际检查结果见[当前服务端](console-phase-one-results.json)与[固定补丁基线](console-pinned-baseline-results.json)。真实接入发现并修复了 root AccountInfo 的 IAM 查找缺陷；未运行的平台、长时间稳定性或多用户部署不计为已通过。
 
 P2 的最终证据见[当前服务端](console-phase-two-results.json)、[固定五补丁基线](console-phase-two-pinned-results.json)和[浏览器记录](console-phase-two-browser-results.json)。两条服务端基线使用同一最终控制台构建；每场景 21 组，三种入口共 126 组通过。额外代价为每个 multipart 的固定 32 MiB 缓冲；没有放宽原吞吐、内存或取消预算。
+
+### 示例部署先行关闭旧 Web
+
+`deploy/compose.console.yaml` 现在通过 `OTTERIO_BROWSER=off` 使用 OC 作为主要界面，保留内部 Admin 监听器。这是 P5 的试部署步骤，不代表 P3/P4 全部完成，也不改变服务端默认值或删除旧代码。迁移范围和同版本回退见[使用指南](zh_CN/console.md#以-oc-为主要界面关闭旧-web)。真实服务验收脚本显式检查旧网页、RPC、上传、下载和 ZIP 路由被拒绝，并沿用 S3 与 Admin 的功能验收。
+
+本轮真实服务验收使用 OtterIO `f0830a2c357043f0b8f821f49e899cf6daeadbb3` 和当前 OC 源码构建的程序，单/双 HTTP、单/双 TLS 各 22 组，共 88 组通过，覆盖关闭旧入口、S3 对象写入/下载、限制身份及 Admin AccountInfo。[原始结果](console-browser-off-results.json)记录程序摘要和依赖身份。另有控制台 Go 测试、73 组前端行为测试、Compose 配置校验通过。本轮未新增验证完整 Docker 部署、人工浏览器回退/偏好持久化、STS/metrics 回归及完整 IAM/桶配置/ZIP 矩阵；这些仍是后续迁移门槛。
