@@ -194,7 +194,7 @@ ILM 目标注册、凭据更新和移除在终端使用 `oc admin bucket remote`
 make test-console
 ```
 
-具体范围见[新增功能记录](../console-features.md)、[第三阶段验证记录](../console-phase-three.md)、后续[转换验证记录](../lifecycle-transition-verification.json)及[第二阶段验证记录](../console-phase-two.md)。每份报告只适用于其中记录的程序与补丁；历史记录仍保留。开发环境的前端行为测试需要 Node，运行控制台不需要。`make build` 仍只构建 CLI，已有发布归档和容器不会自动包含这个实验程序。诊断、发行与集中部署、旧入口弃用还需后续阶段验收。
+具体范围见[新增功能记录](../console-features.md)、[第三阶段验证记录](../console-phase-three.md)、后续[转换验证记录](../lifecycle-transition-verification.json)及[第二阶段验证记录](../console-phase-two.md)。每份报告只适用于其中记录的程序与补丁；历史记录仍保留。开发环境的前端行为测试需要 Node，运行控制台不需要。`make build` 仍只构建 CLI，时间戳发行构建现已打包两个程序，发行镜像包含 `oc-console`；此前已发布的版本保持不变。见[发行与迁移门槛](../console-release-migration.md)。诊断、发行与集中部署、旧入口弃用还需后续阶段验收。
 
 ## Docker bridge 网络
 

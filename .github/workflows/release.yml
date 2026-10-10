@@ -93,6 +93,9 @@ jobs:
           binary="$smoke_dir/oc-${RELEASE_TAG}-linux-amd64/oc"
           "$binary" --version | grep -F -- "$RELEASE_TAG"
           "$binary" --help >/dev/null
+          console="$smoke_dir/oc-${RELEASE_TAG}-linux-amd64/oc-console"
+          test "$("$console" --version)" = "oc-console $RELEASE_TAG"
+          "$console" --help >/dev/null
       - name: Prepare the image context from verified release archives
         env:
           RELEASE_SHA: ${{ steps.meta.outputs.sha }}

@@ -172,7 +172,7 @@ Shutdown cancels sessions, then allows up to five seconds each for HTTP shutdown
 make test-console
 ```
 
-See [feature validation](console-features.md), [phase-three validation](console-phase-three.md), the later [transition verification](lifecycle-transition-verification.json), and [phase-two validation](console-phase-two.md) for exact evidence and remaining scope. Each report applies to its recorded binaries and patches; historical reports are preserved. Frontend behavior tests require Node in the development environment; running the console does not. `make build` still builds the CLI only; existing release archives and containers do not automatically include this experimental program. Diagnostics, release/deployment validation and retirement of the old UI remain later migration gates.
+See [feature validation](console-features.md), [phase-three validation](console-phase-three.md), the later [transition verification](lifecycle-transition-verification.json), and [phase-two validation](console-phase-two.md) for exact evidence and remaining scope. Each report applies to its recorded binaries and patches; historical reports are preserved. Frontend behavior tests require Node in the development environment; running the console does not. `make build` still builds the CLI only; the timestamp release builder now packages both executables and the release image includes `oc-console`. Previously published releases are unchanged. See [release and migration gates](console-release-migration.md). Diagnostics, release/deployment validation and retirement of the old UI remain later migration gates.
 
 ## Language and user preferences
 

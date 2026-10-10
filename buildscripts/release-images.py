@@ -21,7 +21,7 @@ LICENSES = {
     'CREDITS': 'CREDITS',
     'licenses/notify-LICENSE': 'internal/notify/LICENSE',
 }
-ARCHIVE_FILES = {'oc', *LICENSES, 'README.md', 'README_zh_CN.md', 'docs/compatibility.json'}
+ARCHIVE_FILES = {'oc', 'oc-console', *LICENSES, 'README.md', 'README_zh_CN.md', 'docs/compatibility.json'}
 
 
 def sha256(path):
@@ -85,9 +85,9 @@ def read_archive(archive, tag, target, expected_licenses):
             if relative in seen:
                 raise ValueError(f'{archive.name}: duplicate archive entry {member.name!r}')
             seen.add(relative)
-            if relative != 'oc' and relative not in LICENSES:
+            if relative not in ('oc', 'oc-console') and relative not in LICENSES:
                 continue
-            maximum = 256 * 1024 * 1024 if relative == 'oc' else 4 * 1024 * 1024
+            maximum = 256 * 1024 * 1024 if relative in ('oc', 'oc-console') else 4 * 1024 * 1024
             if member.size <= 0 or member.size > maximum:
                 raise ValueError(f'{archive.name}: invalid size for {relative}')
             source = data.extractfile(member)
@@ -100,7 +100,7 @@ def read_archive(archive, tag, target, expected_licenses):
             if relative in LICENSES and payload != expected_licenses[relative]:
                 raise ValueError(f'{archive.name}: {relative} differs from the source license')
             extracted[relative] = payload
-    missing = {'oc', *LICENSES} - set(extracted)
+    missing = {'oc', 'oc-console', *LICENSES} - set(extracted)
     if missing:
         raise ValueError(f'{archive.name}: missing required entries: {", ".join(sorted(missing))}')
     return extracted
@@ -131,7 +131,7 @@ def prepare(root, artifacts, destination, tag, source_sha):
         archive = artifacts / asset['name']
         if sha256(archive) != asset['sha256']:
             raise ValueError(f'{archive.name}: SHA-256 does not match the release manifest')
-        binaries[target.split('/')[1]] = read_archive(archive, tag, target, licenses)['oc']
+        binaries[target.split('/')[1]] = read_archive(archive, tag, target, licenses)
     # Validate every input before creating output. A staged directory also avoids
     # leaving a partially prepared context when a filesystem operation fails.
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -144,10 +144,11 @@ def prepare(root, artifacts, destination, tag, source_sha):
         recipe = stage / 'Dockerfile.release'
         recipe.write_bytes(dockerfile)
         recipe.chmod(0o644)
-        for arch, binary in binaries.items():
-            executable = stage / 'dist' / f'oc-linux-{arch}'
-            executable.write_bytes(binary)
-            executable.chmod(0o755)
+        for arch, payloads in binaries.items():
+            for name in ('oc', 'oc-console'):
+                executable = stage / 'dist' / f'{name}-linux-{arch}'
+                executable.write_bytes(payloads[name])
+                executable.chmod(0o755)
         for name, payload in licenses.items():
             license_file = stage / 'licenses' / PurePosixPath(name).name
             license_file.write_bytes(payload)

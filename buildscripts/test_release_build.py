@@ -59,10 +59,14 @@ class ReleaseBuildTests(unittest.TestCase):
             self.assertEqual(len(list(output.iterdir())), 13)
             for args, kwargs in calls:
                 flags = args[args.index('-ldflags') + 1]
+                if args[-1] == './cmd/oc-console':
+                    self.assertIn('main.version=' + TAG, flags)
+                    continue
                 self.assertIn('cmd.ReleaseTag=' + TAG, flags)
                 self.assertIn('cmd.Version=2026-10-07T12:00:00Z', flags)
                 self.assertIn('cmd.CommitID=' + sha, flags)
                 self.assertEqual(kwargs['env']['CGO_ENABLED'], '0')
+            self.assertEqual(len(calls), 2 * len(targets))
             for asset in manifest['assets']:
                 archive = output / asset['name']
                 self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), asset['sha256'])
@@ -75,6 +79,8 @@ class ReleaseBuildTests(unittest.TestCase):
                 for suffix, expected in [('licenses/notify-LICENSE', ROOT / 'internal/notify/LICENSE'), ('/LICENSE', ROOT / 'LICENSE')]:
                     found = [value for name, value in entries.items() if name.endswith(suffix)]
                     self.assertEqual(found, [expected.read_bytes()])
+                console = 'oc-console.exe' if asset['target'].startswith('windows/') else 'oc-console'
+                self.assertIn(b'release executable', [value for name, value in entries.items() if name.endswith('/' + console)])
                 executable = 'oc.exe' if asset['target'].startswith('windows/') else 'oc'
                 self.assertIn(b'release executable', [value for name, value in entries.items() if name.endswith('/' + executable)])
             for line in (output / 'checksums.txt').read_text().splitlines():

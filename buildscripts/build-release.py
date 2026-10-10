@@ -16,11 +16,12 @@ preflight = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(preflight)
 
 
-def package(root, destination, tag, target, binary):
+def package(root, destination, tag, target, binary, console):
     os_name, arch = target.split('/')
     stem = f'oc-{tag}-{os_name}-{arch}'
     assets = {
         binary.name: binary,
+        console.name: console,
         'LICENSE': root / 'LICENSE',
         'NOTICE': root / 'NOTICE',
         'CREDITS': root / 'CREDITS',
@@ -64,7 +65,9 @@ def build(root, destination, tag):
             binary = Path(temporary) / ('oc.exe' if os_name == 'windows' else 'oc')
             env = dict(os.environ, GOOS=os_name, GOARCH=arch, GOARM='7', CGO_ENABLED='0', GOTOOLCHAIN='local')
             subprocess.run(['go', 'build', '-tags', 'kqueue', '-trimpath', '-ldflags', flags, '-o', str(binary), '.'], cwd=root, env=env, check=True)
-            archive = package(root, destination, tag, target, binary)
+            console = Path(temporary) / ('oc-console.exe' if os_name == 'windows' else 'oc-console')
+            subprocess.run(['go', 'build', '-mod=readonly', '-trimpath', '-ldflags', f'-s -w -X main.version={tag}', '-o', str(console), './cmd/oc-console'], cwd=root, env=env, check=True)
+            archive = package(root, destination, tag, target, binary, console)
             assets.append({'name': archive.name, 'target': target, 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest()})
     manifest = {'schema_version': 1, 'release_tag': tag, 'source_commit': sha, 'go_toolchain': support['goToolchain'], 'otterio_sdk': support['otterioSDK'], 'otterio_source': support['otterioSource'], 'storage_sdk': support['storageSDK'], 'otterio_kits': support['otterioKits'], 'cli_framework': support['cliFramework'], 'assets': assets}
     (destination / 'release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
