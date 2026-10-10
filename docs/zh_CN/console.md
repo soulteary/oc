@@ -2,7 +2,7 @@
 
 [English](../console.md) · [文档目录](README.md) · [完整迁移计划](../console-migration.md)
 
-`oc-console` 是可选的源码构建程序，一个进程连接一个已配置的 S3 别名，供一个操作员在本机使用。默认支持桶列表、前缀导航、分页、下载和 ZIP 归档；显式开启写模式后支持存储桶创建/空桶删除、文件上传、对象及前缀删除、IAM 管理和逐项任务结果。历史版本、受保护配置及权限绑定修改需要对应的服务端协议；预签名分享另需显式开启。账户概览与配置读取独立于桶列举权限。现有 OtterIO Web 控制台继续保留。
+`oc-console` 随新的时间戳发行版一同分发，也可从源码构建，一个进程连接一个已配置的 S3 别名，供一个操作员在本机使用。默认支持桶列表、前缀导航、分页、下载和 ZIP 归档；显式开启写模式后支持存储桶创建/空桶删除、文件上传、对象及前缀删除、IAM 管理和逐项任务结果。历史版本、受保护配置及权限绑定修改需要对应的服务端协议；预签名分享另需显式开启。账户概览与配置读取独立于桶列举权限。现有 OtterIO Web 控制台继续保留。
 
 ## 界面导航
 
@@ -44,7 +44,7 @@ make build-console
 
 ## 本地 Docker 镜像
 
-仓库根目录的 `Dockerfile` 同时构建 `oc` 与 `oc-console`，镜像默认入口仍为 `oc`。`Dockerfile.dev` 和 `Dockerfile.release` 仍用于 CLI 镜像。
+仓库根目录的 `Dockerfile` 同时构建 `oc` 与 `oc-console`，镜像默认入口仍为 `oc`。`Dockerfile.release` 也包含两个程序；`Dockerfile.dev` 仍用于 CLI 镜像。
 
 ```sh
 docker build -t soulteary/oc:local-console .

@@ -12,7 +12,7 @@ approve contract changes before publication. The release job automatically
 gates only `go.yml` and `codeql.yml`; it does not enforce the separate CLI
 contract workflow.
 Root `RELEASE_NOTES.md` supplies the GitHub release body. Keep dated preparation
-records under `docs/releases/`; the [2026-10-08 preparation](releases/2026-10-08-release-review.md)
+records under `docs/releases/`; the [2026-10-10 preparation](releases/2026-10-10-release-review.md)
 records the current source range, and the [2026-10-07 preparation](releases/2026-10-07-release-review.md)
 remains historical. Neither record reserves a future tag.
 
@@ -41,7 +41,7 @@ Do not create a separate formal GitHub release manually.
 
 The workflow directly builds the eleven targets in `docs/compatibility.json`:
 Linux amd64, arm64, arm (GOARM=7), 386, ppc64le and s390x; macOS amd64/arm64;
-FreeBSD amd64; Windows amd64/arm64. Each archive contains `oc` or `oc.exe`,
+FreeBSD amd64; Windows amd64/arm64. Each archive contains `oc` and `oc-console` (both with `.exe` on Windows),
 LICENSE, NOTICE, CREDITS, the notification MIT license, both READMEs and the
 compatibility manifest. Windows uses ZIP; other platforms use tar.gz.
 
@@ -64,8 +64,7 @@ publication disabled; this workflow does not invoke it.
 That local configuration has ten build targets, omitting `linux/386`, and uses
 its own archive layout and package metadata. Its output is not interchangeable
 with the eleven-target release builder or its `release-manifest.json`.
-The formal archives and images contain only `oc`; `oc-console` remains an
-optional source-built program and is not part of this publication channel.
+The formal archives and images contain both `oc` and `oc-console`.
 
 ## Container images
 
@@ -73,11 +72,11 @@ Releases from the container-enabled workflow publish
 `ghcr.io/soulteary/oc:RELEASE.YYYY-MM-DDTHH-MM-SSZ`
 for `linux/amd64` and `linux/arm64`. Images contain the exact executables from the
 matching release archives, CA certificates, LICENSE, NOTICE, CREDITS and the
-notification MIT license. The image's entrypoint is `oc`; pass client arguments
+notification MIT license. The image's entrypoint is `oc`; use `--entrypoint oc-console` for the console. Pass client arguments
 directly after the image name. The workflow checks the pushed image by digest
 before publishing the GitHub release. It verifies that the index contains exactly
 Linux amd64/arm64, then executes `--version`, `--help` and a local copy smoke test
-on Linux amd64 and compares that executable and the licenses with the prepared
+on Linux amd64 runs console version/help checks, and compares both executables and the licenses with the prepared
 archive context. The arm64 archive is hash-checked during context preparation,
 but the workflow does not run the arm64 image; two-platform publication is not
 two-platform runtime acceptance. Older archive-only releases, including
