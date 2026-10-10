@@ -211,9 +211,12 @@ def scenario(args, name, preview=False, record=None):
             stop(process)
             raise RuntimeError('console startup timeout')
 
-        def browser(base):
+        def browser(base, tls_context=None):
             jar = http.cookiejar.CookieJar()
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(jar))
+            handlers = [urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(jar)]
+            if tls_context is not None:
+                handlers.append(urllib.request.HTTPSHandler(context=tls_context))
+            opener = urllib.request.build_opener(*handlers)
 
             def request(path, method='GET', body=None, expected=200, headers=None, allowed_credentials=()):
                 request_headers = {'Origin': base, **(headers or {})}
@@ -250,7 +253,7 @@ def scenario(args, name, preview=False, record=None):
                 command += ['--console-address', f'127.0.0.1:{ports[1]}']
                 if tls:
                     command += ['--console-certs-dir', str(admincert_dir)]
-            command += [str(root / f'data-{i}') for i in range(4)] if args.writes or args.settings or args.features or args.version_copy else [str(root / 'data')]
+            command += [str(root / f'data-{i}') for i in range(4)] if args.writes or args.settings or args.features or args.version_copy or args.native else [str(root / 'data')]
             server = subprocess.Popen(command, env=env, stdout=log, stderr=log)
             deadline = time.monotonic() + 30
             while True:
@@ -376,6 +379,11 @@ def scenario(args, name, preview=False, record=None):
             query = urllib.parse.urlencode({'bucket': bucket, 'key': 'stream.bin'})
             viewer('/api/download?' + query, expected=403)
             checks.append('restricted identity: permitted read succeeds, different object denied')
+            if args.native:
+                from console_native_acceptance import verify_native
+                record['nativeMetrics'] = verify_native(args, root, cli, browser, stop, certificate, free_port, env,
+                    credentials, endpoint, admin, s3ca, adminca, bucket, restricted_access, restricted_secret,
+                    access, secret, checks)
             if args.settings or args.settings_legacy:
                 from console_settings_acceptance import verify_settings
                 record['settingsMetrics'] = verify_settings(
@@ -441,7 +449,8 @@ def main():
     parser.add_argument('--sdk-pin', help='module version used to build the client; defaults to the compatibility manifest')
     parser.add_argument('--server-patch', action='append', default=[], help='patch applied on top of the recorded server source (repeatable)')
     parser.add_argument('--output', required=True)
-    parser.add_argument('--scenarios', default='single-http,dual-http,dual-tls')
+    parser.add_argument('--scenarios', default=None)
+    parser.add_argument('--native', action='store_true', help='verify independent native IAM sessions over browser/storage HTTPS')
     parser.add_argument('--preview', action='store_true', help='hold the last disposable scenario for manual browser QA')
     parser.add_argument('--writes', action='store_true', help='also test opt-in uploads and deletes on disposable four-disk storage')
     parser.add_argument('--features', action='store_true', help='test bucket/history/sharing/ZIP/IAM features on disposable four-disk storage')
@@ -456,7 +465,9 @@ def main():
         parser.error('--features-legacy requires --features')
     if args.settings_base and not args.settings:
         parser.error('--settings-base requires --settings')
-    names = args.scenarios.split(',')
+    names = (args.scenarios or ('single-tls,dual-tls' if args.native else 'single-http,dual-http,dual-tls')).split(',')
+    if args.native and any(not name.endswith('tls') for name in names):
+        parser.error('--native requires TLS storage scenarios')
     if any(name not in ('single-http', 'dual-http', 'single-tls', 'dual-tls') for name in names):
         parser.error('unknown scenario')
     report = {'dateUTC': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'platform': platform.platform(),
@@ -468,9 +479,11 @@ def main():
         report['scope'] = 'console-features-legacy-fallback' if args.features_legacy else 'console-five-features'
     if args.settings or args.settings_legacy:
         report['settingsProfile'] = 'legacy-read-only-fallback' if args.settings_legacy else ('v1-base-protected-settings' if args.settings_base else 'v1-protected-settings')
+    if args.native:
+        report['scope'] = 'native-iam-https-read-only'
     if args.version_copy:
         report['scope'] += '-and-version-copy'
-    report['storage'] = 'single-node-four-disk-erasure' if args.writes or args.settings or args.features or args.version_copy else 'filesystem'
+    report['storage'] = 'single-node-four-disk-erasure' if args.writes or args.settings or args.features or args.version_copy or args.native else 'filesystem'
     harness_paths = [Path(__file__), Path(__file__).with_name('console_write_acceptance.py'),
                      Path(__file__).with_name('local_http.py')]
     if args.settings or args.settings_legacy:
@@ -479,6 +492,8 @@ def main():
     if args.features:
         features_path = Path(__file__).with_name('console_features_acceptance.py')
         harness_paths.append(features_path)
+    if args.native:
+        harness_paths.append(Path(__file__).with_name('console_native_acceptance.py'))
     if args.version_copy:
         copy_path = Path(__file__).with_name('version_copy_acceptance.py')
         harness_paths.append(copy_path)

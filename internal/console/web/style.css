@@ -46,6 +46,8 @@ h1 { margin: 18px 0; font-size: clamp(35px, 5vw, 52px); line-height: 1.09; font-
 label { font-size: 12px; font-weight: 600; color: #c1d0c9; }
 input, select, textarea { color: #edf3f0; background: #121a17; border: 1px solid #36483e; border-radius: 8px; padding: 12px; min-width: 0; }
 input::placeholder { color: #7a9186; opacity: 1; }
+#native-login-fields label { display: block; margin-top: 14px; }
+#native-login-fields label:first-child { margin-top: 0; }
 .login-card input { display: block; width: 100%; margin-top: 9px; }
 .help { color: #95a99e; font-size: 12px; line-height: 1.6; margin: 11px 0 22px; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #c1d8ca; }

@@ -20,6 +20,7 @@ import (
 )
 
 type options struct {
+	authMode, s3URL, tlsCert, tlsKey                                         string
 	dataDir                                                                  string
 	containerListen                                                          bool
 	publicURL                                                                string

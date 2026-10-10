@@ -23,11 +23,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/soulteary/mc/internal/clienttransport"
 	"github.com/soulteary/mc/internal/console/web"
 	"github.com/soulteary/mc/internal/consoleapi"
 )
 
 const (
+	nativeCookieName = "__Host-oc_console_session"
 	cookieName       = "oc_console_session"
 	maxSessions      = 16
 	maxLoginBody     = 1024
@@ -35,10 +37,24 @@ const (
 	maxLoginAttempts = 30
 )
 
-type Config struct {
-	DataDir  string
-	Identity string
+type NativeCredentials struct {
+	AccessKey string
+	SecretKey string
+}
+
+// NativeConnection must contain a verified, owned backend and a stable hashed
+// target/user identity. Credentials and endpoints are never returned to browsers.
+type NativeConnection struct {
 	Backend  consoleapi.Backend
+	Cleanup  func()
+	Identity string
+}
+
+type Config struct {
+	NativeLogin func(context.Context, NativeCredentials) (NativeConnection, error)
+	DataDir     string
+	Identity    string
+	Backend     consoleapi.Backend
 	// BackendFactory creates a fresh, session-owned client after code validation.
 	// Backend remains the startup capability check and borrowed compatibility path.
 	// A successful factory must return a nonnil backend and cleanup callback.
@@ -62,6 +78,7 @@ type sessionRuntime struct {
 	settings    consoleapi.SettingsBackend
 	preferences *preferenceStore
 	lifetime    *backendLifetime
+	identity    string
 }
 
 type session struct {
@@ -85,16 +102,19 @@ type sessionReply struct {
 type Server struct {
 	// Startup defaults are copied into a session at login. Request handlers and
 	// background tasks must use that session's runtime instead of these fields.
-	preferences    *preferenceStore
-	backend        consoleapi.Backend
-	backendFactory func(context.Context) (consoleapi.Backend, func(), error)
-	allowWrites    bool
-	alias          string
-	origin         string
-	host           string
-	code           [32]byte
-	ttl            time.Duration
-	assets         fs.FS
+	preferences     *preferenceStore
+	backend         consoleapi.Backend
+	backendFactory  func(context.Context) (consoleapi.Backend, func(), error)
+	nativeLogin     func(context.Context, NativeCredentials) (NativeConnection, error)
+	dataDir         string
+	userPreferences map[string]*principalPreferences
+	allowWrites     bool
+	alias           string
+	origin          string
+	host            string
+	code            [32]byte
+	ttl             time.Duration
+	assets          fs.FS
 
 	mu             sync.Mutex
 	closed         bool
@@ -124,19 +144,34 @@ type Server struct {
 }
 
 func New(cfg Config) (*Server, error) {
+	native := cfg.NativeLogin != nil
 	u, err := url.Parse(cfg.BaseURL)
-	if err != nil || u == nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return nil, errors.New("console base URL must be an HTTP loopback address with a port")
+	if err != nil || u == nil || u.User != nil || u.ForceQuery || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || u.Hostname() == "" {
+		return nil, errors.New("console base URL must be a root browser origin")
 	}
-	ip := net.ParseIP(u.Hostname())
-	if u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		return nil, errors.New("console base URL must use a loopback host")
+	if err := clienttransport.ValidateEndpointHost(u); err != nil {
+		return nil, err
 	}
-	port, err := strconv.Atoi(u.Port())
-	if err != nil || port < 1 || port > 65535 {
-		return nil, errors.New("console base URL must include a valid port")
+	if native {
+		if u.Scheme != "https" || cfg.Backend != nil || cfg.BackendFactory != nil || cfg.LoginCode != "" || cfg.AllowWrites {
+			return nil, errors.New("native login requires HTTPS, a dedicated authenticator and read-only storage access")
+		}
+		if ip := net.ParseIP(u.Hostname()); ip != nil && ip.IsUnspecified() {
+			return nil, errors.New("native browser origin must name a reachable host")
+		}
+	} else {
+		ip := net.ParseIP(u.Hostname())
+		if u.Scheme != "http" || (u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback())) {
+			return nil, errors.New("console base URL must use an HTTP loopback host")
+		}
 	}
-	if cfg.Backend == nil || cfg.Alias == "" || cfg.LoginCode == "" || len(cfg.LoginCode) > 256 || cfg.SessionTTL < 0 {
+	if u.Port() != "" || !native {
+		port, err := strconv.Atoi(u.Port())
+		if err != nil || port < 1 || port > 65535 {
+			return nil, errors.New("console base URL must include a valid port")
+		}
+	}
+	if (!native && (cfg.Backend == nil || cfg.LoginCode == "")) || cfg.Alias == "" || len(cfg.LoginCode) > 256 || cfg.SessionTTL < 0 {
 		return nil, errors.New("console backend, alias, login code and a valid session duration are required")
 	}
 	if cfg.SessionTTL == 0 {
@@ -162,14 +197,17 @@ func New(cfg Config) (*Server, error) {
 			return nil, errors.New("console backend does not support writes")
 		}
 	}
-	preferences, err := newPreferenceStore(cfg.DataDir, cfg.Identity)
-	if err != nil {
-		return nil, err
+	var preferences *preferenceStore
+	if !native {
+		preferences, err = newPreferenceStore(cfg.DataDir, cfg.Identity)
+		if err != nil {
+			return nil, err
+		}
 	}
 	life, stopLife := context.WithCancel(context.Background())
 	settings, _ := cfg.Backend.(consoleapi.SettingsBackend)
 	return &Server{
-		preferences: preferences, backend: cfg.Backend, backendFactory: cfg.BackendFactory, allowWrites: cfg.AllowWrites, alias: cfg.Alias, origin: "http://" + u.Host,
+		nativeLogin: cfg.NativeLogin, dataDir: cfg.DataDir, userPreferences: make(map[string]*principalPreferences), preferences: preferences, backend: cfg.Backend, backendFactory: cfg.BackendFactory, allowWrites: cfg.AllowWrites, alias: cfg.Alias, origin: u.Scheme + "://" + u.Host,
 		host: u.Host, code: sha256.Sum256([]byte(cfg.LoginCode)), ttl: cfg.SessionTTL,
 		assets: web.FS(), sessions: make(map[[32]byte]*session),
 		apiSlots: make(chan struct{}, 8), downloads: make(chan struct{}, 2),
@@ -223,6 +261,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'")
+	if s.nativeLogin != nil && r.TLS == nil {
+		writeError(w, http.StatusBadRequest, "https_required", "Use the HTTPS console URL.")
+		return
+	}
 	if r.Host != s.host || (r.Header.Get("Origin") != "" && r.Header.Get("Origin") != s.origin) || len(r.Header.Values("Origin")) > 1 {
 		writeError(w, http.StatusForbidden, "invalid_origin", "Open the console using its local URL.")
 		return
@@ -261,7 +303,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// the response stream. Reauthentication in route handlers still checks expiry.
 	if sess, _ := s.authenticate(r); sess != nil {
 		if !sess.runtime.retain() {
-			writeError(w, http.StatusUnauthorized, "login_required", "Sign in with the code printed by OC.")
+			writeError(w, http.StatusUnauthorized, "login_required", s.loginPrompt())
 			return
 		}
 		releaseClient = sess.runtime.release
@@ -304,7 +346,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	sess, token := s.authenticate(r)
 	if sess == nil {
-		writeError(w, http.StatusUnauthorized, "login_required", "Sign in with the code printed by OC.")
+		writeError(w, http.StatusUnauthorized, "login_required", s.loginPrompt())
 		return
 	}
 	if r.URL.Path == "/api/logout" {
@@ -317,7 +359,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		s.removeSessionLocked(token, sess)
 		s.mu.Unlock()
-		http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+		http.SetCookie(w, s.sessionCookie("", -1))
 		writePayload(w, http.StatusNoContent, nil)
 		return
 	}
@@ -477,6 +519,9 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "This console page does not exist.")
 		return
 	}
+	if name == "index.html" && s.nativeLogin != nil {
+		data = []byte(strings.Replace(string(data), `data-auth-mode="local"`, `data-auth-mode="native"`, 1))
+	}
 	contentTypes := map[string]string{"index.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "i18n.js": "text/javascript; charset=utf-8", "style.css": "text/css; charset=utf-8"}
 	w.Header().Set("Content-Type", contentTypes[name])
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
@@ -507,14 +552,22 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var args struct {
-		Code string `json:"code"`
+		Code      string `json:"code"`
+		AccessKey string `json:"accessKey"`
+		SecretKey string `json:"secretKey"`
 	}
 	if !decodeJSON(w, r, &args, maxLoginBody) {
 		return
 	}
 	codeHash := sha256.Sum256([]byte(args.Code))
-	if subtle.ConstantTimeCompare(codeHash[:], s.code[:]) != 1 {
-		writeError(w, http.StatusUnauthorized, "invalid_login_code", "The sign-in code is incorrect.")
+	native := s.nativeLogin != nil
+	if (native && (args.Code != "" || !validNativeCredentials(NativeCredentials{AccessKey: args.AccessKey, SecretKey: args.SecretKey}))) ||
+		(!native && (args.AccessKey != "" || args.SecretKey != "" || subtle.ConstantTimeCompare(codeHash[:], s.code[:]) != 1)) {
+		if native {
+			writeError(w, http.StatusUnauthorized, "invalid_credentials", "Sign in with an enabled native IAM user and its current secret.")
+		} else {
+			writeError(w, http.StatusUnauthorized, "invalid_login_code", "The sign-in code is incorrect.")
+		}
 		return
 	}
 	token, err := randomToken()
@@ -528,9 +581,15 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hash := sha256.Sum256([]byte(token))
-	runtime, err := s.newSessionRuntime(r.Context())
+	runtime, err := s.newSessionRuntime(r.Context(), NativeCredentials{AccessKey: args.AccessKey, SecretKey: args.SecretKey})
+	args.SecretKey = ""
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "connection_unavailable", "Unable to open a storage connection. Try signing in again.")
+		var failure *consoleapi.Error
+		if native && errors.As(err, &failure) && failure != nil && failure.Code == "AccessDenied" {
+			writeError(w, 401, "invalid_credentials", "Sign in with an enabled native IAM user and its current secret.")
+		} else {
+			writeError(w, http.StatusServiceUnavailable, "connection_unavailable", "Unable to verify a storage connection. Check server support and try signing in again.")
+		}
 		return
 	}
 	ctx, cancel := context.WithCancel(s.life)
@@ -555,6 +614,41 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if native {
+		count := 0
+		for _, existing := range s.sessions {
+			if existing.runtime.identity == runtime.identity {
+				count++
+			}
+		}
+		if count >= 4 {
+			s.mu.Unlock()
+			cancel()
+			runtime.retire()
+			writeError(w, 429, "too_many_sessions", "This user has too many open sessions.")
+			return
+		}
+		entry := s.userPreferences[runtime.identity]
+		if entry == nil {
+			preferences, loadErr := newPreferenceStore(s.dataDir, runtime.identity)
+			if loadErr != nil {
+				s.mu.Unlock()
+				cancel()
+				runtime.retire()
+				writeError(w, 503, "preferences_unavailable", "Unable to load user preferences.")
+				return
+			}
+			entry = &principalPreferences{store: preferences}
+			s.userPreferences[runtime.identity] = entry
+		}
+		entry.refs++
+		sess.runtime.preferences = entry.store
+		cleanup := sess.runtime.lifetime.cleanup
+		sess.runtime.lifetime.cleanup = func() {
+			s.releasePrincipalPreferences(runtime.identity, entry)
+			cleanup()
+		}
+	}
 	s.sessions[hash] = sess
 	sess.timer = time.AfterFunc(s.ttl, func() {
 		s.mu.Lock()
@@ -562,7 +656,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		s.removeSessionLocked(hash, sess)
 	})
 	s.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, s.sessionCookie(token, 0))
 	writeJSON(w, http.StatusOK, sessionReply{Alias: s.alias, CSRFToken: csrf, ReadOnly: sess.runtime.writer == nil, MaxUploadSize: s.maxUploadSize})
 }
 
@@ -591,11 +685,12 @@ func (s *Server) removeSessionLocked(token [32]byte, sess *session) {
 			delete(s.archives, id)
 		}
 	}
+
 	sess.runtime.retire()
 }
 
 func (s *Server) authenticate(r *http.Request) (*session, [32]byte) {
-	cookie, err := r.Cookie(cookieName)
+	cookie, err := r.Cookie(s.cookieName())
 	if err != nil || len(cookie.Value) != 43 {
 		return nil, [32]byte{}
 	}

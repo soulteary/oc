@@ -27,6 +27,22 @@ type preferenceStore struct {
 	value userPreferences
 }
 
+// Retired sessions can still have requests finishing a preference write. Keep
+// one store for the principal until its last client's request leases drain.
+type principalPreferences struct {
+	store *preferenceStore
+	refs  int
+}
+
+func (s *Server) releasePrincipalPreferences(identity string, entry *principalPreferences) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry.refs--
+	if entry.refs == 0 && s.userPreferences[identity] == entry {
+		delete(s.userPreferences, identity)
+	}
+}
+
 func newPreferenceStore(dir, identity string) (*preferenceStore, error) {
 	p := &preferenceStore{value: userPreferences{Language: "zh", Favorites: []favoriteReference{}, Recent: []string{}}}
 	if dir == "" {
@@ -112,7 +128,7 @@ func (s *Server) servePreferences(w http.ResponseWriter, r *http.Request) {
 	}
 	sess, _ := s.authenticate(r)
 	if sess == nil {
-		writeError(w, 401, "login_required", "Sign in with the code printed by OC.")
+		writeError(w, 401, "login_required", s.loginPrompt())
 		return
 	}
 	p := sess.runtime.preferences

@@ -311,6 +311,16 @@ jobs:
             --server-patch buildscripts/console-features-server.patch \
             --server-patch buildscripts/console-iam-bindings.patch \
             --output "$RUNNER_TEMP/console-base-features-integration.json"
+      - name: Verify independent native IAM users over HTTPS
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio-console-features" --native \
+            --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
+            --server-patch buildscripts/console-server-base.patch \
+            --server-patch buildscripts/console-features-server.patch \
+            --server-patch buildscripts/console-iam-bindings.patch \
+            --output "$RUNNER_TEMP/console-native-https-integration.json"
       - name: Build the independent base storage and mandatory hardening composition
         env:
           GOTOOLCHAIN: local
@@ -409,6 +419,7 @@ jobs:
             ${{ runner.temp }}/lifecycle-storage-integration.json
             ${{ runner.temp }}/console-features-legacy-integration.json
             ${{ runner.temp }}/console-base-features-integration.json
+            ${{ runner.temp }}/console-native-https-integration.json
             ${{ runner.temp }}/console-combined-features-integration.json
             ${{ runner.temp }}/console-combined-settings-object-integration.json
             ${{ runner.temp }}/console-combined-lifecycle-integration.json

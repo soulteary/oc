@@ -9,6 +9,7 @@
     "bucket-directory", "bucket-detail-navigation", "directory-create", "directory-account", "bucket-search", "directory-refresh", "directory-status", "directory-body", "directory-count", "back-to-buckets", "bucket-files-tab", "bucket-settings-tab", "bucket-refresh", "upload-file-summary",
     "console-shell", "console-navigation", "toggle-navigation", "nav-overview", "nav-buckets", "nav-tasks", "nav-account", "page-title", "overview-panel", "storage-browser", "task-page", "task-empty", "overview-capacity", "overview-buckets", "overview-tasks", "overview-status", "overview-connection", "recent-buckets", "overview-browse",
     "login-panel", "login-form", "login-code", "login-submit", "login-status",
+ "login-code-fields", "native-login-fields", "login-access-key", "login-secret", "login-description", "login-brand", "login-eyebrow", "login-footnote",
     "workspace", "session-actions", "alias-name", "refresh", "logout",
     "bucket-list", "bucket-count", "bucket-status", "objects-title", "bucket-created",
     "parent-prefix", "prefix-form", "prefix-input", "prefix-submit", "root-prefix",
@@ -352,6 +353,23 @@
   const settingLabels = { policy: "Bucket policy", versioning: "Versioning", lifecycle: "Lifecycle" };
   function uiLocale() { return window.OCI18n?.language() === "en" ? "en-US" : "zh-CN"; }
 
+  const nativeLogin = document.body?.dataset?.authMode === "native";
+  elements["login-code-fields"].hidden = nativeLogin;
+  elements["native-login-fields"].hidden = !nativeLogin;
+  elements["login-code"].required = !nativeLogin;
+  if (nativeLogin) {
+    setText("login-brand", "Storage console");
+    setText("login-eyebrow", "YOUR STORAGE");
+    setText("login-footnote", "Read-only access. Your storage permissions apply to every operation.");
+    setText("login-description", "Sign in to the configured storage server with your own IAM credentials.");
+  }
+  function clearLoginCredentials() {
+    elements["login-code"].value = "";
+    elements["login-access-key"].value = "";
+    elements["login-secret"].value = "";
+  }
+  function focusLogin() { elements[nativeLogin ? "login-access-key" : "login-code"].focus(); }
+
   class APIError extends Error {
     constructor(status, code, message, restartRequired) {
       super(message);
@@ -367,7 +385,9 @@
 
   function updateBusy() {
     elements["login-submit"].disabled = consoleStopped || requests.has("login") || requests.has("session");
-    elements["login-code"].disabled = consoleStopped;
+    elements["login-code"].disabled = consoleStopped || nativeLogin;
+ elements["login-access-key"].disabled = consoleStopped || !nativeLogin || requests.has("login");
+ elements["login-secret"].disabled = consoleStopped || !nativeLogin || requests.has("login");
     // Refresh is also the way to stop and restart a slow read request.
     elements.refresh.disabled = !state.authenticated || requests.has("logout");
     elements.logout.disabled = requests.has("logout");
@@ -521,7 +541,7 @@
     elements["workspace"].hidden = true;
     elements["session-actions"].hidden = true;
     elements["login-panel"].hidden = false;
-    elements["login-code"].value = "";
+    clearLoginCredentials();
     elements["prefix-input"].value = "";
     elements["bucket-list"].replaceChildren();
     elements["objects-body"].replaceChildren();
@@ -533,8 +553,8 @@
 
   function expired(error) {
     if (error.status !== 401 && !(error.status === 403 && error.code === "invalid_csrf")) return false;
-    showLogin(error.code === "invalid_csrf" ? "Your local session has changed. Enter the login code from your OC terminal to reconnect." : "Your session has expired. Enter the login code from your OC terminal to reconnect.");
-    elements["login-code"].focus();
+    showLogin(nativeLogin ? "Your session has expired or changed. Sign in again with your IAM credentials." : error.code === "invalid_csrf" ? "Your local session has changed. Enter the login code from your OC terminal to reconnect." : "Your session has expired. Enter the login code from your OC terminal to reconnect.");
+    focusLogin();
     return true;
   }
 
@@ -550,7 +570,7 @@
     state.maxUploadSize = Number.isSafeInteger(session.maxUploadSize) && session.maxUploadSize > 0 ? session.maxUploadSize : 1024 ** 3;
     state.alias = session.alias;
     state.csrfToken = session.csrfToken;
-    elements["login-code"].value = "";
+    clearLoginCredentials();
     elements["login-panel"].hidden = true;
     elements["workspace"].hidden = false;
     elements["session-actions"].hidden = false;
@@ -2696,18 +2716,20 @@
   elements["login-form"].addEventListener("submit", async event => {
     event.preventDefault();
     if (consoleStopped) return;
-    const code = elements["login-code"].value.trim();
-    if (!code) return;
+    const credentials = nativeLogin ? { accessKey: elements["login-access-key"].value, secretKey: elements["login-secret"].value } : { code: elements["login-code"].value.trim() };
+    if (nativeLogin ? !credentials.accessKey || !credentials.secretKey : !credentials.code) return;
+    const body = JSON.stringify(credentials);
+    credentials.secretKey = "";
     const request = beginRequest("login");
-    elements["login-code"].value = "";
+    clearLoginCredentials();
     setText("login-status", "Connecting…");
     try {
-      const session = await api("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) }, request);
+      const session = await api("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body }, request);
       if (currentRequest("login", request)) acceptSession(session);
     } catch (error) {
       if (!currentRequest("login", request) || error.name === "AbortError") return;
       setText("login-status", error.message);
-      elements["login-code"].focus();
+      focusLogin();
     } finally {
       finishRequest("login", request);
     }
@@ -2721,8 +2743,8 @@
     try {
       await api("/api/logout", { method: "POST", headers: { "X-CSRF-Token": state.csrfToken } }, request);
       if (!currentRequest("logout", request)) return;
-      showLogin("You are logged out. Use the code from your OC terminal to reconnect.");
-      elements["login-code"].focus();
+      showLogin(nativeLogin ? "You are logged out. Sign in again with your IAM credentials." : "You are logged out. Use the code from your OC terminal to reconnect.");
+      focusLogin();
     } catch (error) {
       if (!currentRequest("logout", request) || error.name === "AbortError") return;
       if (expired(error)) return;
@@ -2901,6 +2923,7 @@
 
   window.addEventListener("pagehide", () => {
     pageSuspended = true;
+    clearLoginCredentials();
     clearSecret();
     clearShare();
     clearIAMSecret();

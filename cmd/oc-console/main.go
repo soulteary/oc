@@ -1,6 +1,6 @@
 // Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
 
-// oc-console is an opt-in, single-operator console for one configured S3 alias.
+// oc-console provides local alias access or independent native IAM login over HTTPS.
 package main
 
 import (
@@ -40,12 +40,16 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags := flag.NewFlagSet("oc-console", flag.ContinueOnError)
 	flags.SetOutput(errorOutput)
 	var opts options
+	flags.StringVar(&opts.authMode, "auth-mode", "local", "local login code or native IAM user login (read-only HTTPS)")
+	flags.StringVar(&opts.s3URL, "s3-url", "", "fixed HTTPS storage root URL for native login")
+	flags.StringVar(&opts.tlsCert, "tls-cert", "", "browser HTTPS certificate PEM for native login")
+	flags.StringVar(&opts.tlsKey, "tls-key", "", "browser HTTPS private key PEM for native login")
 	flags.StringVar(&opts.configDir, "config-dir", "", "OC configuration directory (default OC_CONFIG_DIR, MC_CONFIG_DIR, or user profile)")
-	flags.StringVar(&opts.alias, "alias", "", "one S3 alias from OC config.json (required)")
+	flags.StringVar(&opts.alias, "alias", "", "one S3 alias from OC config.json (required in local mode)")
 	flags.StringVar(&opts.dataDir, "data-dir", "", "writable application data directory (default CONFIG_DIR/console-data)")
 	flags.BoolVar(&opts.containerListen, "container-listen", false, "allow wildcard binding inside a container; requires --public-url")
-	flags.StringVar(&opts.publicURL, "public-url", "", "browser URL, for example http://127.0.0.1:9090")
-	flags.StringVar(&opts.address, "address", "127.0.0.1:9090", "literal loopback IP and port")
+	flags.StringVar(&opts.publicURL, "public-url", "", "browser origin: local HTTP loopback or native HTTPS")
+	flags.StringVar(&opts.address, "address", "127.0.0.1:9090", "literal IP and port (local mode requires loopback)")
 	flags.StringVar(&opts.s3CA, "s3-ca", "", "S3 PEM CA file, replacing certs/CAs custom trust")
 	flags.StringVar(&opts.adminURL, "admin-url", "", "independent OtterIO management root URL")
 	flags.StringVar(&opts.adminCA, "admin-ca", "", "independent management PEM CA file")
@@ -57,7 +61,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags.Int64Var(&opts.maxUploadSize, "max-upload-size", 1<<30, "maximum file size in bytes (1 to 5368709120)")
 	showVersion := flags.Bool("version", false, "print version and exit")
 	flags.Usage = func() {
-		fmt.Fprintln(errorOutput, "Usage: oc-console --alias NAME [options]\n\nA local console, read-only by default. Credentials stay in the OC process.")
+		fmt.Fprintln(errorOutput, "Usage: oc-console --alias NAME [options]\n       oc-console --auth-mode native --s3-url URL --public-url URL --tls-cert FILE --tls-key FILE [options]\n\nA storage console, read-only by default. Native mode requires HTTPS and independent IAM credentials.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -71,7 +75,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("unexpected positional arguments; use --alias NAME")
+		return errors.New("unexpected positional arguments; see --help")
 	}
 	if opts.maxUploadSize < 1 || opts.maxUploadSize > 5<<30 {
 		return errors.New("--max-upload-size must be between 1 and 5368709120 bytes")
@@ -81,6 +85,15 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	}
 	if opts.allowSharing && opts.shareURL == "" && os.Getenv("OC_SHARE_URL") == "" && os.Getenv("OC_SHARE_URL_"+opts.alias) == "" {
 		return errors.New("--allow-sharing requires --share-url or OC_SHARE_URL for recipients")
+	}
+	if opts.authMode == "native" {
+		return runNative(ctx, opts, output)
+	}
+	if opts.authMode != "local" {
+		return errors.New("--auth-mode must be local or native")
+	}
+	if opts.s3URL != "" || opts.tlsCert != "" || opts.tlsKey != "" {
+		return errors.New("--s3-url and browser TLS options require --auth-mode native")
 	}
 	if opts.containerListen {
 		if err := validateContainerListenAddress(opts.address); err != nil {
