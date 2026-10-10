@@ -41,6 +41,7 @@ async function settle() {
 function createHarness(options = {}) {
   const elements = new Map();
   const calls = [];
+  let savedPreferences = options.preferences || { language: "zh", favorites: [], recent: [] };
   const transfers = [];
   const routes = [];
   const timers = new Map();
@@ -62,6 +63,7 @@ function createHarness(options = {}) {
       this.children = [];
       this.listeners = new Map();
       this.dataset = {};
+      this.style = {};
       this.attributes = new Map();
       this.hidden = false;
       this.disabled = false;
@@ -152,7 +154,7 @@ function createHarness(options = {}) {
     progress(loaded, total) { for (const callback of this.upload.listeners.get("progress") || []) callback({ lengthComputable: true, loaded, total }); }
   }
   const context = vm.createContext({
-    document, window, URL, URLSearchParams, AbortController, TextEncoder, XMLHttpRequest,
+    document, window, URL, URLSearchParams, AbortController, TextEncoder, XMLHttpRequest, Blob,
     setTimeout(callback) { timers.set(++nextTimer, callback); return nextTimer; },
     clearTimeout(id) { timers.delete(id); },
     fetch: async (url, init = {}) => {
@@ -162,7 +164,17 @@ function createHarness(options = {}) {
         if (route.method === call.method && route.match(call.url)) return await route.handle(call);
       }
       if (url === "/api/session") return response({ alias: "selected", csrfToken: "csrf-only", readOnly: !!options.readOnly, maxUploadSize: 1024 ** 3 });
-      if (url === "/api/capabilities") return response(options.capabilities || {});
+      if (url === "/api/preferences") {
+        if (call.method === "PUT") {
+          const op=JSON.parse(call.body);
+          if(op.action === "language") savedPreferences.language=op.language;
+          if(op.action === "visit") savedPreferences.recent=[op.bucket,...savedPreferences.recent.filter(b=>b!==op.bucket)].slice(0,20);
+          if(op.action === "favorite-add") savedPreferences.favorites.push({bucket:op.bucket,key:op.key});
+          if(op.action === "favorite-remove") savedPreferences.favorites=savedPreferences.favorites.filter(f=>f.bucket!==op.bucket||f.key!==op.key);
+        }
+        return response(savedPreferences);
+      }
+      if (String(url).startsWith("/api/capabilities")) return response({versioning: true, ...options.capabilities});
       if (url === "/api/buckets") return options.listDenied ? response({ code: "AccessDenied", message: "Bucket listing denied." }, 403) : response({ buckets: [{ name: "listed-bucket", created: "2026-10-08T00:00:00Z" }] });
       if (String(url).startsWith("/api/objects?")) return response({ entries: [] });
       if (url === "/api/account") return response({ buckets: [{ name: "listed-bucket", size: 42, read: false, write: false }] });
@@ -232,6 +244,206 @@ async function reviewSecret(harness, secret = "new-owned-secret") {
 function job(kind, options = {}) {
   return { id: "owned-task", kind, status: kind === "upload" ? "waiting" : "ready", bucket: "listed-bucket", key: "exact/目标 +%.txt", size: 19, transferred: 0, overwrite: false, created: new Date().toISOString(), expires: new Date(Date.now() + 600000).toISOString(), count: 0, completed: 0, ...options };
 }
+
+
+test("language switching translates UI and preserves exact data values", async () => {
+ const heading={nodeValue:"概览",parentElement:{closest:()=>null}};
+ const file={nodeValue:"Refresh",parentElement:{closest:()=>({})}};
+ const status={nodeValue:"显示 2 个桶 / 共 3 个",parentElement:{closest:()=>null}};
+ const document={title:"",documentElement:{},body:{querySelectorAll:()=>[]},getElementById:()=>null,createTreeWalker(){let i=0;const nodes=[heading,file,status];return {nextNode:()=>nodes[i++]||null};}};
+ const window={};
+ vm.runInNewContext(fs.readFileSync(path.join(web,"i18n.js"),"utf8"),{document,window});
+ window.OCI18n.setLanguage("en");assert.equal(heading.nodeValue,"Overview");assert.equal(file.nodeValue,"Refresh");assert.equal(status.nodeValue,"Showing 2 of 3 buckets");
+ window.OCI18n.setLanguage("zh");assert.equal(heading.nodeValue,"概览");assert.equal(file.nodeValue,"Refresh");assert.equal(status.nodeValue,"显示 2 个桶 / 共 3 个");
+ assert.equal(document.documentElement.lang,"zh-CN");
+ assert.match(window.OCI18n.translate("Saving requires this exact configuration revision; a concurrent change is rejected. No stored configuration is present. Enter the complete JSON document to create one."), /当前未保存配置/);
+ assert.match(window.OCI18n.translate("Replace the complete configuration for this exact bucket. A bucket policy can expose objects publicly or restrict future access. Review every statement and condition before applying it."), /替换此目标桶/);
+
+ assert.equal(window.OCI18n.translate("3 of 5 objects attempted; 2 succeeded."),"已尝试 3 / 5 个对象，成功 2 个。");
+ assert.equal(window.OCI18n.translate("Up to 1,000 objects and 5 GiB are supported."),"最多支持 1,000 个对象和 5 GiB。");
+ window.OCI18n.setLanguage("en");
+ assert.equal(window.OCI18n.translate("重命名 中文 +%.txt"),"Rename 中文 +%.txt");
+ window.OCI18n.setLanguage("zh");
+ assert.equal(window.OCI18n.translate("Preparing upload…"),"正在准备上传…");
+});
+
+test("saved favorites and recent visits restore independently of bucket listing", async () => {
+  const h = createHarness({listDenied:true, preferences:{language:"en",favorites:[{bucket:"private",key:"exact/中文 +%.jpg"}],recent:["private","other"]}});
+  await h.ready();
+  await h.fire("nav-favorites");
+  assert.equal(h.element("favorite-list").children[0].children[0].textContent,"private / exact/中文 +%.jpg");
+  assert.equal(h.element("recent-buckets").children[0].textContent,"private");
+  await h.fireElement(h.element("favorite-list").children[0].children[1]);
+  const saved = h.calls.find(call => call.url === "/api/preferences" && call.method === "PUT");
+  assert.deepEqual(JSON.parse(saved.body),{action:"favorite-remove",bucket:"private",key:"exact/中文 +%.jpg"});
+  assert.equal(saved.headers["X-CSRF-Token"],"csrf-only");
+  await h.windowEvent("oc-language-change",{detail:"en"});
+  assert.ok(h.calls.some(call => call.method === "PUT" && JSON.parse(call.body).action === "language"));
+});
+
+test("preference failures report that saving could not be confirmed", async () => {
+ const h=createHarness();await h.ready();
+ h.route("PUT","/api/preferences",()=>response({message:"Disk full"},500));
+ await h.windowEvent("oc-language-change",{detail:"en"});
+ assert.match(h.element("preferences-status").textContent,/confirm preferences/);
+});
+
+test("overview uses account capacity and navigation preserves loaded object state", async () => {
+  const h = createHarness();
+  await h.ready();
+  assert.equal(h.element("overview-panel").hidden, false);
+  assert.equal(h.element("storage-browser").hidden, true);
+  assert.equal(h.element("overview-capacity").textContent, "42 B");
+  assert.equal(h.element("overview-buckets").textContent, "1");
+  await h.fire("nav-buckets");
+  assert.equal(h.element("bucket-directory").hidden, false);
+  h.element("directory-body").children[0].children[0].children[0].listeners.get("click")[0]();
+  await settle();
+  const objectCalls = h.calls.filter(call => call.url.startsWith("/api/objects?")).length;
+  assert.equal(h.element("storage-browser").hidden, false);
+  assert.equal(h.element("recent-buckets").children[0].textContent, "listed-bucket");
+  await h.fire("nav-tasks");
+  assert.equal(h.element("task-page").hidden, false);
+  assert.equal(h.element("task-empty").hidden, false);
+  await h.fire("nav-overview");
+  assert.equal(h.element("overview-panel").hidden, false);
+  assert.equal(h.calls.filter(call => call.url.startsWith("/api/objects?")).length, objectCalls);
+  await h.fire("toggle-navigation");
+  assert.equal(h.element("toggle-navigation").getAttribute("aria-expanded"), "false");
+  await h.fire("nav-account");
+  assert.equal(h.element("account-dialog").open, true);
+  await h.fire("logout");
+  assert.equal(h.element("console-navigation").hidden, true);
+  assert.equal(h.element("recent-buckets").children.length, 0);
+  assert.equal(h.element("overview-capacity").textContent, "—");
+});
+
+test("bucket directory search and settings preserve exact bucket scope", async () => {
+  const h = createHarness({ capabilities: { bucketManagement: true } });
+  await h.ready();
+  await h.fire("nav-buckets");
+  h.element("bucket-search").value = "missing";
+  await h.fire("bucket-search", "input");
+  assert.equal(h.element("directory-body").children.length, 0);
+  h.element("bucket-search").value = "LISTED";
+  await h.fire("bucket-search", "input");
+  assert.equal(h.element("directory-body").children.length, 1);
+  const row = h.element("directory-body").children[0];
+  row.children[4].children[0].listeners.get("click")[0]();
+  await settle();
+  assert.equal(h.element("settings-dialog").open, true);
+  assert.equal(h.element("settings-bucket").value, "listed-bucket");
+  await h.fire("close-settings");
+  await h.fire("back-to-buckets");
+  assert.equal(h.element("bucket-directory").hidden, false);
+  await h.fire("directory-create");
+  assert.equal(h.element("bucket-action-title").textContent, "Create bucket");
+  await h.fire("logout");
+  assert.equal(h.element("bucket-search").value, "");
+});
+
+test("overview keeps unavailable capacity and denied bucket counts distinct from zero", async () => {
+  const h = createHarness({ listDenied: true });
+  h.route("GET", "/api/account", () => response({ code: "AccessDenied", message: "Denied" }, 403));
+  await h.ready();
+  assert.equal(h.element("overview-capacity").textContent, "—");
+  assert.equal(h.element("overview-buckets").textContent, "—");
+  const empty = createHarness();
+  empty.route("GET", "/api/buckets", () => response({ buckets: [] }));
+  empty.route("GET", "/api/account", () => response({ buckets: [] }));
+  await empty.ready();
+  assert.equal(empty.element("overview-buckets").textContent, "0");
+  assert.equal(empty.element("overview-capacity").textContent, "0 B");
+});
+
+test("file selection is reviewed locally and sends bytes only after upload submission", async () => {
+  const h = createHarness();
+  h.route("POST", "/api/uploads", call => response(job("upload", JSON.parse(call.body))));
+  await h.ready();
+  await h.fire("open-upload");
+  const file = { name: "pending.txt", size: 19 };
+  h.element("upload-file").files = [file];
+  await h.fire("upload-file", "change");
+  assert.equal(h.element("upload-selection").hidden, false);
+  assert.equal(h.element("upload-selected-name").textContent, "pending.txt");
+  assert.equal(h.element("upload-selected-size").textContent, "19 B");
+  assert.equal(h.calls.filter(call => call.url === "/api/uploads").length, 0);
+  assert.equal(h.transfers.length, 0);
+  await h.fire("upload-form", "submit");
+  assert.equal(h.calls.filter(call => call.url === "/api/uploads").length, 1);
+  assert.equal(h.transfers[0].body, file);
+});
+
+test("object details and session favorites preserve exact keys and clear on logout", async () => {
+  const h = createHarness();
+  const key = "path/目标 +%.jpg";
+  h.route("GET", url => url.startsWith("/api/objects?"), () => response({ entries: [{ key, size: 19, modified: "2026-10-10T00:00:00Z", etag: "sample-etag" }] }));
+  await h.ready();
+  await h.fireElement(findText(h.element("objects-body"), "详情"));
+  assert.equal(h.element("object-info-key").textContent, key);
+  assert.equal(new URL(h.element("object-local-link").value).searchParams.get("key"), key);
+  await h.fire("copy-object-link");
+  assert.equal(h.element("object-local-link").selected, true);
+  await h.fire("close-object-info");
+  await h.fireElement(findText(h.element("objects-body"), "☆"));
+  await h.fire("nav-favorites");
+  assert.equal(h.element("favorites-page").hidden, false);
+  assert.match(h.element("favorite-list").textContent, /目标/);
+  await h.fire("logout");
+  assert.equal(h.element("favorite-list").children.length, 0);
+  assert.equal(h.element("object-local-link").value, "");
+  assert.equal(h.element("object-info-key").textContent, "");
+});
+
+test("rename shortcut precedes copy and submits only the reviewed exact name", async () => {
+  const h=createHarness({capabilities:{rename:true}});
+  h.route("GET",url=>url.startsWith("/api/objects?"),()=>response({entries:[{key:"dir/中文 +%.txt",size:19,etag:"sample-etag"}]}));
+  h.route("POST","/api/objects/rename",()=>response({outcome:"confirmed"}));
+  await h.ready();
+  const rename=findText(h.element("objects-body"),"✎");
+  assert.equal(rename.disabled,false);
+  await h.fireElement(rename);
+  assert.equal(h.element("rename-name").value,"中文 +%.txt");
+  assert.equal(h.calls.filter(c=>c.url==="/api/objects/rename").length,0);
+  h.element("rename-name").value="new.txt";
+  await h.fire("rename-form","submit");
+  const call=h.calls.find(c=>c.url==="/api/objects/rename");
+  assert.deepEqual(JSON.parse(call.body),{bucket:"listed-bucket",key:"dir/中文 +%.txt",etag:"sample-etag",newKey:"dir/new.txt"});
+  assert.equal(call.headers["X-CSRF-Token"],"csrf-only");
+  assert.equal(h.element("rename-dialog").open,false);
+});
+
+test("image preview reads only on click and cancels oversized streams", async () => {
+  const h = createHarness();
+  h.route("GET", url => url.startsWith("/api/objects?"), () => response({ entries: [{ key: "image.png", size: 12 }] }));
+  let canceled = false;
+  h.route("GET", url => url.startsWith("/api/download?"), () => ({ ok: true, body: { getReader: () => ({ read: async () => ({ done: false, value: { byteLength: 21 * 1024 ** 2 } }), cancel: async () => { canceled = true; } }) } }));
+  await h.ready();
+  assert.equal(h.calls.filter(call => call.url.startsWith("/api/download?")).length, 0);
+  await h.fireElement(findText(h.element("objects-body"), "预览"));
+  assert.equal(h.element("image-preview-dialog").open, true);
+  assert.equal(canceled, true);
+  assert.match(h.element("image-preview-status").textContent, /超过 20 MiB/);
+  assert.equal(h.element("image-preview").hidden, true);
+  await h.fire("close-image-preview");
+});
+
+test("metadata refresh preserves exact target and ignores replies after closing details", async () => {
+  const h = createHarness(); const pending = deferred();
+  h.route("GET", url => url.startsWith("/api/objects?"), () => response({ entries: [{ key: "a +%.png", size: 12 }] }));
+  h.route("GET", url => url.startsWith("/api/object-info?"), call => {
+    assert.equal(new URL(call.url, "http://localhost").searchParams.get("key"), "a +%.png");
+    return pending.promise;
+  });
+  await h.ready();
+  await h.fireElement(findText(h.element("objects-body"), "详情"));
+  await h.fire("refresh-object-info");
+  await h.fire("close-object-info");
+  pending.resolve(response({ size: 999, etag: "late", contentType: "image/png" }));
+  await settle();
+  assert.equal(h.element("object-info-size").textContent, "12 B");
+  assert.equal(h.element("object-info-dialog").open, false);
+});
 
 test("P2 raw file upload sends original File and 100% progress does not confirm storage", async () => {
   const h = createHarness();
@@ -790,7 +1002,7 @@ function iamField(h, name) {
   return field;
 }
 
-const fullCapabilities = { bucketManagement: true, versions: true, sharing: true, archives: true, iam: true };
+const fullCapabilities = { versioning: true, bucketManagement: true, versions: true, sharing: true, archives: true, iam: true };
 
 test("the DOM harness preserves the browser's getter-only textarea type", () => {
   const h = createHarness();
@@ -906,25 +1118,25 @@ test("version-only identities can enter an exact bucket and key without bucket l
 test("Refresh retries a failed capability read and restores all feature controls", async () => {
   const h = createHarness();
   let available = false;
-  h.route("GET", "/api/capabilities", () => available ? response(fullCapabilities) : response({ code: "busy", message: "Temporarily busy." }, 429));
+  h.route("GET", url => url.startsWith("/api/capabilities"), () => available ? response(fullCapabilities) : response({ code: "busy", message: "Temporarily busy." }, 429));
   await h.ready();
-  assert.equal(h.calls.filter(call => call.url === "/api/capabilities").length, 1);
+  assert.equal(h.calls.filter(call => call.url.startsWith("/api/capabilities")).length, 2);
   assert.equal(h.element("open-versions").hidden, true);
   assert.equal(h.element("open-iam").hidden, true);
   available = true;
   await h.fire("refresh");
-  assert.equal(h.calls.filter(call => call.url === "/api/capabilities").length, 2);
+  assert.equal(h.calls.filter(call => call.url.startsWith("/api/capabilities")).length, 3);
   for (const id of ["open-create-bucket", "open-delete-bucket", "open-versions", "open-iam", "read-toolbar"]) assert.equal(h.element(id).hidden, false, id);
 });
 
 test("Refresh does not duplicate or cancel an in-flight capability read", async () => {
   const h = createHarness();
   const held = deferred();
-  h.route("GET", "/api/capabilities", () => held.promise);
+  h.route("GET", url => url.startsWith("/api/capabilities"), () => held.promise);
   await h.ready();
-  const capabilityRequest = h.calls.find(call => call.url === "/api/capabilities");
+  const capabilityRequest = h.calls.filter(call => call.url.startsWith("/api/capabilities")).at(-1);
   await h.fire("refresh");
-  assert.equal(h.calls.filter(call => call.url === "/api/capabilities").length, 1);
+  assert.equal(h.calls.filter(call => call.url.startsWith("/api/capabilities")).length, 2);
   assert.equal(capabilityRequest.signal.aborted, false);
   held.resolve(response(fullCapabilities));
   await settle();
@@ -1023,6 +1235,17 @@ test("an exact known bucket can be deleted without permission to list buckets", 
   }
 });
 
+test("unsupported version capabilities hide history and versioning without version requests", async () => {
+ const h=createHarness({capabilities:{...fullCapabilities,versions:false,versioning:false}});await h.ready();
+ assert.equal(h.element("open-versions").hidden,true);
+ assert.equal(h.element("setting-versioning-option").hidden,true);
+ assert.equal(h.element("setting-versioning-option").disabled,true);
+ await h.fire("open-versions","click",{force:true});assert.equal(h.element("versions-dialog").open,false);
+ await h.fire("open-settings");h.element("settings-kind").value="versioning";await h.fire("settings-load-form","submit");
+ assert.equal(h.calls.filter(c=>c.url.startsWith("/api/versions?")||c.url.includes("kind=versioning")).length,0);
+ assert.ok(h.calls.some(c=>c.url==="/api/capabilities?bucket=listed-bucket"));
+});
+
 test("version history preserves exact version refs and delete markers have no actions", async () => {
   const h = createHarness({ capabilities: fullCapabilities });
   const exactKey = "folder/目标 +%.txt";
@@ -1064,7 +1287,7 @@ test("late share replies and session expiry cannot restore signed URLs", async (
   const held = deferred();
   h.route("POST", "/api/shares", () => held.promise);
   await h.ready();
-  await h.fireElement(findText(h.element("objects-body"), "Share"));
+  await h.fireElement(findText(h.element("objects-body"), "分享链接"));
   await h.fire("share-form", "submit");
   await h.fire("close-share");
   held.resolve(response({ url: "https://example.invalid/?signature=late", expiresAt: "2026-10-09T01:00:00Z" }));

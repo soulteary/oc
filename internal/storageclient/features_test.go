@@ -331,3 +331,114 @@ func TestFeatureBucketCreationRefusesSDKRegionWriteReplay(t *testing.T) {
 		t.Fatal("SDK replayed a bucket creation")
 	}
 }
+
+func TestVersionSupportProbeUsesZeroEntryReadAndServerAcknowledgement(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		status  int
+		header  string
+		body    string
+		want    bool
+		wantErr bool
+	}{
+		{"supported-empty-unversioned", 200, "v1", `<ListVersionsResult><IsTruncated>false</IsTruncated></ListVersionsResult>`, true, false},
+		{"filesystem-unsupported", 501, "", `<Error><Code>NotImplemented</Code></Error>`, false, false},
+		{"old-server-without-authorization", 200, "", `<ListVersionsResult/>`, false, false},
+		{"denied-is-not-support", 403, "", `<Error><Code>AccessDenied</Code></Error>`, false, true},
+		{"malformed", 200, "v1", `<html/>`, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if locationResponse(w, r) {
+					return
+				}
+				if r.Method != "GET" || !r.URL.Query().Has("versions") || r.URL.Query().Get("max-keys") != "0" {
+					t.Errorf("non-probe request: %s %s", r.Method, r.URL)
+				}
+				w.Header().Set("X-Otterio-Version-Authorization", tc.header)
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer upstream.Close()
+			client := testClient(t, Config{S3URL: upstream.URL})
+			supported, err := client.VersionSupported(context.Background(), "bucket")
+			if supported != tc.want || (err != nil) != tc.wantErr {
+				t.Fatalf("supported=%v err=%v", supported, err)
+			}
+		})
+	}
+}
+
+func TestRenameCopiesConditionallyBeforeDeletingAndPreservesSourceOnFailure(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint(fail), func(t *testing.T) {
+			var operations []string
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if locationResponse(w, r) {
+					return
+				}
+				switch r.Method {
+				case "GET":
+					fmt.Fprint(w, `<ListBucketResult><Name>exact-bucket</Name><Contents><Key>old.txt</Key><Size>3</Size><ETag>"etag"</ETag></Contents></ListBucketResult>`)
+				case "HEAD":
+					if strings.HasSuffix(r.URL.Path, "/new.txt") {
+						w.Header().Set("X-Otterio-Conditional-Writes", "v1")
+						w.WriteHeader(404)
+						return
+					}
+					w.Header().Set("ETag", `"etag"`)
+					w.Header().Set("Content-Length", "3")
+					w.Header().Set("Last-Modified", "Thu, 08 Oct 2026 00:00:00 GMT")
+				case "PUT":
+					operations = append(operations, "copy")
+					if r.Header.Get("If-None-Match") != "*" || r.Header.Get("X-Amz-Copy-Source-If-Match") != `"etag"` {
+						t.Error("missing copy preconditions")
+					}
+					if fail {
+						w.WriteHeader(403)
+						fmt.Fprint(w, `<Error><Code>AccessDenied</Code></Error>`)
+						return
+					}
+					fmt.Fprint(w, `<CopyObjectResult><ETag>"etag"</ETag><LastModified>2026-10-08T00:00:00Z</LastModified></CopyObjectResult>`)
+				case "DELETE":
+					operations = append(operations, "delete")
+					w.WriteHeader(204)
+				default:
+					t.Error(r.Method)
+				}
+			}))
+			defer upstream.Close()
+			c := testClient(t, Config{S3URL: upstream.URL})
+			page, err := c.ListObjects(context.Background(), "exact-bucket", "", "", 10)
+			if err != nil || len(page.Entries) != 1 {
+				t.Fatal(page, err)
+			}
+			etag := page.Entries[0].ETag
+			// A browser with an already loaded list can still send the old wire value.
+			if fail {
+				etag = `"` + etag + `"`
+			}
+			err = c.RenameObject(context.Background(), "exact-bucket", page.Entries[0].Key, "new.txt", etag)
+			if fail {
+				if err == nil || strings.Join(operations, ",") != "copy" {
+					t.Fatal(err, operations)
+				}
+			} else if err != nil || strings.Join(operations, ",") != "copy,delete" {
+				t.Fatal(err, operations)
+			}
+		})
+	}
+}
+
+func TestRenameETagNormalizationRejectsMalformedHeaders(t *testing.T) {
+	for _, etag := range []string{"etag", `"etag"`} {
+		if got := canonicalETag(etag); got != "etag" || !validETag(got) {
+			t.Fatal(etag, got)
+		}
+	}
+	for _, etag := range []string{`""`, `"etag`, `etag"`, `""etag""`, "\"etag\r\nX-Test: injected\""} {
+		if validETag(canonicalETag(etag)) {
+			t.Fatal("accepted unsafe etag", etag)
+		}
+	}
+}

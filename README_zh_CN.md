@@ -102,7 +102,7 @@ oc --json doctor store
 - [在本机试用 OC 与 OtterIO](docs/zh_CN/quickstart.md)：启动服务、配置两个入口，并核对上传与下载结果。
 - [配置地址和 TLS](docs/zh_CN/configuration.md)、[传输与同步](docs/zh_CN/usage.md)，或[查询命令](docs/zh_CN/commands.md)。
 - [管理 OtterIO](docs/zh_CN/administration.md)和[检查兼容范围](docs/zh_CN/compatibility.md)。
-- [构建实验性的本机 Web 控制台](docs/zh_CN/console.md)：单别名、本机会话、对象写入及受保护配置。该程序单独从源码构建，当前 CLI 归档和容器不包含它。
+- [构建实验性的本机 Web 控制台](docs/zh_CN/console.md)：单别名、本机会话、对象写入及受保护配置。源码 Dockerfile 同时构建并打包 `oc-console`；当前发布的 CLI 归档和发布镜像仍不包含它。
 - [配置生命周期目标并了解转换边界](docs/lifecycle-transition.md)。
 - [排查故障](docs/zh_CN/troubleshooting.md)，或[私下报告安全问题](docs/zh_CN/security.md)。
 - [构建与测试](docs/zh_CN/development.md)、[参与贡献](docs/zh_CN/CONTRIBUTING.md)，或[准备发布](docs/zh_CN/releasing.md)。

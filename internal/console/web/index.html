@@ -6,13 +6,17 @@
     <meta name="color-scheme" content="dark light">
     <title>OC · Local console</title>
     <link rel="stylesheet" href="/style.css">
+    <script src="/i18n.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
-    <main class="shell">
+    <main id="console-shell" class="shell">
       <header class="topbar">
+        <button id="toggle-navigation" class="button quiet navigation-toggle" type="button" aria-label="Toggle navigation" aria-expanded="true" hidden>☰</button>
         <a class="brand" href="/" aria-label="OC local console home"><span class="brand-mark" aria-hidden="true">oc</span><span>Local console</span></a>
         <div class="topbar-right">
+          <select id="console-language" aria-label="Language / 语言"><option value="zh">中文</option><option value="en">English</option></select>
+          <span id="preferences-status" role="status" aria-live="polite"></span>
           <span id="session-mode" class="readonly">● Read-only</span>
           <div id="session-actions" class="session-actions" hidden>
             <button id="open-iam" class="button quiet" type="button" hidden>Access management</button>
@@ -39,11 +43,38 @@
       </section>
 
       <section id="workspace" class="workspace" aria-label="Storage browser" hidden>
+        <aside id="console-navigation" class="console-navigation" aria-label="Console navigation" hidden>
+          <h2>对象存储</h2>
+          <button id="nav-overview" type="button" class="navigation-item">概览</button>
+          <button id="nav-buckets" type="button" class="navigation-item">存储桶列表</button>
+          <button id="nav-favorites" type="button" class="navigation-item">收藏路径</button>
+          <p class="navigation-group">运维管理</p>
+          <button id="nav-tasks" type="button" class="navigation-item">任务中心</button>
+          <button id="nav-account" type="button" class="navigation-item">账户与权限</button>
+          <p class="navigation-note">单连接 · 本机会话<br>操作权限由存储服务验证</p>
+        </aside>
+        <div class="page-heading"><h1 id="page-title">概览</h1><span>OC Local console</span></div>
+        <section id="overview-panel" class="overview-layout" aria-label="Storage overview">
+          <article class="overview-card usage-card"><h2>用量概览</h2><p class="overview-help">当前身份可访问桶的容量摘要；由服务端提供，不作为计费数据。</p>
+            <div class="overview-stats"><div><span>可见桶容量</span><strong id="overview-capacity">—</strong></div><div><span>列出的存储桶</span><strong id="overview-buckets">—</strong></div><div><span>当前会话任务</span><strong id="overview-tasks">0</strong></div></div>
+            <p id="overview-status" class="overview-help" role="status"></p>
+          </article>
+          <article class="overview-card"><h2>最近访问桶</h2><p class="overview-help">按当前存储身份保存最近访问记录。</p><div id="recent-buckets" class="recent-buckets"></div></article>
+          <article class="overview-card"><h2>常用操作</h2><p class="overview-help">查看桶内对象、浏览目录前缀、下载与分享。写操作需要本机进程显式开启。</p><button id="overview-browse" class="button primary" type="button">浏览存储桶 →</button></article>
+          <article class="overview-card"><h2>连接状态</h2><p id="overview-connection"></p><p class="overview-help">月度流量、请求趋势及告警尚未接入。任务结果可在任务中心查看。</p></article>
+        </section>
         <div class="connection-line"><span class="connection-dot" aria-hidden="true"></span><span>Connected to</span><strong id="alias-name"></strong><span class="connection-note">Local session</span></div>
-        <div class="browser-layout">
+        <section id="favorites-page" class="overview-card" hidden><h2>收藏路径</h2><p class="overview-help">收藏按当前存储身份保存，重新登录后恢复。</p><div id="favorite-list" class="favorite-list"></div></section>
+        <section id="bucket-directory" class="bucket-directory" hidden aria-label="存储桶列表">
+          <div class="directory-toolbar"><button id="directory-create" class="button primary" type="button" hidden>创建存储桶</button><button id="directory-account" class="button quiet" type="button">授权信息</button><label for="bucket-search" class="sr-only">搜索存储桶名称</label><input id="bucket-search" type="search" placeholder="搜索存储桶名称"><button id="directory-refresh" class="button quiet" type="button">刷新</button></div>
+          <p id="directory-status" class="overview-help" role="status"></p>
+          <div class="table-wrap"><table class="bucket-table"><thead><tr><th scope="col">存储桶名称</th><th scope="col">权限摘要</th><th scope="col">存储容量</th><th scope="col">创建时间</th><th scope="col">操作</th></tr></thead><tbody id="directory-body"></tbody></table></div><p id="directory-count" class="directory-count"></p>
+        </section>
+        <div id="bucket-detail-navigation" class="bucket-detail-navigation" hidden><button id="back-to-buckets" class="button quiet" type="button">← 返回桶列表</button><button id="bucket-files-tab" class="button quiet" type="button" aria-current="page">文件列表</button><button id="bucket-settings-tab" class="button quiet" type="button">配置管理</button><button id="bucket-refresh" class="button quiet" type="button">刷新文件</button></div>
+        <div id="storage-browser" class="browser-layout" hidden>
           <aside class="bucket-panel" aria-labelledby="buckets-title">
-            <div class="panel-heading"><h2 id="buckets-title">Buckets</h2><span id="bucket-count" class="count">0</span></div>
-            <button id="open-create-bucket" class="button quiet sidebar-action" type="button" hidden>Create bucket</button>
+            <div class="panel-heading"><h2 id="buckets-title">存储桶</h2><span id="bucket-count" class="count">0</span></div>
+            <button id="open-create-bucket" class="button quiet sidebar-action" type="button" hidden>创建存储桶</button>
             <p id="bucket-status" class="panel-status" role="status" aria-live="polite"></p>
             <nav id="bucket-list" class="bucket-list" aria-label="Choose a bucket"></nav>
             <div class="sidebar-footer"><span class="eyebrow">ONE ALIAS · ONE SESSION</span><p>Only the alias selected at startup is available here.</p></div>
@@ -52,14 +83,14 @@
           <section class="objects-panel" aria-labelledby="objects-title">
             <div class="object-heading">
               <div><div class="eyebrow">OBJECT BROWSER</div><h2 id="objects-title">Choose a bucket</h2><p id="bucket-created" class="subtle"></p></div>
-              <div class="object-controls"><button id="open-delete-bucket" class="button danger-quiet" type="button" hidden>Delete bucket</button><button id="open-versions" class="button quiet" type="button" hidden>Version history</button><button id="open-settings" class="button quiet" type="button">Bucket settings</button><button id="parent-prefix" class="button quiet" type="button" disabled><span aria-hidden="true">↑</span> Parent</button></div>
+              <div class="object-controls"><button id="open-delete-bucket" class="button danger-quiet" type="button" hidden>删除空桶</button><button id="open-versions" class="button quiet" type="button" hidden>Version history</button><button id="open-settings" class="button quiet" type="button">桶配置</button><button id="parent-prefix" class="button quiet" type="button" disabled><span aria-hidden="true">↑</span> 上级目录</button></div>
             </div>
             <form id="prefix-form" class="prefix-form">
-              <label for="prefix-input">Prefix</label>
-              <div class="prefix-controls"><input id="prefix-input" name="prefix" type="text" autocomplete="off" spellcheck="false" placeholder="All objects" disabled><button id="prefix-submit" class="button quiet" type="submit" disabled>Go</button><button id="root-prefix" class="button quiet" type="button" disabled>Root</button></div>
+              <label for="prefix-input">目录前缀</label>
+              <div class="prefix-controls"><input id="prefix-input" name="prefix" type="text" autocomplete="off" spellcheck="false" placeholder="All objects" disabled><button id="prefix-submit" class="button quiet" type="submit" disabled>查找</button><button id="root-prefix" class="button quiet" type="button" disabled>根目录</button></div>
             </form>
             <div id="write-toolbar" class="write-toolbar" hidden>
-              <div class="write-actions"><button id="open-upload" class="button quiet" type="button" disabled>Upload file</button><button id="open-exact-delete" class="button danger-quiet" type="button" disabled>Delete exact key</button><button id="delete-selected" class="button danger-quiet" type="button" disabled>Delete selected</button><button id="delete-prefix" class="button danger-quiet" type="button" disabled>Delete this prefix</button></div>
+              <div class="write-actions"><button id="open-upload" class="button quiet" type="button" disabled>上传文件</button><button id="open-exact-delete" class="button danger-quiet" type="button" disabled>按路径删除</button><button id="delete-selected" class="button danger-quiet" type="button" disabled>删除选中对象</button><button id="delete-prefix" class="button danger-quiet" type="button" disabled>删除当前前缀</button></div>
               <span id="selection-count" class="subtle">No objects selected</span>
               <p class="write-help">Writes enabled for this local session. Each object operation is checked by the storage server.</p>
             </div>
@@ -67,28 +98,33 @@
             <p id="objects-status" class="objects-status" role="status" aria-live="polite"></p>
             <div id="objects-empty" class="empty-state"><span class="empty-symbol" aria-hidden="true">□</span><h3 id="empty-title">Select a bucket</h3><p id="empty-description">Browse its prefixes and download objects.</p><button id="objects-retry" class="button quiet" type="button" hidden>Try again</button></div>
             <div id="objects-table-wrap" class="table-wrap" hidden>
-              <table class="objects-table"><caption class="sr-only">Objects in the selected bucket and prefix</caption><thead><tr><th id="selection-header" scope="col" class="selection-column" hidden><input id="select-loaded" type="checkbox" aria-label="Select all loaded objects"></th><th scope="col">Name</th><th scope="col" class="size-column">Size</th><th scope="col" class="modified-column">Modified</th><th scope="col" class="action-column"><span class="sr-only">Action</span></th></tr></thead><tbody id="objects-body"></tbody></table>
+              <table class="objects-table"><caption class="sr-only">Objects in the selected bucket and prefix</caption><thead><tr><th id="selection-header" scope="col" class="selection-column" hidden><input id="select-loaded" type="checkbox" aria-label="Select all loaded objects"></th><th scope="col">文件名</th><th scope="col" class="size-column">大小</th><th scope="col" class="modified-column">修改时间</th><th scope="col" class="action-column"><span class="sr-only">Action</span></th></tr></thead><tbody id="objects-body"></tbody></table>
             </div>
             <div id="pagination" class="pagination" hidden><span id="object-count" class="subtle"></span><button id="load-more" class="button quiet" type="button" hidden>Load more</button></div>
             <div class="account-strip"><span class="account-label">Server permissions</span><p id="account-status">Select a bucket to view available permission information.</p></div>
           </section>
         </div>
+        <section id="task-page" hidden><p id="task-empty" class="overview-help">当前会话暂无上传或删除任务。ZIP 准备状态可从对象浏览器的 ZIP task 查看。</p>
         <section id="tasks-panel" class="tasks-panel" aria-labelledby="tasks-title" hidden>
           <div class="tasks-heading"><div><div class="eyebrow">THIS SESSION</div><h2 id="tasks-title">Transfers &amp; deletions</h2></div><button id="clear-finished" class="button quiet" type="button">Clear finished</button></div>
           <p class="task-help">Tasks keep their original bucket and object scope when you navigate. Cancellation does not undo completed work.</p>
           <p id="tasks-status" class="notice" role="status"></p>
           <div id="tasks-list" class="tasks-list" aria-live="polite"></div>
         </section>
+        </section>
         <p id="workspace-footnote" class="workspace-footnote">Read-only browsing. Downloads use your browser’s download manager. If a download fails, its error opens in a separate tab.</p>
       </section>
     </main>
 
+    <dialog id="image-preview-dialog" class="action-dialog image-preview-dialog" aria-labelledby="image-preview-title"><div class="dialog-heading"><h2 id="image-preview-title">图片预览</h2><button id="close-image-preview" class="button quiet" type="button">关闭预览</button></div><p id="image-preview-status" class="help" role="status"></p><div class="image-preview-stage"><img id="image-preview" alt="" hidden></div><div class="image-preview-controls"><button id="preview-zoom-out" class="button quiet" type="button">缩小</button><span id="preview-zoom-label">100%</span><button id="preview-zoom-in" class="button quiet" type="button">放大</button><button id="preview-zoom-reset" class="button quiet" type="button">适应窗口</button></div></dialog>
+    <dialog id="rename-dialog" class="action-dialog" aria-labelledby="rename-title"><form id="rename-form"><div class="dialog-heading"><h2 id="rename-title">重命名对象</h2><button id="close-rename" class="button quiet" type="button">关闭</button></div><p id="rename-source" data-no-i18n></p><label for="rename-name">新文件名</label><input id="rename-name" required autocomplete="off"><p class="help">重命名先复制再删除原对象，不覆盖已有文件。请避免同时修改原对象。</p><p id="rename-status" class="notice" role="status"></p><div class="dialog-footer"><button id="rename-submit" class="button primary" type="submit">确定</button></div></form></dialog>
+    <dialog id="object-info-dialog" class="action-dialog settings-dialog" aria-labelledby="object-info-title"><div class="dialog-heading"><h2 id="object-info-title">文件详情</h2><button id="close-object-info" class="button quiet" type="button">关闭</button></div><dl class="object-information"><dt>存储桶</dt><dd id="object-info-bucket"></dd><dt>完整对象路径</dt><dd id="object-info-key"></dd><dt>大小</dt><dd id="object-info-size"></dd><dt>修改时间</dt><dd id="object-info-modified"></dd><dt>ETag</dt><dd id="object-info-etag"></dd><dt>Content-Type</dt><dd id="object-info-type">—</dd></dl><label for="object-local-link">本机会话下载链接</label><textarea id="object-local-link" readonly rows="3"></textarea><p class="help">该链接需要当前本机登录会话。对外分享请使用“分享链接”。</p><p id="object-copy-status" class="notice" role="status"></p><div class="dialog-footer settings-actions"><button id="refresh-object-info" class="button quiet" type="button">读取对象信息</button><button id="info-preview" class="button quiet" type="button">预览图片</button><button id="info-share" class="button quiet" type="button" hidden>分享链接</button><button id="copy-object-link" class="button primary" type="button">复制本机链接</button></div></dialog>
     <dialog id="settings-dialog" class="action-dialog settings-dialog" aria-labelledby="settings-title">
       <div class="dialog-heading"><h2 id="settings-title">Bucket settings</h2><button id="close-settings" class="button quiet" type="button">Close</button></div>
       <p class="dialog-description">Read and edit one complete setting at a time. Each request uses your configured identity. Bucket browsing permission is not required to enter a known bucket.</p>
       <form id="settings-load-form" class="settings-load-form">
-        <div><label for="settings-bucket">Exact bucket name</label><input id="settings-bucket" type="text" autocomplete="off" spellcheck="false" required></div>
-        <div><label for="settings-kind">Setting</label><select id="settings-kind"><option value="policy">Bucket policy</option><option value="versioning">Versioning</option><option value="lifecycle">Lifecycle</option></select></div>
+        <div><label for="settings-bucket">目标存储桶</label><input id="settings-bucket" type="text" autocomplete="off" spellcheck="false" required></div>
+        <div><label for="settings-kind">Setting</label><select id="settings-kind"><option value="policy">Bucket policy</option><option id="setting-versioning-option" value="versioning">Versioning</option><option value="lifecycle">Lifecycle</option></select></div>
         <button id="load-setting" class="button quiet" type="submit">Read setting</button>
       </form>
       <p id="settings-status" class="notice" role="status" aria-live="polite"></p>
@@ -137,17 +173,18 @@
 
     <dialog id="upload-dialog" class="action-dialog" aria-labelledby="upload-title">
       <form id="upload-form">
-        <div class="dialog-heading"><h2 id="upload-title">Upload one file</h2><button id="close-upload" class="button quiet" type="button" aria-label="Close upload">Close</button></div>
-        <p class="dialog-description">The file goes through the local OC process. Storage credentials stay there.</p>
-        <label for="upload-bucket">Exact bucket name</label><input id="upload-bucket" type="text" autocomplete="off" spellcheck="false" required aria-describedby="upload-target-help">
-        <p id="upload-target-help" class="help">You can enter a bucket even when your identity cannot list it. Storage checks the exact destination.</p>
-        <label for="upload-file">File</label><input id="upload-file" type="file" required>
-        <label for="upload-key">Exact object key</label><input id="upload-key" type="text" autocomplete="off" spellcheck="false" required aria-describedby="upload-key-help">
-        <p id="upload-key-help" class="help">Slashes, spaces, and other characters are kept exactly as entered. The current prefix is only a suggested destination.</p>
-        <label class="check-label" for="upload-overwrite"><input id="upload-overwrite" type="checkbox"> Allow replacing an existing object with this exact key</label>
-        <p id="upload-overwrite-help" class="help">Create-only is the default. Replacement requires a separate confirmation.</p>
+        <div class="dialog-heading"><h2 id="upload-title">上传文件</h2><button id="close-upload" class="button quiet" type="button" aria-label="Close upload">Close</button></div>
+        <p class="dialog-description">文件通过本机 OC 进程上传，存储凭据保留在本机。</p>
+        <label for="upload-bucket">目标存储桶</label><input id="upload-bucket" type="text" autocomplete="off" spellcheck="false" required aria-describedby="upload-target-help">
+        <p id="upload-target-help" class="help">可以直接输入已知桶名。是否允许上传由存储服务验证。</p>
+        <div class="upload-drop-area"><label for="upload-file">选择上传文件</label><input id="upload-file" type="file" required><p id="upload-file-summary" class="help">选择一个文件，然后确认目标桶与对象路径。</p></div>
+        <div id="upload-selection" class="upload-selection" hidden><table class="upload-selection-table"><thead><tr><th scope="col">待上传文件</th><th scope="col">大小</th><th scope="col">操作</th></tr></thead><tbody><tr><td id="upload-selected-name"></td><td id="upload-selected-size"></td><td><button id="remove-upload-file" class="row-action" type="button">移除</button></td></tr></tbody></table><p class="help">文件尚未上传。确认下方目标路径后，点击“上传文件”开始传输。</p></div>
+        <label for="upload-key">完整对象路径</label><input id="upload-key" type="text" autocomplete="off" spellcheck="false" required aria-describedby="upload-key-help">
+        <p id="upload-key-help" class="help">对象路径中的斜线、空格及其他字符会原样保留。当前目录前缀仅作为默认建议。</p>
+        <label class="check-label" for="upload-overwrite"><input id="upload-overwrite" type="checkbox"> 允许覆盖相同路径的已有对象</label>
+        <p id="upload-overwrite-help" class="help">默认仅创建新对象。覆盖已有对象需要单独确认。</p>
         <p id="upload-status" class="notice" role="status"></p>
-        <div class="dialog-footer"><button id="upload-submit" class="button primary" type="submit">Upload file</button></div>
+        <div class="dialog-footer"><button id="upload-submit" class="button primary" type="submit">上传文件</button></div>
       </form>
     </dialog>
 
@@ -155,7 +192,7 @@
       <form id="exact-delete-form">
         <div class="dialog-heading"><h2 id="exact-delete-title">Delete an exact key</h2><button id="close-exact-delete" class="button quiet" type="button">Close</button></div>
         <p class="dialog-description">Enter the destination directly when bucket browsing is unavailable. The server will prepare one key for review; nothing is deleted yet.</p>
-        <label for="exact-delete-bucket">Exact bucket name</label><input id="exact-delete-bucket" type="text" autocomplete="off" spellcheck="false" required>
+        <label for="exact-delete-bucket">目标存储桶</label><input id="exact-delete-bucket" type="text" autocomplete="off" spellcheck="false" required>
         <label for="exact-delete-key">Full object key</label><input id="exact-delete-key" type="text" autocomplete="off" spellcheck="false" required>
         <p class="help">The key is kept exactly as entered. Authorization is checked when deletion executes.</p>
         <div class="dialog-footer"><button class="button danger-quiet" type="submit">Prepare deletion plan</button></div>
@@ -171,8 +208,8 @@
     </dialog>
 
     <dialog id="delete-dialog" class="action-dialog delete-dialog" aria-labelledby="delete-title">
-      <div class="dialog-heading"><h2 id="delete-title">Review deletion</h2><button id="close-delete" class="button quiet" type="button">Close</button></div>
-      <p class="dialog-description">The plan fixes object keys, not versions. Execution deletes the current object at each listed key. A same-key replacement made after planning may also be deleted. New keys outside this list are not included.</p>
+      <div class="dialog-heading"><h2 id="delete-title">确认删除对象</h2><button id="close-delete" class="button quiet" type="button">Close</button></div>
+      <p class="dialog-description">删除计划固定下列对象路径，执行时删除这些路径的当前对象版本。 A same-key replacement made after planning may also be deleted. New keys outside this list are not included.</p>
       <p class="scope-line">Bucket <strong id="delete-bucket"></strong></p><p id="delete-scope" class="scope-key"></p>
       <p id="delete-count" class="subtle"></p><ol id="delete-items" class="scope-items"></ol>
       <p id="delete-status" class="notice" role="status" aria-live="polite"></p>
@@ -184,7 +221,7 @@
       <form id="bucket-action-form">
         <div class="dialog-heading"><h2 id="bucket-action-title">Create bucket</h2><button id="close-bucket-action" class="button quiet" type="button">Close</button></div>
         <p id="bucket-action-help" class="dialog-description"></p>
-        <label for="bucket-action-name">Exact bucket name</label><input id="bucket-action-name" type="text" autocomplete="off" spellcheck="false" required>
+        <label for="bucket-action-name">目标存储桶</label><input id="bucket-action-name" type="text" autocomplete="off" spellcheck="false" required>
         <div id="bucket-confirm-field" hidden><label for="bucket-action-confirm">Type the bucket name to confirm deletion</label><input id="bucket-action-confirm" type="text" autocomplete="off" spellcheck="false"></div>
         <p id="bucket-action-status" class="notice" role="status" aria-live="polite"></p>
         <div class="dialog-footer"><button id="submit-bucket-action" class="button primary" type="submit">Create private bucket</button></div>
@@ -194,7 +231,7 @@
     <dialog id="versions-dialog" class="action-dialog wide-dialog" aria-labelledby="versions-title">
       <div class="dialog-heading"><h2 id="versions-title">Object version history</h2><button id="close-versions" class="button quiet" type="button">Close</button></div>
       <p class="dialog-description">Choose an exact version to download, share, or include in a ZIP. Delete markers have no downloadable content. Historical versions are never removed here.</p>
-      <form id="versions-form" class="settings-load-form"><div><label for="versions-bucket">Bucket</label><input id="versions-bucket" autocomplete="off" spellcheck="false" required></div><div><label for="versions-key">Exact object key</label><input id="versions-key" autocomplete="off" spellcheck="false" required></div><button id="load-versions" class="button quiet" type="submit">Read versions</button></form>
+      <form id="versions-form" class="settings-load-form"><div><label for="versions-bucket">Bucket</label><input id="versions-bucket" autocomplete="off" spellcheck="false" required></div><div><label for="versions-key">完整对象路径</label><input id="versions-key" autocomplete="off" spellcheck="false" required></div><button id="load-versions" class="button quiet" type="submit">Read versions</button></form>
       <p id="versions-status" class="notice" role="status" aria-live="polite"></p><div id="versions-list" class="record-list"></div><div class="dialog-footer"><button id="more-versions" class="button quiet" type="button" hidden>Load more versions</button></div>
     </dialog>
 
@@ -225,7 +262,7 @@
       <form id="iam-action-form" class="management-form" hidden>
         <h3>Make a change</h3><label for="iam-action">Action</label><select id="iam-action"></select><p id="iam-action-help" class="help"></p><div id="iam-fields" class="management-fields"></div>
         <div id="iam-binding-controls" hidden><button id="load-iam-bindings" class="button quiet" type="button">Read current policy bindings</button><p id="iam-binding-scope" class="scope-line"></p><p id="iam-binding-status" class="notice" role="status" aria-live="polite"></p><div id="iam-binding-read-confirmation" class="secret-confirmation" hidden><p id="iam-binding-read-warning" class="help"></p><div class="dialog-footer settings-actions"><button id="cancel-iam-bindings-read" class="button quiet" type="button">Keep draft</button><button id="confirm-iam-bindings-read" class="button primary" type="button">Read and replace draft</button></div></div></div>
-        <label for="iam-confirm">Type the target name or access key to confirm</label><input id="iam-confirm" autocomplete="off" spellcheck="false" required>
+        <label for="iam-confirm">Type the complete target name or access key again; it must exactly match the field above</label><input id="iam-confirm" autocomplete="off" spellcheck="false" required>
         <p id="iam-action-status" class="notice" role="status" aria-live="polite"></p><div class="dialog-footer"><button id="submit-iam-action" class="button danger" type="submit">Apply this change</button></div>
       </form>
       <div id="iam-secret-result" class="secret-confirmation" hidden><h3>Save this new credential now</h3><p class="help">This is the only display of the returned secret. Keep it in a secure place.</p><label for="iam-result-access">Access key</label><input id="iam-result-access" readonly autocomplete="off" spellcheck="false"><label for="iam-result-secret">Secret key</label><input id="iam-result-secret" type="password" readonly autocomplete="off" spellcheck="false"><button id="reveal-iam-secret" class="button quiet" type="button">Show secret</button><button id="dismiss-iam-secret" class="button quiet" type="button">I saved it — clear credential</button></div>

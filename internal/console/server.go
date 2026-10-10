@@ -36,6 +36,8 @@ const (
 )
 
 type Config struct {
+	DataDir        string
+	Identity       string
 	Backend        consoleapi.Backend
 	Alias          string
 	BaseURL        string
@@ -66,13 +68,14 @@ type sessionReply struct {
 // Server does not own its Backend. The caller must close any backend transport
 // after closing the server and stopping the HTTP listener.
 type Server struct {
-	backend consoleapi.Backend
-	alias   string
-	origin  string
-	host    string
-	code    [32]byte
-	ttl     time.Duration
-	assets  fs.FS
+	preferences *preferenceStore
+	backend     consoleapi.Backend
+	alias       string
+	origin      string
+	host        string
+	code        [32]byte
+	ttl         time.Duration
+	assets      fs.FS
 
 	mu             sync.Mutex
 	closed         bool
@@ -138,10 +141,14 @@ func New(cfg Config) (*Server, error) {
 			return nil, errors.New("console backend does not support writes")
 		}
 	}
+	preferences, err := newPreferenceStore(cfg.DataDir, cfg.Identity)
+	if err != nil {
+		return nil, err
+	}
 	life, stopLife := context.WithCancel(context.Background())
 	settings, _ := cfg.Backend.(consoleapi.SettingsBackend)
 	return &Server{
-		backend: cfg.Backend, alias: cfg.Alias, origin: "http://" + u.Host,
+		preferences: preferences, backend: cfg.Backend, alias: cfg.Alias, origin: "http://" + u.Host,
 		host: u.Host, code: sha256.Sum256([]byte(cfg.LoginCode)), ttl: cfg.SessionTTL,
 		assets: web.FS(), sessions: make(map[[32]byte]*session),
 		apiSlots: make(chan struct{}, 8), downloads: make(chan struct{}, 2),
@@ -186,7 +193,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'")
 	if r.Host != s.host || (r.Header.Get("Origin") != "" && r.Header.Get("Origin") != s.origin) || len(r.Header.Values("Origin")) > 1 {
 		writeError(w, http.StatusForbidden, "invalid_origin", "Open the console using its local URL.")
 		return
@@ -241,11 +248,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveArchives(w, r)
 		return
 	}
+	if r.URL.Path == "/api/preferences" {
+		s.servePreferences(w, r)
+		return
+	}
 	method := http.MethodGet
 	switch r.URL.Path {
 	case "/api/logout":
 		method = http.MethodPost
-	case "/api/session", "/api/buckets", "/api/objects", "/api/account", "/api/download", "/api/capabilities":
+	case "/api/session", "/api/buckets", "/api/objects", "/api/account", "/api/download", "/api/capabilities", "/api/object-info":
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "This console endpoint does not exist.")
 		return
@@ -301,12 +312,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/capabilities":
 		_, buckets := s.backend.(consoleapi.BucketBackend)
 		_, versions := s.backend.(consoleapi.VersionBackend)
+		if len(q) > 1 || len(q["bucket"]) > 1 || (len(q) == 1 && len(q["bucket"]) != 1) || (q.Get("bucket") != "" && !validBucket(q.Get("bucket"))) {
+			writeError(w, 400, "invalid_input", "Choose one bucket for capability detection.")
+			return
+		}
+		if detector, ok := s.backend.(consoleapi.VersionCapabilityBackend); ok {
+			versions = false
+			if q.Get("bucket") != "" {
+				supported, err := detector.VersionSupported(ctx, q.Get("bucket"))
+				versions = err == nil && supported
+			}
+		}
+		_, rename := s.backend.(consoleapi.RenameBackend)
 		_, shares := s.backend.(consoleapi.ShareBackend)
 		_, archives := s.backend.(consoleapi.ReferenceBackend)
 		_, iam := s.backend.(consoleapi.IAMBackend)
 		// These describe implemented interfaces and explicit process gates.
 		// Individual reads still discover server protocols and permissions.
-		writeJSON(w, 200, map[string]any{"bucketManagement": buckets, "versions": versions, "sharing": shares && s.allowSharing, "archives": archives, "iam": iam, "iamPolicyBindings": iam, "writesAllowed": s.writer != nil, "maxArchiveSize": s.maxArchiveSize, "maxArchiveObjects": maxPlanKeys})
+		writeJSON(w, 200, map[string]any{"rename": rename && s.writer != nil, "bucketManagement": buckets, "versions": versions, "versioning": versions, "sharing": shares && s.allowSharing, "archives": archives, "iam": iam, "iamPolicyBindings": iam, "writesAllowed": s.writer != nil, "maxArchiveSize": s.maxArchiveSize, "maxArchiveObjects": maxPlanKeys})
 	case "/api/buckets":
 		buckets, err := s.backend.ListBuckets(ctx)
 		if err != nil {
@@ -344,6 +367,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			page.Entries = []consoleapi.Entry{}
 		}
 		writeJSON(w, http.StatusOK, page)
+	case "/api/object-info":
+		bucket, key := q.Get("bucket"), q.Get("key")
+		if !validBucket(bucket) || key == "" || !validKey(key) || len(q["bucket"]) != 1 || len(q["key"]) != 1 || len(q) != 2 {
+			writeError(w, 400, "invalid_input", "Choose an exact bucket and object key.")
+			return
+		}
+		backend, ok := s.backend.(consoleapi.ReferenceBackend)
+		if !ok {
+			writeError(w, 501, "metadata_unsupported", "Object information is unavailable on this connection.")
+			return
+		}
+		info, err := backend.StatReference(ctx, consoleapi.ObjectRef{Bucket: bucket, Key: key})
+		if err != nil {
+			writeBackendError(w, err)
+			return
+		}
+		writeJSON(w, 200, info)
+
 	case "/api/download":
 		bucket, key := q.Get("bucket"), q.Get("key")
 		if !validBucket(bucket) || key == "" || !validKey(key) || len(q["bucket"]) != 1 || len(q["key"]) != 1 || len(q["versionId"]) > 1 || !validVersionID(q.Get("versionId")) || len(q) > 3 {
@@ -389,7 +430,7 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "index.html"
 	}
-	if name != "index.html" && name != "app.js" && name != "style.css" {
+	if name != "index.html" && name != "app.js" && name != "i18n.js" && name != "style.css" {
 		writeError(w, http.StatusNotFound, "not_found", "This console page does not exist.")
 		return
 	}
@@ -398,7 +439,7 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "This console page does not exist.")
 		return
 	}
-	contentTypes := map[string]string{"index.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "style.css": "text/css; charset=utf-8"}
+	contentTypes := map[string]string{"index.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "i18n.js": "text/javascript; charset=utf-8", "style.css": "text/css; charset=utf-8"}
 	w.Header().Set("Content-Type", contentTypes[name])
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	if r.Method == http.MethodGet {

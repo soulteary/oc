@@ -104,7 +104,7 @@ Import accepts configuration version 10, replaces destination aliases after vali
 - [Try OC with a local OtterIO server](docs/quickstart.md): start the server, configure both endpoints, and verify an upload and download.
 - [Configure endpoints and TLS](docs/configuration.md), [transfer and synchronize](docs/usage.md), or [look up commands](docs/commands.md).
 - [Administer OtterIO](docs/administration.md) and [check compatibility](docs/compatibility.md).
-- [Build the experimental local Web console](docs/console.md): one alias, local sessions, bucket/object/IAM management, ZIP and sharing. It is source-built separately and is not included in CLI archives or containers.
+- [Build the experimental local Web console](docs/console.md): one alias, local sessions, bucket/object/IAM management, ZIP and sharing. The source Dockerfile includes `oc-console`; current CLI archives and release images do not.
 - [Configure lifecycle destinations and review transition limits](docs/lifecycle-transition.md).
 - [Troubleshoot problems](docs/troubleshooting.md) and [report vulnerabilities privately](SECURITY.md).
 - [Build and test](docs/development.md), [contribute](CONTRIBUTING.md), or [prepare a release](docs/releasing.md).

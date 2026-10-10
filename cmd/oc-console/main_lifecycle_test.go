@@ -97,7 +97,7 @@ func TestRunLocalConsoleLifecycle(t *testing.T) {
 	done := make(chan struct{})
 	var runError error
 	go func() {
-		runError = run(ctx, []string{"--config-dir", configDir, "--alias", "lifecycle", "--address", "127.0.0.1:0"}, output, errorOutput)
+		runError = run(ctx, []string{"--config-dir", configDir, "--data-dir", t.TempDir(), "--alias", "lifecycle", "--address", "127.0.0.1:0"}, output, errorOutput)
 		close(done)
 	}()
 	t.Cleanup(func() {

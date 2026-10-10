@@ -2,6 +2,12 @@
 
 (() => {
   const ids = [
+    "rename-dialog", "rename-form", "rename-title", "rename-source", "rename-name", "rename-status", "rename-submit", "close-rename",
+    "setting-versioning-option", "preferences-status", "image-preview-dialog", "image-preview-title", "close-image-preview", "image-preview-status", "image-preview", "preview-zoom-out", "preview-zoom-in", "preview-zoom-reset", "preview-zoom-label", "object-info-type", "refresh-object-info", "info-preview", "info-share",
+    "nav-favorites", "favorites-page", "favorite-list", "object-info-dialog", "object-info-title", "close-object-info", "object-info-bucket", "object-info-key", "object-info-size", "object-info-modified", "object-info-etag", "object-local-link", "object-copy-status", "copy-object-link",
+    "upload-selection", "upload-selected-name", "upload-selected-size", "remove-upload-file",
+    "bucket-directory", "bucket-detail-navigation", "directory-create", "directory-account", "bucket-search", "directory-refresh", "directory-status", "directory-body", "directory-count", "back-to-buckets", "bucket-files-tab", "bucket-settings-tab", "bucket-refresh", "upload-file-summary",
+    "console-shell", "console-navigation", "toggle-navigation", "nav-overview", "nav-buckets", "nav-tasks", "nav-account", "page-title", "overview-panel", "storage-browser", "task-page", "task-empty", "overview-capacity", "overview-buckets", "overview-tasks", "overview-status", "overview-connection", "recent-buckets", "overview-browse",
     "login-panel", "login-form", "login-code", "login-submit", "login-status",
     "workspace", "session-actions", "alias-name", "refresh", "logout",
     "bucket-list", "bucket-count", "bucket-status", "objects-title", "bucket-created",
@@ -47,6 +53,270 @@
     accountMessage: "Permission information is loading…",
     epoch: 0,
   };
+  let infoObject = null;
+  let previewURL = "";
+  let previewZoom = 1;
+  const imageTypes = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp" };
+  function imageType(key) { return imageTypes[key.split(".").pop().toLowerCase()] || ""; }
+  function clearPreview() {
+    cancelRequest("image-preview");
+    elements["image-preview"].hidden = true;
+    elements["image-preview"].removeAttribute("src");
+    if (previewURL) URL.revokeObjectURL(previewURL);
+    previewURL = "";
+  }
+  function zoomPreview(value) {
+    previewZoom = Math.min(4, Math.max(.25, value));
+    elements["image-preview"].style.transform = `scale(${previewZoom})`;
+    setText("preview-zoom-label", `${Math.round(previewZoom * 100)}%`);
+  }
+  async function openImagePreview(bucket, entry) {
+    closeDialogs(); clearPreview(); zoomPreview(1);
+    setText("image-preview-title", entry.key);
+    setText("image-preview-status", "正在读取图片，最大支持 20 MiB。");
+    elements["image-preview-dialog"].showModal();
+    const request = beginRequest("image-preview");
+    let reader;
+    try {
+      const type = imageType(entry.key);
+      if (!type || entry.size > 20 * 1024 ** 2) throw new Error("仅支持不超过 20 MiB 的 JPEG、PNG、GIF 和 WebP 图片。");
+      const result = await fetch(`/api/download?${new URLSearchParams({ bucket, key: entry.key })}`, { credentials: "same-origin", redirect: "error", signal: request.controller.signal });
+      if (!currentRequest("image-preview", request)) return;
+      if (!result.ok) {
+        if (result.status === 401) { showLogin("Your session has expired."); return; }
+        throw new Error("图片读取失败，请确认读取权限及文件是否存在。");
+      }
+      reader = result.body.getReader();
+      const chunks = []; let size = 0;
+      while (true) {
+        const part = await reader.read();
+        if (!currentRequest("image-preview", request)) return;
+        if (part.done) break;
+        size += part.value.byteLength;
+        if (size > 20 * 1024 ** 2) throw new Error("图片超过 20 MiB 预览限制，请使用下载。");
+        chunks.push(part.value);
+      }
+      if (!currentRequest("image-preview", request)) return;
+      previewURL = URL.createObjectURL(new Blob(chunks, { type }));
+      elements["image-preview"].src = previewURL;
+      elements["image-preview"].alt = entry.key;
+      elements["image-preview"].hidden = false;
+      setText("image-preview-status", "");
+    } catch (error) {
+      if (currentRequest("image-preview", request) && error.name !== "AbortError") setText("image-preview-status", error.message);
+    } finally {
+      if (reader) { try { await reader.cancel(); } catch (_) {} }
+      finishRequest("image-preview", request);
+    }
+  }
+  async function refreshObjectInfo() {
+    if (!infoObject) return;
+    const scope = infoObject;
+    const request = beginRequest("object-info");
+    setText("object-copy-status", "正在读取对象信息…");
+    try {
+      const info = await api(`/api/object-info?${new URLSearchParams({ bucket: scope.bucket, key: scope.entry.key })}`, {}, request);
+      if (!currentRequest("object-info", request) || infoObject !== scope) return;
+      if (!info || !Number.isSafeInteger(info.size) || info.size < 0 || typeof info.etag !== "string") throw new Error("对象信息响应无效。");
+      setText("object-info-size", formatSize(info.size)); setText("object-info-etag", info.etag || "—");
+      setText("object-info-modified", formatDate(info.modified)); setText("object-info-type", info.contentType || "—");
+      setText("object-copy-status", "已读取服务端对象信息。");
+    } catch (error) {
+      if (currentRequest("object-info", request) && !expired(error) && error.name !== "AbortError") setText("object-copy-status", error.message);
+    } finally { finishRequest("object-info", request); }
+  }
+  const favoriteObjects = new Map();
+  let bucketsLoaded = false;
+  let currentPage = "overview";
+  let recentBuckets = [];
+  function showPage(page) {
+    currentPage = page;
+    elements["favorites-page"].hidden = page !== "favorites";
+    renderFavorites();
+    elements["overview-panel"].hidden = page !== "overview";
+    elements["storage-browser"].hidden = page !== "objects";
+    elements["bucket-directory"].hidden = page !== "buckets";
+    elements["bucket-detail-navigation"].hidden = page !== "objects";
+    elements["task-page"].hidden = page !== "tasks";
+    setText("page-title", { overview: "概览", buckets: "存储桶列表", tasks: "任务中心", objects: "文件列表", favorites: "收藏路径" }[page]);
+    for (const name of ["overview", "buckets", "tasks", "favorites"]) {
+      elements[`nav-${name}`].setAttribute("aria-current", (name === page || (name === "buckets" && page === "objects")) ? "page" : "false");
+    }
+  }
+  let preferencesReady = Promise.resolve();
+  let preferenceQueue = Promise.resolve();
+  let preferenceSequence = 0;
+  function applyPreferences(data) {
+    if (!data || !Array.isArray(data.favorites) || !Array.isArray(data.recent)) throw new Error("Invalid preferences response");
+    favoriteObjects.clear();
+    for (const item of data.favorites) if (typeof item.bucket === "string" && typeof item.key === "string") favoriteObjects.set(favoriteID(item.bucket, item.key), item);
+    recentBuckets = data.recent.filter(item => typeof item === "string");
+    if (window.OCI18n) window.OCI18n.setLanguage(data.language);
+    renderFavorites(); renderOverview(); renderEntries();
+  }
+  async function loadPreferences() {
+    const request = beginRequest("preferences-load");
+    try {
+      const data = await api("/api/preferences", {}, request);
+      if (currentRequest("preferences-load", request)) applyPreferences(data);
+    } catch (error) {
+      if (currentRequest("preferences-load", request) && error.name !== "AbortError") setText("preferences-status", "Unable to load saved preferences. Refresh to retry.");
+    } finally { finishRequest("preferences-load", request); }
+  }
+  function savePreference(operation) {
+    const sequence = ++preferenceSequence;
+    const ready = preferencesReady;
+    const epoch = state.epoch;
+    preferenceQueue = preferenceQueue.catch(() => {}).then(async () => {
+      await ready;
+      if (!state.authenticated || state.epoch !== epoch) return;
+      const request = beginRequest("preferences-save");
+      try {
+        const data = await api("/api/preferences", { method: "PUT", headers: { "Content-Type": "application/json", "X-CSRF-Token": state.csrfToken }, body: JSON.stringify(operation) }, request);
+        if (currentRequest("preferences-save", request)) {
+          if (sequence === preferenceSequence) applyPreferences(data);
+          setText("preferences-status", "");
+        }
+      } catch (error) {
+        if (currentRequest("preferences-save", request) && error.name !== "AbortError") {
+          if (expired(error)) return;
+          setText("preferences-status", "Unable to confirm preferences were saved. Refresh to check.");
+        }
+      } finally { finishRequest("preferences-save", request); }
+    });
+  }
+  function favoriteID(bucket, key) { return JSON.stringify([bucket, key]); }
+  function renderFavorites() {
+    elements["favorite-list"].replaceChildren();
+    for (const item of favoriteObjects.values()) {
+      const row = document.createElement("div"); row.className = "favorite-row";
+      row.append(actionButton(`${item.bucket} / ${item.key}`, () => {
+        showPage("objects");
+        const slash = item.key.lastIndexOf("/");
+        selectLocation(item.bucket, slash < 0 ? "" : item.key.slice(0, slash + 1));
+      }, `打开收藏 ${item.key}`));
+      row.append(actionButton("移除", () => { favoriteObjects.delete(favoriteID(item.bucket, item.key)); savePreference({ action: "favorite-remove", bucket: item.bucket, key: item.key }); renderFavorites(); renderEntries(); }, `移除收藏 ${item.key}`));
+      elements["favorite-list"].append(row);
+    }
+    if (!favoriteObjects.size) elements["favorite-list"].textContent = "尚未收藏对象。可通过文件名旁的星标添加。";
+  }
+  function openObjectInfo(bucket, entry) {
+    closeDialogs();
+    infoObject = { bucket, entry };
+    elements["info-preview"].hidden = !imageType(entry.key);
+    elements["info-share"].hidden = !featureEnabled("sharing");
+    setText("object-info-type", "—");
+    setText("object-info-bucket", bucket);
+    setText("object-info-key", entry.key);
+    setText("object-info-size", formatSize(entry.size));
+    setText("object-info-modified", formatDate(entry.modified));
+    setText("object-info-etag", entry.etag || "—");
+    elements["object-local-link"].value = new URL(`/api/download?${new URLSearchParams({ bucket, key: entry.key })}`, window.location.origin).href;
+    setText("object-copy-status", "");
+    elements["object-info-dialog"].showModal();
+    elements["close-object-info"].focus();
+  }
+  let renameTarget = null;
+  function openRename(bucket, entry) {
+    if (state.readOnly || !featureEnabled("rename")) return;
+    closeDialogs();
+    renameTarget = { bucket, key: entry.key, etag: entry.etag };
+    setText("rename-source", entry.key);
+    elements["rename-name"].value = entry.key.slice(entry.key.lastIndexOf("/") + 1);
+    setText("rename-status", "");
+    elements["rename-submit"].disabled = false;
+    elements["rename-dialog"].showModal();
+    elements["rename-name"].focus();
+  }
+  elements["close-rename"].addEventListener("click", () => { if (!requests.has("rename")) elements["rename-dialog"].close(); });
+  elements["rename-form"].addEventListener("submit", async event => {
+    event.preventDefault();
+    if (!renameTarget || state.readOnly || !featureEnabled("rename") || requests.has("rename")) return;
+    const target = { ...renameTarget };
+    const name = elements["rename-name"].value;
+    if (!name || name.includes("/") || name.includes("\\")) { setText("rename-status", "请输入不含路径分隔符的文件名。"); return; }
+    const newKey = target.key.slice(0, target.key.lastIndexOf("/") + 1) + name;
+    if (newKey === target.key) { setText("rename-status", "请输入不同的文件名。"); return; }
+    const request = beginRequest("rename");
+    elements["rename-submit"].disabled = true;
+    setText("rename-status", "正在重命名…");
+    try {
+      await api("/api/objects/rename", mutationOptions({ ...target, newKey }), request);
+      if (!currentRequest("rename", request)) return;
+      elements["rename-dialog"].close();
+      selectedKeys.delete(target.key);
+      if (state.bucket === target.bucket) loadObjects(false);
+    } catch (error) {
+      if (currentRequest("rename", request) && !expired(error) && error.name !== "AbortError") {
+        setText("rename-status", error.message);
+        if (["rename_partial", "outcome_unknown"].includes(error.code)) renameTarget = null;
+      }
+    } finally { finishRequest("rename", request); elements["rename-submit"].disabled = !renameTarget; }
+  });
+
+  async function copyObjectLink() {
+    const epoch = state.epoch;
+    const value = elements["object-local-link"].value;
+    if (!state.authenticated || !value) return;
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(value);
+      if (state.epoch === epoch && elements["object-local-link"].value === value) setText("object-copy-status", "已复制本机会话下载链接。");
+    } catch (_) {
+      if (state.epoch !== epoch || elements["object-local-link"].value !== value) return;
+      elements["object-local-link"].focus(); elements["object-local-link"].select();
+      setText("object-copy-status", "请复制上方已选中的链接。");
+    }
+  }
+  function renderDirectory() {
+    elements["directory-create"].hidden = elements["open-create-bucket"].hidden;
+    setText("directory-status", elements["bucket-status"].textContent);
+    elements["directory-body"].replaceChildren();
+    const query = elements["bucket-search"].value.toLowerCase();
+    const buckets = state.buckets.filter(bucket => bucket.name.toLowerCase().includes(query));
+    for (const bucket of buckets) {
+      const row = document.createElement("tr");
+      const name = document.createElement("td");
+      const link = document.createElement("button");
+      link.className = "row-action";
+      link.type = "button";
+      link.setAttribute("data-no-i18n", ""); link.textContent = bucket.name;
+      link.addEventListener("click", () => { showPage("objects"); selectLocation(bucket.name, ""); });
+      name.append(link);
+      const account = state.account?.buckets.find(item => item.name === bucket.name);
+      row.append(name);
+      for (const value of [account ? `${account.read ? "可读" : "未标明读取"} · ${account.write ? "可写" : "未标明写入"}` : "摘要不可用", account ? formatSize(account.size) : "—", formatDate(bucket.created)]) {
+        const cell = document.createElement("td"); cell.textContent = value; row.append(cell);
+      }
+      const actions = document.createElement("td");
+      const settings = document.createElement("button"); settings.type = "button"; settings.className = "row-action"; settings.textContent = "配置管理";
+      settings.addEventListener("click", () => { showPage("objects"); selectLocation(bucket.name, ""); openSettings(); });
+      actions.append(settings); row.append(actions); elements["directory-body"].append(row);
+    }
+    setText("directory-count", `显示 ${buckets.length} 个桶 / 共 ${state.buckets.length} 个${!buckets.length ? " · 未找到匹配的存储桶" : ""}`);
+  }
+  function renderOverview() {
+    renderDirectory();
+    setText("overview-buckets", bucketsLoaded ? String(state.buckets.length) : "—");
+    const sizes = state.account?.buckets.map(bucket => bucket.size);
+    const total = sizes?.reduce((sum, size) => sum + size, 0);
+    const valid = sizes && sizes.every(size => Number.isSafeInteger(size) && size >= 0) && Number.isSafeInteger(total);
+    setText("overview-capacity", valid ? formatSize(total) : "—");
+    setText("overview-status", state.account ? (valid ? "容量仅覆盖账户摘要返回的桶，统计刷新周期由服务端决定。" : "服务端容量摘要不可用。") : state.accountMessage);
+    setText("overview-tasks", String(tasks.size));
+    setText("overview-connection", `${state.alias} · ${state.readOnly ? "只读模式" : "已开启写操作"}`);
+    elements["task-empty"].hidden = tasks.size > 0 || Boolean(jobsMessage);
+    elements["recent-buckets"].replaceChildren();
+    for (const bucket of recentBuckets) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "recent-bucket";
+      button.setAttribute("data-no-i18n", ""); button.textContent = bucket;
+      button.addEventListener("click", () => { showPage("objects"); selectLocation(bucket, ""); });
+      elements["recent-buckets"].append(button);
+    }
+    if (!recentBuckets.length) elements["recent-buckets"].textContent = "浏览存储桶后显示访问记录。";
+  }
   const selectedKeys = new Set();
   const tasks = new Map();
   const clearedTasks = new Set();
@@ -80,7 +350,7 @@
   let iamBindingNeedsRead = false;
   let pendingBindingRead = null;
   const settingLabels = { policy: "Bucket policy", versioning: "Versioning", lifecycle: "Lifecycle" };
-  const dateFormatter = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" });
+  function uiLocale() { return window.OCI18n?.language() === "en" ? "en-US" : "zh-CN"; }
 
   class APIError extends Error {
     constructor(status, code, message, restartRequired) {
@@ -207,6 +477,18 @@
       capabilities: {}, authenticated: false, readOnly: true, alias: "", csrfToken: "", buckets: [], bucket: "", prefix: "",
       entries: [], nextCursor: "", account: null, accountMessage: "Permission information is loading…",
     });
+    infoObject = null;
+    clearPreview();
+    favoriteObjects.clear();
+    renderFavorites();
+    elements["object-local-link"].value = "";
+    for (const id of ["object-info-bucket", "object-info-key", "object-info-size", "object-info-modified", "object-info-etag", "object-copy-status"]) setText(id, "");
+    bucketsLoaded = false;
+    elements["bucket-search"].value = "";
+    recentBuckets = [];
+    elements["console-navigation"].hidden = true;
+    elements["toggle-navigation"].hidden = true;
+    elements["console-shell"].classList.remove("connected");
     selectedKeys.clear();
     tasks.clear();
     clearedTasks.clear();
@@ -227,6 +509,7 @@
     elements["versions-key"].value = "";
     elements["versions-bucket"].value = "";
     elements["upload-form"].reset();
+    renderUploadSelection();
     clearSecret();
     elements["settings-document"].value = "";
     elements["settings-bucket"].value = "";
@@ -273,8 +556,13 @@
     elements["session-actions"].hidden = false;
     setText("alias-name", state.alias);
     setText("login-status", "");
+    elements["console-navigation"].hidden = false;
+    elements["toggle-navigation"].hidden = false;
+    elements["console-shell"].classList.add("connected");
+    showPage("overview");
     renderMode();
     renderLocation();
+    preferencesReady = loadPreferences();
     refreshAll();
   }
 
@@ -293,16 +581,17 @@
     if (size === 0) return "0 B";
     const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
     const unit = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1);
-    return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: unit === 0 ? 0 : 1 }).format(size / (1024 ** unit))} ${units[unit]}`;
+    return `${new Intl.NumberFormat(uiLocale(), { maximumFractionDigits: unit === 0 ? 0 : 1 }).format(size / (1024 ** unit))} ${units[unit]}`;
   }
 
   function formatDate(value) {
     const date = new Date(value);
     if (!value || !Number.isFinite(date.getTime()) || date.getUTCFullYear() < 1970) return "—";
-    return dateFormatter.format(date);
+    return new Intl.DateTimeFormat(uiLocale(), { year: "numeric", month: "short", day: "numeric" }).format(date);
   }
 
   function renderBuckets() {
+    renderOverview();
     elements["bucket-list"].replaceChildren();
     setText("bucket-count", String(state.buckets.length));
     for (const bucket of state.buckets) {
@@ -316,7 +605,7 @@
       symbol.textContent = "▤";
       const label = document.createElement("span");
       label.className = "bucket-name";
-      label.textContent = bucket.name;
+      label.setAttribute("data-no-i18n", ""); label.textContent = bucket.name;
       button.append(symbol, label);
       button.addEventListener("click", () => selectLocation(bucket.name, ""));
       elements["bucket-list"].append(button);
@@ -331,6 +620,7 @@
 
   function renderLocation() {
     const bucket = state.buckets.find(item => item.name === state.bucket);
+    if (state.bucket) elements["objects-title"].setAttribute("data-no-i18n", ""); else elements["objects-title"].removeAttribute("data-no-i18n");
     setText("objects-title", state.bucket || "Choose a bucket");
     const created = bucket ? formatDate(bucket.created) : "—";
     setText("bucket-created", created === "—" ? "" : `Created ${created}`);
@@ -344,6 +634,7 @@
   }
 
   function renderAccount() {
+    renderOverview();
     renderAccountBuckets();
     if (!state.bucket) {
       setText("account-status", "Select a bucket to view available permission information.");
@@ -408,6 +699,7 @@
         row.append(selection);
       }
       const nameCell = document.createElement("td");
+      nameCell.className = "file-name-cell";
       const name = document.createElement(entry.isPrefix ? "button" : "span");
       name.className = entry.isPrefix ? "entry-name prefix-button" : "entry-name";
       const symbol = document.createElement("span");
@@ -416,13 +708,32 @@
       symbol.textContent = entry.isPrefix ? "▱" : "·";
       const label = document.createElement("span");
       label.className = "entry-label";
-      label.textContent = entry.key.startsWith(state.prefix) ? entry.key.slice(state.prefix.length) || entry.key : entry.key;
+      label.setAttribute("title", entry.key);
+      label.setAttribute("data-no-i18n", ""); label.textContent = entry.key.startsWith(state.prefix) ? entry.key.slice(state.prefix.length) || entry.key : entry.key;
       name.append(symbol, label);
       if (entry.isPrefix) {
         name.type = "button";
         name.addEventListener("click", () => selectLocation(state.bucket, entry.key));
       }
       nameCell.append(name);
+      if (!entry.isPrefix) {
+        const bucket = state.bucket;
+        const shortcuts = document.createElement("span"); shortcuts.className = "file-shortcuts";
+        const copy = actionButton("⧉", () => { openObjectInfo(bucket, entry); copyObjectLink(); }, `复制文件链接 ${entry.key}`);
+        copy.setAttribute("title", "复制本机会话下载链接");
+        const favorite = actionButton(favoriteObjects.has(favoriteID(bucket, entry.key)) ? "★" : "☆", () => {
+          const id = favoriteID(bucket, entry.key);
+          if (favoriteObjects.has(id)) favoriteObjects.delete(id); else favoriteObjects.set(id, { bucket, key: entry.key });
+          const saved = favoriteObjects.has(id);
+          savePreference({ action: saved ? "favorite-add" : "favorite-remove", bucket, key: entry.key });
+          favorite.textContent = saved ? "★" : "☆"; favorite.setAttribute("aria-pressed", String(saved)); renderFavorites();
+        }, `收藏 ${entry.key}`);
+        favorite.setAttribute("title", "收藏 / 取消收藏"); favorite.setAttribute("aria-pressed", String(favoriteObjects.has(favoriteID(bucket, entry.key))));
+        const rename = actionButton("✎", () => openRename(bucket, entry), `重命名 ${entry.key}`);
+        rename.setAttribute("title", "重命名对象");
+        rename.disabled = state.readOnly || !featureEnabled("rename");
+        shortcuts.append(rename, copy, favorite); nameCell.append(shortcuts);
+      }
       const size = document.createElement("td");
       size.textContent = entry.isPrefix ? "—" : formatSize(entry.size);
       const modified = document.createElement("td");
@@ -436,24 +747,43 @@
         const download = document.createElement("a");
         download.className = "download-link";
         download.href = downloadURL(entry.key);
-        download.textContent = "Download ↓";
+        download.textContent = "下载";
         download.setAttribute("aria-label", `Download ${entry.key}`);
         download.target = "_blank";
         download.rel = "noopener";
         const bucket = state.bucket;
         download.addEventListener("click", event => prepareDownload(event, download, bucket, entry.key));
-        actions.append(download);
-        if (featureEnabled("versions")) actions.append(actionButton("Versions", () => openVersions(bucket, entry.key), `Read versions of ${entry.key}`));
-        if (featureEnabled("sharing")) actions.append(actionButton("Share", () => openShare({ bucket, key: entry.key }), `Share ${entry.key}`));
+        if (imageType(entry.key)) actions.append(actionButton("预览", () => openImagePreview(bucket, entry), `预览图片 ${entry.key}`));
+        actions.append(actionButton("详情", () => openObjectInfo(bucket, entry), `文件详情 ${entry.key}`), download);
+        const more = document.createElement("details"); more.className = "file-more";
+        const summary = document.createElement("summary"); summary.textContent = "更多";
+        const menu = document.createElement("div"); menu.className = "file-more-menu";
+        more.append(summary, menu);
+        more.addEventListener("toggle", () => {
+          if (!more.open) return;
+          const rect = summary.getBoundingClientRect();
+          menu.style.left = `${Math.max(8, Math.min(rect.right - 176, window.innerWidth - 184))}px`;
+          menu.style.top = `${rect.bottom + 6}px`;
+          const height = menu.getBoundingClientRect().height;
+          if (rect.bottom + 6 + height > window.innerHeight) menu.style.top = `${Math.max(8, rect.top - height - 6)}px`;
+        });
+        more.addEventListener("keydown", event => { if (event.key === "Escape") { more.open = false; summary.focus(); } });
+        menu.addEventListener("click", () => { more.open = false; });
+
+        actions.append(more);
+        if (featureEnabled("versions")) menu.append(actionButton("历史版本", () => openVersions(bucket, entry.key), `Read versions of ${entry.key}`));
+        if (featureEnabled("sharing")) menu.append(actionButton("分享链接", () => openShare({ bucket, key: entry.key }), `Share ${entry.key}`));
         if (!state.readOnly) {
           const remove = document.createElement("button");
           remove.type = "button";
           remove.className = "row-delete";
-          remove.textContent = "Delete";
+          remove.textContent = "删除";
           remove.setAttribute("aria-label", `Review deletion of ${entry.key}`);
           remove.addEventListener("click", () => prepareDeletion({ bucket, keys: [entry.key] }));
-          actions.append(remove);
+          if (menu.children.length) menu.append(remove);
+          else { remove.className = "row-action row-delete"; actions.append(remove); }
         }
+        if (!menu.children.length) more.hidden = true;
         action.append(actions);
       }
       row.append(nameCell, size, modified, action);
@@ -483,6 +813,9 @@
     cancelRequest("objects");
     state.bucket = bucket;
     state.prefix = prefix;
+    if (currentPage === "objects") { recentBuckets = [bucket, ...recentBuckets.filter(name => name !== bucket)].slice(0, 20); savePreference({ action: "visit", bucket }); }
+    state.capabilities.versions = false; state.capabilities.versioning = false;
+    loadCapabilities(bucket);
     state.entries = [];
     state.nextCursor = "";
     selectedKeys.clear();
@@ -541,6 +874,8 @@
   }
 
   async function loadBuckets() {
+    bucketsLoaded = false;
+    renderOverview();
     const request = beginRequest("buckets");
     setText("bucket-status", "Loading buckets…");
     try {
@@ -549,6 +884,7 @@
       if (!result || !Array.isArray(result.buckets) || result.buckets.some(bucket => !bucket || typeof bucket.name !== "string")) {
         throw new APIError(0, "InvalidBuckets", "The local console returned an invalid bucket list.");
       }
+      bucketsLoaded = true;
       state.buckets = result.buckets;
       setText("bucket-status", state.buckets.length ? "" : "No buckets are available to this identity.");
       const selected = state.buckets.find(bucket => bucket.name === state.bucket);
@@ -578,6 +914,7 @@
         showEmpty(error.status === 403 ? "Access restricted" : "Buckets unavailable", "Use Refresh to retry the bucket list. OC uses the identity configured for this alias.");
       }
     } finally {
+      if (currentRequest("buckets", request)) renderDirectory();
       finishRequest("buckets", request);
     }
   }
@@ -616,12 +953,14 @@
   }
 
   function closeDialogs() {
+    clearPreview();
+    cancelRequest("object-info");
     clearSecret();
     clearShare();
     clearIAM();
     clearStoppedCredential();
     cancelRequest("versions");
-    for (const id of ["upload-dialog", "replace-dialog", "delete-dialog", "exact-delete-dialog", "settings-dialog", "settings-read-dialog", "settings-review-dialog", "account-dialog", "bucket-dialog", "versions-dialog", "share-dialog", "archive-dialog", "iam-dialog", "stopped-credential-dialog"]) {
+    for (const id of ["rename-dialog", "image-preview-dialog", "object-info-dialog", "upload-dialog", "replace-dialog", "delete-dialog", "exact-delete-dialog", "settings-dialog", "settings-read-dialog", "settings-review-dialog", "account-dialog", "bucket-dialog", "versions-dialog", "share-dialog", "archive-dialog", "iam-dialog", "stopped-credential-dialog"]) {
       if (elements[id].open) elements[id].close();
     }
   }
@@ -758,6 +1097,7 @@
   }
 
   function renderTasks() {
+    renderOverview();
     const focusedAction = document.activeElement?.dataset?.taskAction;
     const focusedTask = document.activeElement?.dataset?.taskId;
     let restoreFocus = null;
@@ -801,7 +1141,7 @@
       heading.append(label, actions);
       const scope = document.createElement("p");
       scope.className = "task-scope";
-      scope.textContent = `${job.bucket}\n${job.kind === "upload" ? job.key || "" : job.prefix ? `Prefix: ${job.prefix}` : `${job.count} explicitly selected object keys`}`;
+      scope.setAttribute("data-no-i18n", ""); scope.textContent = `${job.bucket}\n${job.kind === "upload" ? job.key || "" : job.prefix ? `Prefix: ${job.prefix}` : `${job.count} explicitly selected object keys`}`;
       const status = document.createElement("span");
       status.className = "task-state";
       status.textContent = statusLabel(task);
@@ -846,7 +1186,7 @@
         const list = document.createElement("ul");
         for (const item of job.items) {
           const line = document.createElement("li");
-          line.textContent = `${item.key} — ${item.status}${item.status === "unknown" ? "; result is unconfirmed, check storage before retrying" : ""}${item.error?.message ? `: ${item.error.message}` : ""}`;
+          line.setAttribute("data-no-i18n", ""); line.textContent = `${item.key} — ${item.status}${item.status === "unknown" ? "; result is unconfirmed, check storage before retrying" : ""}${item.error?.message ? `: ${item.error.message}` : ""}`;
           list.append(line);
         }
         detailsElement.append(summary, list);
@@ -919,12 +1259,22 @@
     }
   }
 
+  function renderUploadSelection() {
+    const file = elements["upload-file"].files[0];
+    elements["upload-selection"].hidden = !file;
+    setText("upload-selected-name", file ? file.name : "");
+    setText("upload-selected-size", file ? formatSize(file.size) : "");
+    setText("upload-file-summary", file ? "已选择文件，可重新选择或从下方列表移除。" : "选择一个文件，然后确认目标桶与对象路径。");
+  }
+
   function openUpload() {
     if (state.readOnly) return;
     uploadLocation = { bucket: state.bucket, prefix: state.prefix };
     uploadDraft = null;
     suggestedUploadKey = "";
+    setText("upload-file-summary", "选择一个文件，然后确认目标桶与对象路径。");
     elements["upload-form"].reset();
+    renderUploadSelection();
     elements["upload-bucket"].value = uploadLocation.bucket;
     setText("upload-status", `Maximum file size: ${formatSize(state.maxUploadSize)}.`);
     elements["upload-key"].value = uploadLocation.prefix;
@@ -1073,7 +1423,7 @@
     elements["delete-items"].replaceChildren();
     for (const item of job.items || []) {
       const line = document.createElement("li");
-      line.textContent = item.key;
+      line.setAttribute("data-no-i18n", ""); line.textContent = item.key;
       elements["delete-items"].append(line);
     }
     if (expiredPlan) {
@@ -1205,7 +1555,7 @@
     if (!state.authenticated || !elements["settings-dialog"].open || pendingSettingRead || requests.has("setting-read") || requests.has("setting-write")) return;
     const bucket = approvedTarget?.bucket || elements["settings-bucket"].value;
     const kind = approvedTarget?.kind || elements["settings-kind"].value;
-    if (!bucket || !Object.hasOwn(settingLabels, kind)) return;
+    if (!bucket || !Object.hasOwn(settingLabels, kind) || (kind === "versioning" && state.capabilities.versioning !== true)) return;
     if (!approvedTarget && loadedSetting && elements["settings-document"].value !== loadedSetting.document) {
       pendingSettingRead = { bucket, kind };
       setText("settings-read-current", `${loadedSetting.bucket} · ${settingLabels[loadedSetting.kind]}`);
@@ -1253,6 +1603,21 @@
     if (!remove && !document.trim()) {
       setText("settings-status", "Enter the complete configuration, or use Review removal for a stored policy or lifecycle.");
       return;
+    }
+    if (!remove && loadedSetting.kind === "policy") {
+      try {
+        const policy = JSON.parse(document);
+        const statements = Array.isArray(policy.Statement) ? policy.Statement : [policy.Statement];
+        const mismatch = statements.some(statement => {
+          const resources = Array.isArray(statement?.Resource) ? statement.Resource : [statement?.Resource];
+          return resources.some(resource => {
+            if (typeof resource !== "string" || !resource.startsWith("arn:aws:s3:::")) return false;
+            const bucket = resource.slice(13).split("/")[0];
+            return bucket !== loadedSetting.bucket && !/[?*]/.test(bucket);
+          });
+        });
+        if (mismatch) { setText("settings-status", "The policy Resource refers to a different bucket. Use the target bucket name in every S3 resource ARN."); return; }
+      } catch { setText("settings-status", "Enter a valid JSON policy document."); return; }
     }
     settingDraft = { bucket: loadedSetting.bucket, kind: loadedSetting.kind, document: remove ? "" : document, revision: loadedSetting.revision, remove, confirm: true };
     setText("settings-review-bucket", settingDraft.bucket);
@@ -1450,6 +1815,7 @@
     }
   }
 
+  let capabilityBucket = "";
   function featureEnabled(name) {
     return state.authenticated && state.capabilities[name] === true;
   }
@@ -1458,20 +1824,21 @@
     return state.authenticated && (!state.readOnly || featureEnabled("archives"));
   }
 
-  async function loadCapabilities() {
-    if (!state.authenticated || requests.has("capabilities")) return;
+  async function loadCapabilities(bucket = state.bucket) {
+    if (!state.authenticated || (requests.has("capabilities") && bucket === capabilityBucket)) return;
+    capabilityBucket = bucket;
     const request = beginRequest("capabilities");
     try {
-      const result = await api("/api/capabilities", {}, request);
+      const result = await api(bucket ? `/api/capabilities?${new URLSearchParams({ bucket })}` : "/api/capabilities", {}, request);
       if (!currentRequest("capabilities", request)) return;
-      state.capabilities = result && typeof result === "object" ? result : {};
+      state.capabilities = result && typeof result === "object" ? { ...result } : {};
       renderMode();
       renderEntries();
       if (featureEnabled("archives")) loadArchiveList();
     } catch (error) {
       if (!currentRequest("capabilities", request) || error.name === "AbortError") return;
       if (expired(error)) return;
-      state.capabilities = {};
+      state.capabilities = { versions: false, versioning: false };
       renderMode();
     } finally {
       finishRequest("capabilities", request);
@@ -1481,10 +1848,16 @@
   function updateFeatures() {
     const writable = state.authenticated && !state.readOnly;
     elements["open-create-bucket"].hidden = !featureEnabled("bucketManagement") || !writable;
+    elements["directory-create"].hidden = elements["open-create-bucket"].hidden;
     elements["open-delete-bucket"].hidden = !featureEnabled("bucketManagement") || !writable;
     elements["open-delete-bucket"].disabled = !featureEnabled("bucketManagement") || !writable;
     elements["open-versions"].hidden = !featureEnabled("versions");
     elements["open-versions"].disabled = !featureEnabled("versions");
+    const versionOption = elements["setting-versioning-option"];
+    if (versionOption) { versionOption.hidden = state.capabilities.versioning !== true; versionOption.disabled = state.capabilities.versioning !== true; }
+    if (state.capabilities.versioning !== true && elements["settings-kind"].value === "versioning") elements["settings-kind"].value = "policy";
+    if (!featureEnabled("versions")) { cancelRequest("versions"); if (elements["versions-dialog"].open) elements["versions-dialog"].close(); versionEntries = []; versionCursor = ""; }
+
     elements["open-iam"].hidden = !featureEnabled("iam");
     elements["read-toolbar"].hidden = !featureEnabled("archives");
     const archiveBytes = Number.isSafeInteger(state.capabilities.maxArchiveSize) && state.capabilities.maxArchiveSize > 0 ? state.capabilities.maxArchiveSize : 5 * 1024 ** 3;
@@ -1527,6 +1900,7 @@
     button.type = "button";
     button.className = "row-action";
     button.textContent = label;
+    if (label.includes("/") || label === infoObject?.key || [...favoriteObjects.values()].some(item => item.key === label)) button.setAttribute("data-no-i18n", "");
     button.setAttribute("aria-label", ariaLabel);
     button.addEventListener("click", callback);
     return button;
@@ -1620,7 +1994,8 @@
       renderVersions();
     } catch (error) {
       if (!currentRequest("versions", request) || error.name === "AbortError") return;
-      if (!expired(error)) setText("versions-status", error.message);
+      if (error.code === "versions_unsupported" || error.status === 501) { state.capabilities.versions = false; state.capabilities.versioning = false; updateFeatures(); renderEntries(); }
+      else if (!expired(error)) setText("versions-status", error.message);
     } finally { finishRequest("versions", request); }
   }
 
@@ -1631,7 +2006,7 @@
       card.className = "record-card";
       const title = document.createElement("p");
       title.className = "scope-key";
-      title.textContent = entry.versionId || "Unversioned object";
+      title.setAttribute("data-no-i18n", ""); title.textContent = entry.versionId || "Unversioned object";
       const detail = document.createElement("p");
       detail.className = "subtle";
       detail.textContent = `${entry.latest ? "Latest · " : ""}${entry.deleteMarker ? "Delete marker" : formatSize(entry.size)} · ${formatDate(entry.modified)}`;
@@ -1745,7 +2120,7 @@
     setText("archive-scope", draft.refs ? `${draft.refs.length} selected ${draft.refs.length === 1 ? "object" : "objects"}` : `Bucket ${draft.bucket}\nPrefix ${draft.prefix || "(all objects)"}`);
     for (const ref of draft.refs || []) {
       const item = document.createElement("li");
-      item.textContent = `${ref.bucket}/${ref.key}${ref.versionId !== undefined ? ` · version ${ref.versionId || "null"}` : " · current object"}`;
+      item.setAttribute("data-no-i18n", ""); item.textContent = `${ref.bucket}/${ref.key}${ref.versionId !== undefined ? ` · version ${ref.versionId || "null"}` : " · current object"}`;
       elements["archive-items"].append(item);
     }
     setText("archive-status", draft.refs ? "The selected keys are fixed. Current objects are resolved during preparation." : "Preparation lists this prefix once and fixes the archive manifest before reading object data.");
@@ -1763,7 +2138,7 @@
       elements["archive-items"].replaceChildren();
       for (const entry of archiveJob.entries) {
         const item = document.createElement("li");
-        item.textContent = `${entry.bucket}/${entry.key} · ${formatSize(entry.size)} · ${entry.versionId ? `version ${entry.versionId}` : "current object (fixed content)"} → ${entry.archivePath}`;
+        item.setAttribute("data-no-i18n", ""); item.textContent = `${entry.bucket}/${entry.key} · ${formatSize(entry.size)} · ${entry.versionId ? `version ${entry.versionId}` : "current object (fixed content)"} → ${entry.archivePath}`;
         elements["archive-items"].append(item);
       }
     }
@@ -1975,6 +2350,7 @@
     input.autocomplete = options.secret ? "new-password" : "off";
     input.spellcheck = false;
     input.required = options.required !== false;
+    if (options.secret) { input.minLength = 8; input.maxLength = 128; input.setAttribute("placeholder", "At least 8 characters; leave blank to generate when optional"); }
     input.value = options.value || "";
     if (options.multiline) input.rows = 5;
     label.setAttribute("for", input.id);
@@ -2050,7 +2426,7 @@
         const card = document.createElement("article");
         card.className = "record-card";
         const title = document.createElement("h3");
-        title.textContent = record.name || record.accessKey || "Unnamed record";
+        title.setAttribute("data-no-i18n", ""); title.textContent = record.name || record.accessKey || "Unnamed record";
         card.append(title);
         const detail = document.createElement("p");
         detail.className = "subtle";
@@ -2060,7 +2436,7 @@
           const policy = document.createElement("pre");
           policy.className = "scope-key setting-preview";
           const value = record.document || record.policy;
-          policy.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+          policy.setAttribute("data-no-i18n", ""); policy.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
           card.append(policy);
         }
         if (!state.readOnly && kind !== "policies") card.append(actionButton("Choose for change", () => {
@@ -2091,6 +2467,10 @@
     if (bindingAction()) body.revision = iamBinding.revision;
     if (action === "service-account.create" && body.secretKey && !body.accessKey) {
       setText("iam-action-status", "Enter an access key when supplying a secret key, or leave both blank to generate the credential.");
+      return;
+    }
+    if (body.secretKey && (body.secretKey.length < 8 || body.secretKey.length > 128)) {
+      setText("iam-action-status", "Secret key must contain 8–128 characters. Leave it blank to generate one when optional.");
       return;
     }
     const target = action === "service-account.create" ? body.user : action.startsWith("user.") ? body.user : action.startsWith("group.") ? body.group : body.accessKey;
@@ -2265,6 +2645,7 @@
     setText("reveal-stopped-secret", elements["stopped-result-secret"].type === "password" ? "Show secret" : "Hide secret");
   });
 
+  elements["settings-bucket"].addEventListener("change", () => loadCapabilities(elements["settings-bucket"].value));
   elements["open-settings"].addEventListener("click", openSettings);
   elements["close-settings"].addEventListener("click", closeSettings);
   elements["settings-dialog"].addEventListener("cancel", event => { event.preventDefault(); closeSettings(); });
@@ -2352,7 +2733,7 @@
     }
   });
 
-  elements.refresh.addEventListener("click", refreshAll);
+  elements.refresh.addEventListener("click", () => { if (!state.authenticated || consoleStopped) return; preferencesReady = preferenceQueue.catch(() => {}).then(loadPreferences); refreshAll(); });
   elements["prefix-form"].addEventListener("submit", event => {
     event.preventDefault();
     selectLocation(state.bucket, elements["prefix-input"].value);
@@ -2366,6 +2747,7 @@
   elements["upload-dialog"].addEventListener("cancel", event => { event.preventDefault(); closeUpload(); });
   elements["upload-file"].addEventListener("change", () => {
     const file = elements["upload-file"].files[0];
+    renderUploadSelection();
     if (!file || !uploadLocation) return;
     const input = elements["upload-key"];
     if (input.value === "" || input.value === uploadLocation.prefix || input.value === suggestedUploadKey) {
@@ -2373,6 +2755,15 @@
       input.value = suggestedUploadKey;
     }
     setText("upload-status", `${formatSize(file.size)} selected. Maximum file size: ${formatSize(state.maxUploadSize)}.`);
+  });
+  elements["remove-upload-file"].addEventListener("click", () => {
+    if (requests.has("upload-prepare")) return;
+    elements["upload-file"].value = "";
+    if (elements["upload-key"].value === suggestedUploadKey) elements["upload-key"].value = uploadLocation?.prefix || "";
+    suggestedUploadKey = "";
+    renderUploadSelection();
+    setText("upload-status", "已移除待上传文件，请重新选择。");
+    elements["upload-file"].focus();
   });
   elements["upload-form"].addEventListener("submit", event => {
     event.preventDefault();
@@ -2455,6 +2846,42 @@
     }
     renderTasks();
     schedulePoll();
+  });
+
+  elements["refresh-object-info"].addEventListener("click", refreshObjectInfo);
+  elements["info-preview"].addEventListener("click", () => { if (infoObject) openImagePreview(infoObject.bucket, infoObject.entry); });
+  elements["info-share"].addEventListener("click", () => { if (infoObject) openShare({ bucket: infoObject.bucket, key: infoObject.entry.key }); });
+  const closeImagePreview = () => { clearPreview(); elements["image-preview-dialog"].close(); };
+  elements["close-image-preview"].addEventListener("click", closeImagePreview);
+  elements["image-preview-dialog"].addEventListener("cancel", event => { event.preventDefault(); closeImagePreview(); });
+  elements["image-preview"].addEventListener("error", () => { if (previewURL) { clearPreview(); setText("image-preview-status", "图片格式无法解码，请下载查看。"); } });
+  elements["preview-zoom-in"].addEventListener("click", () => zoomPreview(previewZoom + .25));
+  elements["preview-zoom-out"].addEventListener("click", () => zoomPreview(previewZoom - .25));
+  elements["preview-zoom-reset"].addEventListener("click", () => zoomPreview(1));
+  window.addEventListener("oc-language-change", event => { if (state.authenticated) { renderOverview(); renderEntries(); renderLocation(); savePreference({ action: "language", language: event.detail }); } });
+  elements["nav-favorites"].addEventListener("click", () => showPage("favorites"));
+  elements["close-object-info"].addEventListener("click", () => { cancelRequest("object-info"); elements["object-info-dialog"].close(); });
+  elements["copy-object-link"].addEventListener("click", copyObjectLink);
+  elements["bucket-search"].addEventListener("input", renderDirectory);
+  elements["directory-refresh"].addEventListener("click", refreshAll);
+  elements["directory-account"].addEventListener("click", openAccount);
+  elements["directory-create"].addEventListener("click", () => openBucketAction(false));
+  elements["back-to-buckets"].addEventListener("click", () => showPage("buckets"));
+  elements["bucket-files-tab"].addEventListener("click", () => showPage("objects"));
+  elements["bucket-settings-tab"].addEventListener("click", openSettings);
+  elements["bucket-refresh"].addEventListener("click", () => loadObjects(false));
+  elements["nav-overview"].addEventListener("click", () => showPage("overview"));
+  const browsePage = () => {
+    showPage("buckets");
+    renderOverview();
+  };
+  elements["nav-buckets"].addEventListener("click", browsePage);
+  elements["overview-browse"].addEventListener("click", browsePage);
+  elements["nav-tasks"].addEventListener("click", () => showPage("tasks"));
+  elements["nav-account"].addEventListener("click", openAccount);
+  elements["toggle-navigation"].addEventListener("click", () => {
+    const collapsed = elements["console-shell"].classList.toggle("navigation-collapsed");
+    elements["toggle-navigation"].setAttribute("aria-expanded", String(!collapsed));
   });
 
   async function restoreSession() {

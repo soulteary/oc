@@ -16,7 +16,7 @@ import (
 )
 
 func (s *Server) isFeatureRoute(path string) bool {
-	return path == "/api/buckets/create" || path == "/api/buckets/delete" || path == "/api/versions" || path == "/api/shares"
+	return path == "/api/objects/rename" || path == "/api/buckets/create" || path == "/api/buckets/delete" || path == "/api/versions" || path == "/api/shares"
 }
 
 func (s *Server) serveFeatures(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +53,10 @@ func (s *Server) serveFeatures(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/api/shares" {
 		s.createShare(w, r)
+		return
+	}
+	if r.URL.Path == "/api/objects/rename" {
+		s.renameObject(w, r, sess)
 		return
 	}
 	if s.writer == nil {
@@ -184,4 +188,38 @@ func (s *Server) createShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, share)
+}
+
+func (s *Server) renameObject(w http.ResponseWriter, r *http.Request, sess *session) {
+	if s.writer == nil {
+		writeError(w, 403, "writes_disabled", "Writes are disabled.")
+		return
+	}
+	backend, ok := s.backend.(consoleapi.RenameBackend)
+	if !ok {
+		writeError(w, 501, "rename_unsupported", "This connection does not support renaming.")
+		return
+	}
+	var args struct {
+		Bucket string `json:"bucket"`
+		Key    string `json:"key"`
+		NewKey string `json:"newKey"`
+		ETag   string `json:"etag"`
+	}
+	if !decodeJSON(w, r, &args, 4096) {
+		return
+	}
+	if !validBucket(args.Bucket) || args.Key == "" || args.NewKey == "" || !validKey(args.Key) || !validKey(args.NewKey) || args.Key == args.NewKey || args.ETag == "" {
+		writeError(w, 400, "invalid_input", "Choose a different valid object name.")
+		return
+	}
+	if !s.startSettingsWrite(w, sess, false) {
+		return
+	}
+	defer s.finishSettingsWrite(false)
+	if err := backend.RenameObject(r.Context(), args.Bucket, args.Key, args.NewKey, args.ETag); err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]string{"outcome": "confirmed"})
 }

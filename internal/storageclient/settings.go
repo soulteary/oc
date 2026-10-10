@@ -193,6 +193,42 @@ func (c *Client) BucketSetting(ctx context.Context, bucket, kind string) (consol
 	return setting, err
 }
 
+// Validate concrete resource bucket names without rewriting the user's policy.
+func validatePolicyBucket(bucket, document string) error {
+	var policy struct{ Statement json.RawMessage }
+	if json.Unmarshal([]byte(document), &policy) != nil {
+		return invalidRequest()
+	}
+	var statements []struct{ Resource json.RawMessage }
+	if json.Unmarshal(policy.Statement, &statements) != nil {
+		var statement struct{ Resource json.RawMessage }
+		if json.Unmarshal(policy.Statement, &statement) != nil {
+			return nil
+		}
+		statements = append(statements, statement)
+	}
+	for _, statement := range statements {
+		var resources []string
+		if json.Unmarshal(statement.Resource, &resources) != nil {
+			var resource string
+			if json.Unmarshal(statement.Resource, &resource) != nil {
+				continue
+			}
+			resources = []string{resource}
+		}
+		for _, resource := range resources {
+			if !strings.HasPrefix(resource, "arn:aws:s3:::") {
+				continue
+			}
+			name, _, _ := strings.Cut(strings.TrimPrefix(resource, "arn:aws:s3:::"), "/")
+			if name != bucket && !strings.ContainsAny(name, "*?") {
+				return &consoleapi.Error{Status: 400, Code: "policy_bucket_mismatch", Message: "The policy Resource refers to a different bucket. Use the target bucket name in every S3 resource ARN."}
+			}
+		}
+	}
+	return nil
+}
+
 func validSettingDocument(kind, document string) bool {
 	limit := maxSettingDocument
 	if kind == "policy" {
@@ -273,6 +309,11 @@ func (c *Client) SaveBucketSetting(ctx context.Context, bucket, kind, document, 
 	result := consoleapi.BucketSetting{}
 	if !validSettingTarget(bucket, kind) || !validRevision(revision) || (remove && (document != "" || kind == "versioning")) || (!remove && !validSettingDocument(kind, document)) {
 		return result, invalidRequest()
+	}
+	if kind == "policy" && !remove {
+		if err := validatePolicyBucket(bucket, document); err != nil {
+			return result, err
+		}
 	}
 	setting, observation, err := c.bucketSetting(ctx, bucket, kind)
 	if err != nil {

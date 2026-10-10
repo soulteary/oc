@@ -315,3 +315,47 @@ func (c *Client) DeleteObject(ctx context.Context, bucket, key string) error {
 func (c *Client) ScanObjects(ctx context.Context, bucket, prefix, cursor string, limit int) (consoleapi.Page, error) {
 	return c.listObjects(ctx, bucket, prefix, cursor, limit, "")
 }
+
+// RenameObject uses a conditional server-side copy, followed by deletion. S3
+// does not offer an atomic rename; failed deletion leaves both objects intact.
+func (c *Client) RenameObject(ctx context.Context, bucket, key, newKey, etag string) error {
+	etag = canonicalETag(etag)
+	if err := c.ready(ctx); err != nil {
+		return err
+	}
+	if !validMutationTarget(bucket, key) || !validMutationTarget(bucket, newKey) || key == newKey || !validETag(etag) {
+		return invalidRequest()
+	}
+	if err := c.checkCreate(ctx, bucket, newKey); err != nil {
+		return err
+	}
+	source, err := c.s3.StatObject(ctx, bucket, key, minio.StatObjectOptions{})
+	if err != nil {
+		return normalizeError(err)
+	}
+	if source.ETag != etag {
+		return referenceChanged()
+	}
+	if source.Size > maxUploadSize {
+		return &consoleapi.Error{Status: 413, Code: "rename_too_large", Message: "Rename supports objects up to 5 GiB."}
+	}
+	opts := minio.PutObjectOptions{}
+	opts.SetMatchETagExcept("*")
+	core := minio.Core{Client: c.s3}
+	copied, err := core.CopyObject(ctx, bucket, key, bucket, newKey, map[string]string{"If-None-Match": "*", "X-Amz-Copy-Source-If-Match": "\"" + etag + "\""}, minio.CopySrcOptions{MatchETag: etag}, opts)
+	if err != nil {
+		return mutationFailure(err)
+	}
+	if copied.ETag == "" {
+		return outcomeUnknown()
+	}
+	// Recheck the source before removing it. Never remove a changed source.
+	source, err = c.s3.StatObject(ctx, bucket, key, minio.StatObjectOptions{})
+	if err != nil || source.ETag != etag {
+		return &consoleapi.Error{Status: 409, Code: "rename_partial", Message: "The new object was copied, but the source changed or could not be checked. Both names may exist; refresh before retrying."}
+	}
+	if err := c.DeleteObject(ctx, bucket, key); err != nil {
+		return &consoleapi.Error{Status: 502, Code: "rename_partial", Message: "The new object was copied, but source deletion was not confirmed. Check both names before retrying."}
+	}
+	return nil
+}

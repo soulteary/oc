@@ -20,6 +20,9 @@ import (
 )
 
 type options struct {
+	dataDir                                                                  string
+	containerListen                                                          bool
+	publicURL                                                                string
 	configDir, alias, address, s3CA, adminURL, adminCA, shareURL, archiveDir string
 	allowWrites                                                              bool
 	allowSharing                                                             bool
@@ -140,4 +143,18 @@ func validateListenAddress(address string) error {
 		return errors.New("--address port must be between 0 and 65535")
 	}
 	return nil
+}
+
+// Container mode separates the bind address from the browser origin.
+func validateContainerListenAddress(address string) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return errors.New("container address must be 0.0.0.0:PORT or [::]:PORT")
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil || !ip.IsUnspecified() || ip.Zone() != "" {
+		return errors.New("container address must use 0.0.0.0 or ::")
+	}
+	_, port, _ := net.SplitHostPort(address)
+	return validateListenAddress(net.JoinHostPort("127.0.0.1", port))
 }

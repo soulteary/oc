@@ -197,3 +197,16 @@ func TestConfigDirectoryAndInformationalFlags(t *testing.T) {
 		}
 	}
 }
+
+func TestContainerListenAddress(t *testing.T) {
+	for _, address := range []string{"0.0.0.0:9090", "[::]:9090"} {
+		if err := validateContainerListenAddress(address); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, address := range []string{"otterio:9090", "127.0.0.1:9090", "0.0.0.0:65536", ":9090"} {
+		if validateContainerListenAddress(address) == nil {
+			t.Fatalf("accepted %s", address)
+		}
+	}
+}

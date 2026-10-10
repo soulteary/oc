@@ -206,3 +206,88 @@ func TestFeatureLogoutCancelsActiveVersionPage(t *testing.T) {
 		t.Fatal("session logout did not cancel versions")
 	}
 }
+
+type detectingVersionBackend struct {
+	*fakeFeatureBackend
+	probed []string
+}
+
+func (b *detectingVersionBackend) VersionSupported(_ context.Context, bucket string) (bool, error) {
+	b.probed = append(b.probed, bucket)
+	if bucket == "denied-bucket" {
+		return false, &consoleapi.Error{Status: 403, Code: "AccessDenied", Message: "denied"}
+	}
+	return bucket == "supported-bucket", nil
+}
+func TestCapabilitiesUseServerVersionProbeForExactBucket(t *testing.T) {
+	b := &detectingVersionBackend{fakeFeatureBackend: &fakeFeatureBackend{fakeMutationBackend: &fakeMutationBackend{fakeBackend: &fakeBackend{}}}}
+	s, err := New(Config{Backend: b, Alias: "local", BaseURL: testOrigin, LoginCode: "test-login-code"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	cookie, _ := signIn(t, s)
+	if w := jobRequest(s, "GET", "/api/capabilities?bucket=supported-bucket", "", nil, ""); w.Code != 401 {
+		t.Fatal("anonymous probe")
+	}
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{{"/api/capabilities", false}, {"/api/capabilities?bucket=supported-bucket", true}, {"/api/capabilities?bucket=unsupported-bucket", false}, {"/api/capabilities?bucket=denied-bucket", false}} {
+		w := jobRequest(s, "GET", tc.path, "", cookie, "")
+		var result map[string]any
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil {
+			t.Fatalf("capabilities: %d %s", w.Code, w.Body.String())
+		}
+		if result["versions"] != tc.want || result["versioning"] != tc.want {
+			t.Fatalf("incorrect support: %#v", result)
+		}
+	}
+	if len(b.probed) != 3 {
+		t.Fatalf("unscoped or anonymous probe: %#v", b.probed)
+	}
+	for _, path := range []string{"/api/capabilities?bucket=supported-bucket&bucket=other", "/api/capabilities?unknown=x"} {
+		if w := jobRequest(s, "GET", path, "", cookie, ""); w.Code != 400 {
+			t.Fatal("ambiguous scope accepted")
+		}
+	}
+}
+
+type fakeRenameBackend struct {
+	*fakeFeatureBackend
+	calls int
+	scope []string
+}
+
+func (b *fakeRenameBackend) RenameObject(ctx context.Context, bucket, key, newKey, etag string) error {
+	b.calls++
+	b.scope = []string{bucket, key, newKey, etag}
+	return nil
+}
+func TestRenameRequiresWriteGateCSRFAndExactScope(t *testing.T) {
+	s, base, cookie, reply := featureServer(t, false, false)
+	b := &fakeRenameBackend{fakeFeatureBackend: base}
+	s.backend = b
+	body := `{"bucket":"exact-bucket","key":"dir/中文 +%.txt","newKey":"dir/new.txt","etag":"etag"}`
+	if w := jobRequest(s, "POST", "/api/objects/rename", body, cookie, reply.CSRFToken); w.Code != 403 {
+		t.Fatal(w.Code)
+	}
+	s.writer = b
+	if w := jobRequest(s, "POST", "/api/objects/rename", body, cookie, ""); w.Code != 403 {
+		t.Fatal(w.Code)
+	}
+	for _, bad := range []string{`{"bucket":"exact-bucket","key":"a","newKey":"a","etag":"etag"}`, `{"bucket":"exact-bucket","key":"a","newKey":"b"}`, `{"bucket":"exact-bucket","key":"a","newKey":"b","etag":"e","extra":true}`} {
+		if w := jobRequest(s, "POST", "/api/objects/rename", bad, cookie, reply.CSRFToken); w.Code != 400 {
+			t.Fatal(w.Code)
+		}
+	}
+	if b.calls != 0 {
+		t.Fatal("invalid request renamed an object")
+	}
+	if w := jobRequest(s, "POST", "/api/objects/rename", body, cookie, reply.CSRFToken); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if b.calls != 1 || strings.Join(b.scope, "|") != "exact-bucket|dir/中文 +%.txt|dir/new.txt|etag" {
+		t.Fatal(b.scope)
+	}
+}

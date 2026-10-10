@@ -1256,3 +1256,15 @@ func TestSelfDiscoveryAuthenticationFailureClosesUnreadBody(t *testing.T) {
 		}
 	}
 }
+
+func TestPolicyResourceMustMatchTargetBucket(t *testing.T) {
+	for _, resource := range []string{"arn:aws:s3:::downloads/*", "arn:aws:s3:::downloads"} {
+		document := `{"Statement":[{"Resource":"` + resource + `"}]}`
+		assertAPIError(t, validatePolicyBucket("111", document), 400, "policy_bucket_mismatch")
+	}
+	for _, document := range []string{`{"Statement":[{"Resource":["arn:aws:s3:::111/*","arn:aws:s3:::111"]}]}`, `{"Statement":{"Resource":"arn:aws:s3:::111/*"}}`} {
+		if err := validatePolicyBucket("111", document); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

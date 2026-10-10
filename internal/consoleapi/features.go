@@ -74,3 +74,9 @@ type Share struct {
 type ShareBackend interface {
 	Presign(context.Context, ShareRequest) (Share, error)
 }
+
+// VersionCapabilityBackend checks the server protocol for one authorized bucket.
+// A false result means version features must not be offered for this scope.
+type VersionCapabilityBackend interface {
+	VersionSupported(context.Context, string) (bool, error)
+}

@@ -8,7 +8,7 @@ import (
 	"io/fs"
 )
 
-//go:embed index.html app.js style.css
+//go:embed index.html app.js i18n.js style.css
 var assets embed.FS
 
 // FS returns the console assets with index.html at the filesystem root.

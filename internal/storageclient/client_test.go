@@ -83,7 +83,7 @@ func TestListObjectsUsesOnePageAndPreservesOpaqueCursor(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(page.Entries) != 2 || page.Entries[0].Key != prefix || !page.Entries[0].IsPrefix || page.Entries[1].Key != key || page.NextCursor != cursor {
+		if len(page.Entries) != 2 || page.Entries[0].Key != prefix || !page.Entries[0].IsPrefix || page.Entries[1].Key != key || page.Entries[1].ETag != "etag" || page.NextCursor != cursor {
 			t.Fatalf("page changed keys or cursor: %#v", page)
 		}
 		if requests.Load() != int32(i+1) {

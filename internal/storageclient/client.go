@@ -199,7 +199,7 @@ func (c *Client) listObjects(ctx context.Context, bucket, prefix, cursor string,
 	}
 	for _, object := range page.Contents {
 		result.Entries = append(result.Entries, consoleapi.Entry{
-			Key: object.Key, Size: object.Size, Modified: object.LastModified, ETag: object.ETag,
+			Key: object.Key, Size: object.Size, Modified: object.LastModified, ETag: canonicalETag(object.ETag),
 		})
 	}
 	if page.IsTruncated {

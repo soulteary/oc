@@ -46,6 +46,16 @@ func versionAuthorizationUnsupported() *consoleapi.Error {
 	return &consoleapi.Error{Status: http.StatusNotImplemented, Code: "versions_unsupported", Message: "This server does not advertise protected version authorization. Upgrade the server before reading or sharing historical versions."}
 }
 
+// Core listing returns the wire ETag, while StatObject returns its bare value.
+// Strip only one complete quoting pair; malformed or unsafe values still fail
+// validETag and never reach a request header.
+func canonicalETag(etag string) string {
+	if len(etag) >= 2 && etag[0] == '"' && etag[len(etag)-1] == '"' {
+		return etag[1 : len(etag)-1]
+	}
+	return etag
+}
+
 func validETag(etag string) bool {
 	return etag != "" && len(etag) <= 512 && !strings.ContainsAny(etag, "\"\\\x00\r\n")
 }
@@ -411,4 +421,51 @@ func (c *Client) Presign(ctx context.Context, args consoleapi.ShareRequest) (con
 		expires = time.Unix(unix, 0).UTC()
 	}
 	return consoleapi.Share{URL: u.String(), ExpiresAt: expires}, nil
+}
+
+// VersionSupported performs a read-only, zero-entry version listing. Neither an
+// unversioned bucket nor an empty version list implies lack of server support.
+func (c *Client) VersionSupported(ctx context.Context, bucket string) (bool, error) {
+	if err := c.ready(ctx); err != nil {
+		return false, err
+	}
+	if !validMutationTarget(bucket, "capability-probe") {
+		return false, invalidRequest()
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, c.metadataTimeout)
+	defer cancel()
+	query := url.Values{"versions": {""}, "max-keys": {"0"}, "encoding-type": {"url"}}
+	u, err := c.s3.Presign(requestCtx, http.MethodGet, bucket, "", time.Minute, query)
+	if err != nil {
+		return false, normalizeError(err)
+	}
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return false, invalidRequest()
+	}
+	resp, err := c.s3Transport.RoundTrip(req)
+	if err != nil {
+		return false, normalizeError(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusMethodNotAllowed {
+		return false, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		var upstream struct{ Code string }
+		_ = xml.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&upstream)
+		if upstream.Code == "NotImplemented" || upstream.Code == "NotSupported" {
+			return false, nil
+		}
+		return false, normalizeError(minio.ErrorResponse{Code: upstream.Code, StatusCode: resp.StatusCode})
+	}
+	if resp.Header.Get("X-Otterio-Version-Authorization") != "v1" {
+		return false, nil
+	}
+	var page versionXML
+	bounded := &io.LimitedReader{R: resp.Body, N: 64*1024 + 1}
+	if xml.NewDecoder(bounded).Decode(&page) != nil || bounded.N == 0 || len(page.Entries) != 0 || page.IsTruncated {
+		return false, normalizeError(errors.New("invalid version capability response"))
+	}
+	return true, nil
 }

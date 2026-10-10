@@ -1,0 +1,66 @@
+services:
+  otterio:
+    image: ghcr.io/soulteary/otterio:RELEASE.2026-10-09T15-22-07Z
+    restart: unless-stopped
+    command: [server, --address, ':9000', --console-address, ':9001', /data]
+    environment:
+      OTTERIO_ROOT_USER: '${OTTERIO_ROOT_USER:?请在 .env 中设置用户名}'
+      OTTERIO_ROOT_PASSWORD: '${OTTERIO_ROOT_PASSWORD:?请在 .env 中设置密码}'
+    ports:
+      - '127.0.0.1:9000:9000'
+    volumes:
+      - ./otterio-data:/data
+    networks: [otterio-network]
+
+  oc-init:
+    image: soulteary/oc:local-console
+    restart: 'no'
+    entrypoint: [oc]
+    command:
+      - --config-dir
+      - /config
+      - alias
+      - set
+      - store
+      - http://otterio:9000
+      - '${OTTERIO_ROOT_USER:?请在 .env 中设置用户名}'
+      - '${OTTERIO_ROOT_PASSWORD:?请在 .env 中设置密码}'
+    depends_on:
+      otterio:
+        condition: service_started
+    volumes:
+      - ./oc-config:/config
+    networks: [otterio-network]
+
+  oc:
+    image: soulteary/oc:local-console
+    restart: unless-stopped
+    entrypoint: [oc-console]
+    command:
+      - --config-dir
+      - /config
+      - --alias
+      - store
+      - --container-listen
+      - --address
+      - '0.0.0.0:9090'
+      - --public-url
+      - http://127.0.0.1:9090
+      - --admin-url
+      - http://otterio:9001
+      - --allow-writes
+      - --data-dir
+      - /app-data
+    ports:
+      - '127.0.0.1:9090:9090'
+    depends_on:
+      oc-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./oc-config:/config:ro
+      - ./oc-console-data:/app-data
+    networks: [otterio-network]
+
+networks:
+  otterio-network:
+    driver: bridge

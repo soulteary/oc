@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -39,6 +41,9 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	var opts options
 	flags.StringVar(&opts.configDir, "config-dir", "", "OC configuration directory (default OC_CONFIG_DIR, MC_CONFIG_DIR, or user profile)")
 	flags.StringVar(&opts.alias, "alias", "", "one S3 alias from OC config.json (required)")
+	flags.StringVar(&opts.dataDir, "data-dir", "", "writable application data directory (default CONFIG_DIR/console-data)")
+	flags.BoolVar(&opts.containerListen, "container-listen", false, "allow wildcard binding inside a container; requires --public-url")
+	flags.StringVar(&opts.publicURL, "public-url", "", "browser URL, for example http://127.0.0.1:9090")
 	flags.StringVar(&opts.address, "address", "127.0.0.1:9090", "literal loopback IP and port")
 	flags.StringVar(&opts.s3CA, "s3-ca", "", "S3 PEM CA file, replacing certs/CAs custom trust")
 	flags.StringVar(&opts.adminURL, "admin-url", "", "independent OtterIO management root URL")
@@ -76,8 +81,20 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	if opts.allowSharing && opts.shareURL == "" && os.Getenv("OC_SHARE_URL") == "" && os.Getenv("OC_SHARE_URL_"+opts.alias) == "" {
 		return errors.New("--allow-sharing requires --share-url or OC_SHARE_URL for recipients")
 	}
-	if err := validateListenAddress(opts.address); err != nil {
-		return err
+	if opts.containerListen {
+		if err := validateContainerListenAddress(opts.address); err != nil {
+			return err
+		}
+		if opts.publicURL == "" {
+			return errors.New("--container-listen requires --public-url")
+		}
+	} else {
+		if opts.publicURL != "" {
+			return errors.New("--public-url requires --container-listen")
+		}
+		if err := validateListenAddress(opts.address); err != nil {
+			return err
+		}
 	}
 	if opts.configDir == "" {
 		var err error
@@ -97,7 +114,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	defer backend.Close()
 	listener, err := net.Listen("tcp", opts.address)
 	if err != nil {
-		return errors.New("cannot listen on the requested loopback address")
+		return errors.New("cannot listen on the requested address")
 	}
 	defer listener.Close()
 	codeBytes := make([]byte, 24)
@@ -105,15 +122,23 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 		return errors.New("cannot generate a console login code")
 	}
 	baseURL := "http://" + listener.Addr().String()
+	if opts.containerListen {
+		baseURL = opts.publicURL
+	}
 	loginCode := base64.RawURLEncoding.EncodeToString(codeBytes)
+	if opts.dataDir == "" {
+		opts.dataDir = filepath.Join(opts.configDir, "console-data")
+	}
+	identity := fmt.Sprintf("%x", sha256.Sum256([]byte(clientConfig.S3URL+"\x00"+clientConfig.AccessKey)))
 	handler, err := console.New(console.Config{
+		DataDir: opts.dataDir, Identity: identity,
 		Backend: backend, Alias: opts.alias, BaseURL: baseURL,
 		LoginCode: loginCode, SessionTTL: 30 * time.Minute,
 		AllowWrites: opts.allowWrites, MaxUploadSize: opts.maxUploadSize,
 		AllowSharing: opts.allowSharing, MaxArchiveSize: opts.maxArchiveSize, ArchiveDir: opts.archiveDir,
 	})
 	if err != nil {
-		return errors.New("cannot initialize the console")
+		return errors.New("cannot initialize the console; check the browser URL and writable application data directory")
 	}
 	defer handler.Close()
 	server := &http.Server{

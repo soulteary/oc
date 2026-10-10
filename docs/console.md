@@ -4,6 +4,28 @@
 
 `oc-console` is an optional source-built program for one operator and one configured S3 alias on the local machine. Browsing, downloads, ZIP archives and configuration reads are available in the default read-only mode. Explicit write mode adds bucket creation/empty-bucket deletion, uploads, object deletion and IAM administration. Historical versions, protected settings and policy binding changes require matching server protocols; presigned sharing has a separate opt-in flag. The existing OtterIO Web console remains available.
 
+## Console navigation
+
+After login, Overview shows the capacity reported for buckets accessible to the current identity, the listed bucket count, session upload/deletion task count, and recently visited buckets. Capacity comes from the account API; upstream controls its scope and freshness. Unavailable summaries display `—` rather than estimated totals. Monthly traffic, request trends, and alerts are not connected.
+
+Use the sidebar to switch between Overview, Buckets, Tasks, and Account. The top navigation button collapses the sidebar. The bucket directory provides a searchable table with permission summaries, capacity, creation dates, refresh, and creation. Select a bucket to open its files; the back button returns to the directory. Configuration actions use the selected bucket. Object operations and bucket settings remain in the bucket browser; upload and deletion results appear in Tasks. ZIP preparation still uses the browser's ZIP task button. Switching pages preserves loaded locations and tasks. Recent visits are saved per storage identity and restored after login. Narrow screens use horizontal navigation and a single-column overview.
+
+## Local Docker image
+
+The root `Dockerfile` builds and includes both `oc` and `oc-console`, retaining `oc` as its default entrypoint. `Dockerfile.dev` and `Dockerfile.release` remain CLI-only.
+
+```sh
+docker build -t soulteary/oc:local-console .
+docker run --rm --entrypoint oc-console soulteary/oc:local-console --help
+docker run --rm -it --network host \
+  -v "$HOME/.oc:/config:ro" \
+  -v "$PWD/oc-console-data:/app-data" \
+  --entrypoint oc-console soulteary/oc:local-console \
+  --config-dir /config --data-dir /app-data --alias store --address 127.0.0.1:9090
+```
+
+Configure the `store` alias first. Add the write/sharing flags when needed. By default the console binds to loopback; ordinary port publishing cannot reach that listener. For bridge networking use `deploy/compose.console.yaml` with `--container-listen`, `--public-url` and a writable data volume. Use host networking on Linux or enable host networking in Docker Desktop on macOS. Mount any private CA files and use paths that are valid inside the container.
+
 ## Build and start
 
 Use the Go version in `go.mod`. No Node runtime or frontend dependencies are required.
@@ -151,3 +173,9 @@ make test-console
 ```
 
 See [feature validation](console-features.md), [phase-three validation](console-phase-three.md), the later [transition verification](lifecycle-transition-verification.json), and [phase-two validation](console-phase-two.md) for exact evidence and remaining scope. Each report applies to its recorded binaries and patches; historical reports are preserved. Frontend behavior tests require Node in the development environment; running the console does not. `make build` still builds the CLI only; existing release archives and containers do not automatically include this experimental program. Diagnostics, release/deployment validation and retirement of the old UI remain later migration gates.
+
+## Language and user preferences
+
+The header switches between English and Chinese. After sign-in, the language, favorite object references and 20 most recently visited buckets are saved per storage identity (S3 endpoint plus access key). Files use SHA-256 identity names and mode 0600; they contain no credentials, sessions or login codes. Renaming an alias or rotating its secret does not change its preferences. This remains a single-identity process; all sessions opened with its login code use that identity.
+
+`--data-dir` selects a writable application data directory, defaulting to `<config-dir>/console-data`. Preferences remain writable in storage read-only mode. Save failures are displayed. The bridge Compose example mounts `./oc-console-data:/app-data` and passes `--data-dir /app-data`, keeping the OC configuration mount read-only.

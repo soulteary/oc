@@ -4,6 +4,16 @@
 
 `oc-console` 是可选的源码构建程序，一个进程连接一个已配置的 S3 别名，供一个操作员在本机使用。默认支持桶列表、前缀导航、分页、下载和 ZIP 归档；显式开启写模式后支持存储桶创建/空桶删除、文件上传、对象及前缀删除、IAM 管理和逐项任务结果。历史版本、受保护配置及权限绑定修改需要对应的服务端协议；预签名分享另需显式开启。账户概览与配置读取独立于桶列举权限。现有 OtterIO Web 控制台继续保留。
 
+## 界面导航
+
+登录后默认进入概览：展示当前身份可访问桶的容量摘要、列出的桶数量、当前会话上传与删除任务数量，以及最近访问的桶。容量来自账户管理接口，统计范围及刷新周期由服务端决定；接口无权限或不可用时显示 `—`，不会通过全桶扫描估算。月度流量、请求趋势及告警尚未接入。
+
+左侧导航提供概览、存储桶列表、任务中心和账户与权限入口，顶部按钮可折叠导航。存储桶列表以表格显示桶名、权限摘要、容量和创建时间，支持按名称筛选、刷新及创建桶。点击桶名进入文件列表，通过返回按钮回到桶表格；配置管理入口使用所选桶名。对象浏览、上传、下载、删除、ZIP 和桶设置位于文件页面；上传与删除结果集中在任务中心，ZIP 准备状态仍从对象浏览器的 ZIP task 查看。页面切换保留已加载的位置和任务。最近访问记录按存储身份保存，退出或重启后保留。窄屏下导航调整为横向按钮，概览调整为单栏。
+
+文件行支持悬停或键盘聚焦显示复制链接与收藏操作。详情显示列表返回的路径、大小、修改时间和 ETag；复制的是需要本机会话的下载链接，对外分享须显式启用预签名分享。收藏的桶与对象路径按存储身份保存，重新登录后恢复。更多菜单按能力提供历史版本、分享与删除；复制对象和重命名尚未接入。
+
+图片预览在点击后读取文件，支持 JPEG、PNG、GIF 和 WebP，最多 20 MiB，可缩放与关闭；关闭时取消读取并释放图片数据。详情的“读取对象信息”获取当前对象真实大小、ETag、修改时间及 Content-Type，不依赖列举权限。对象权限、加密、存储类型、标签及自定义 Header 编辑尚未接入。
+
 ## 构建与启动
 
 使用 `go.mod` 声明的 Go 版本，无需 Node 或安装前端依赖。
@@ -31,6 +41,22 @@ make build-console
   --admin-url https://admin.example:9001 \
   --admin-ca /path/to/admin-ca.pem
 ```
+
+## 本地 Docker 镜像
+
+仓库根目录的 `Dockerfile` 同时构建 `oc` 与 `oc-console`，镜像默认入口仍为 `oc`。`Dockerfile.dev` 和 `Dockerfile.release` 仍用于 CLI 镜像。
+
+```sh
+docker build -t soulteary/oc:local-console .
+docker run --rm --entrypoint oc-console soulteary/oc:local-console --help
+docker run --rm -it --network host \
+  -v "$HOME/.oc:/config:ro" \
+  -v "$PWD/oc-console-data:/app-data" \
+  --entrypoint oc-console soulteary/oc:local-console \
+  --config-dir /config --data-dir /app-data --alias store --address 127.0.0.1:9090
+```
+
+配置目录需已存在 `store` 别名。需要写入或分享时分别添加对应启动参数。控制台默认只监听回环地址，普通 `-p` 映射不适用；bridge 网络请使用下方部署配置；Linux 使用 host 网络，macOS Docker Desktop 需启用 host networking。私有 CA 文件需另行挂载，配置中的路径应在容器内有效。
 
 ## 配置与证书
 
@@ -169,3 +195,23 @@ make test-console
 ```
 
 具体范围见[新增功能记录](../console-features.md)、[第三阶段验证记录](../console-phase-three.md)、后续[转换验证记录](../lifecycle-transition-verification.json)及[第二阶段验证记录](../console-phase-two.md)。每份报告只适用于其中记录的程序与补丁；历史记录仍保留。开发环境的前端行为测试需要 Node，运行控制台不需要。`make build` 仍只构建 CLI，已有发布归档和容器不会自动包含这个实验程序。诊断、发行与集中部署、旧入口弃用还需后续阶段验收。
+
+## Docker bridge 网络
+
+使用 `deploy/compose.console.yaml`，将它复制到部署目录作为 `docker-compose.yaml`，并在同目录设置 `.env` 中的 `OTTERIO_ROOT_USER` 和 `OTTERIO_ROOT_PASSWORD`。重新构建本地镜像后，先启动 OtterIO，等待服务就绪，再运行 `docker compose run --rm oc-init` 和 `docker compose up -d --no-deps oc`。
+
+`--container-listen --address 0.0.0.0:9090 --public-url http://127.0.0.1:9090` 显式启用容器监听。`--public-url` 仍须为 HTTP 本机回环 URL，用于严格校验浏览器 Host 与 Origin；访问时应使用完全相同的地址。宿主机仅将控制台端口映射到回环地址。OtterIO 管理接口通过内部 `http://otterio:9001` 访问，无需映射到宿主机。默认启动方式仍只允许回环监听。
+
+## 语言与用户数据
+
+右上角可切换中文或英文。登录后语言选择、收藏对象路径、最近访问的 20 个存储桶会保存到应用数据目录，退出登录或重启后仍保留。每个存储身份（S3 地址与 Access Key）对应独立的 SHA-256 文件名；别名重命名不改变身份，Secret Key 轮换也不改变文件。该控制台仍是单身份进程，浏览器登录码对应启动时选定的身份。
+
+通过 `--data-dir` 指定可写目录，默认是 `<config-dir>/console-data`。JSON 文件权限为 `0600`，文件只包含语言、收藏与最近访问，不含密钥、会话或登录码。偏好保存不受存储只读模式限制。写入失败会在界面提示。部署配置已挂载 `./oc-console-data:/app-data` 并设置 `--data-dir /app-data`；配置目录可以继续只读挂载。更新镜像后重新创建 OC 容器即可。
+
+## 版本功能自动检测
+
+选择存储桶后，OC 使用当前身份执行 `GET ?versions&max-keys=0` 的只读探测，不返回对象版本列表，也不修改桶配置。仅当后端响应有效并提供 `X-Otterio-Version-Authorization: v1` 时显示历史版本和版本控制配置。FS 后端的 `NotImplemented`、旧服务器缺少授权标记、权限拒绝及连接失败均保持入口隐藏；刷新或切换桶会重新检测。没有历史版本或尚未开启版本控制不代表服务器不支持版本功能。
+
+### 对象重命名
+
+文件行悬停或获得键盘焦点后，复制图标左侧会显示重命名入口。启用写入后，输入新文件名并确认；目录保持不变，已存在的目标名称会被拒绝。重命名通过服务端复制后删除原对象完成，最大支持 5 GiB，不是原子操作，请避免同时修改相关对象。复制成功但删除失败时，界面提示检查两个名称，不自动重复操作。

@@ -114,3 +114,8 @@ type Error struct {
 }
 
 func (e *Error) Error() string { return e.Message }
+
+// RenameBackend moves an exact current object within its bucket.
+type RenameBackend interface {
+	RenameObject(ctx context.Context, bucket, key, newKey, etag string) error
+}
