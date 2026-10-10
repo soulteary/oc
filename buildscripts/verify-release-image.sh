@@ -66,10 +66,14 @@ test "$(docker image inspect "$image" --format '{{json .Config.Entrypoint}}')" =
 version="$(docker run --rm --platform linux/amd64 "$image" --version)"
 test "$version" = "oc version $tag"
 docker run --rm --platform linux/amd64 "$image" --help >/dev/null
+test "$(docker run --rm --platform linux/amd64 --entrypoint oc-console "$image" --version)" = "oc-console $tag"
+docker run --rm --platform linux/amd64 --entrypoint oc-console "$image" --help >/dev/null
 
 container="$(docker create --platform linux/amd64 "$image")"
 docker cp "$container:/usr/bin/oc" "$temporary/oc"
 cmp "$temporary/oc" "$context/dist/oc-linux-amd64"
+docker cp "$container:/usr/bin/oc-console" "$temporary/oc-console"
+cmp "$temporary/oc-console" "$context/dist/oc-console-linux-amd64"
 for license in LICENSE NOTICE CREDITS notify-LICENSE; do
   docker cp "$container:/licenses/$license" "$temporary/$license"
   cmp "$temporary/$license" "$context/licenses/$license"

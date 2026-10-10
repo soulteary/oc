@@ -12,6 +12,7 @@ LABEL org.opencontainers.image.title="OC" \
       org.opencontainers.image.licenses="Apache-2.0 AND MIT"
 
 COPY dist/oc-linux-${TARGETARCH} /usr/bin/oc
+COPY dist/oc-console-linux-${TARGETARCH} /usr/bin/oc-console
 COPY licenses/ /licenses/
 
 RUN microdnf install ca-certificates --nodocs && microdnf clean all

@@ -8,7 +8,15 @@ not reserve a tag or publish archives or images.
 
 ## Changes
 
-- Add the optional, source-built `oc-console` for one operator and one local S3
+- Package `oc-console` alongside `oc` in every timestamp release archive and
+  the Linux amd64/arm64 release image. Stamp its version with the release tag,
+  verify archived/image executable bytes, and smoke-test both entry points.
+  Existing releases are unchanged; no new release is published by this PR.
+- Begin migration of the local single-identity deployment example with
+  `OTTERIO_BROWSER=off`. Keep the internal Admin listener and server defaults.
+  See [compatibility and retirement gates](docs/console-release-migration.md).
+
+- Add the optional `oc-console` for one operator and one local S3
   alias. It provides authenticated browsing and streaming downloads by default.
   Explicit `--allow-writes` adds uploads, confirmed object/batch/prefix deletion,
   cancellation and per-object results. Credentials stay in OC; operations use
@@ -25,7 +33,7 @@ not reserve a tag or publish archives or images.
   and requires updating the alias in the terminal before restarting.
 - Add confirmed bucket creation/empty-bucket deletion, native IAM user/group/
   service-account management, historical version selection, ZIP downloads and
-  opt-in presigned sharing to the source-built console. Protected version and
+  opt-in presigned sharing to the console. Protected version and
   IAM operations require their matching server protocols. See
   [feature scope and validation](docs/console-features.md).
 - Add labeled ILM destinations to `oc admin bucket remote` and require the

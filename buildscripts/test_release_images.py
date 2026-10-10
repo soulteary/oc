@@ -49,7 +49,9 @@ class Fixture:
             payload = f'OC {TAG} commit={SHA} target={target}\n'.encode()
             binary.write_bytes(payload)
             self.binaries[target] = payload
-            archive = build.package(self.root, self.artifacts, TAG, target, binary)
+            console = Path(temporary) / ('oc-console.exe' if target.startswith('windows') else 'oc-console')
+            console.write_bytes(payload + b'console')
+            archive = build.package(self.root, self.artifacts, TAG, target, binary, console)
             self.manifest['assets'].append({'name': archive.name, 'target': target, 'sha256': images.sha256(archive)})
         self.write_manifest()
 
@@ -87,7 +89,7 @@ class ReleaseImageTests(unittest.TestCase):
             fixture = Fixture(temporary)
             fixture.output.mkdir()  # An explicitly supplied empty context is supported.
             self.assertEqual(fixture.prepare(), fixture.output.resolve())
-            expected = {'Dockerfile.release', 'dist/oc-linux-amd64', 'dist/oc-linux-arm64',
+            expected = {'Dockerfile.release', 'dist/oc-linux-amd64', 'dist/oc-linux-arm64', 'dist/oc-console-linux-amd64', 'dist/oc-console-linux-arm64',
                         'licenses/LICENSE', 'licenses/NOTICE', 'licenses/CREDITS', 'licenses/notify-LICENSE'}
             self.assertEqual({path.relative_to(fixture.output).as_posix() for path in fixture.output.rglob('*') if path.is_file()}, expected)
             for arch in ('amd64', 'arm64'):
@@ -95,6 +97,10 @@ class ReleaseImageTests(unittest.TestCase):
                 self.assertEqual(binary.read_bytes(), fixture.binaries[f'linux/{arch}'])
                 if os.name != 'nt':
                     self.assertEqual(binary.stat().st_mode & 0o777, 0o755)
+                console = fixture.output / 'dist' / f'oc-console-linux-{arch}'
+                self.assertEqual(console.read_bytes(), fixture.binaries[f'linux/{arch}'] + b'console')
+                if os.name != 'nt':
+                    self.assertEqual(console.stat().st_mode & 0o777, 0o755)
             for name, source in images.LICENSES.items():
                 self.assertEqual((fixture.output / 'licenses' / Path(name).name).read_bytes(), (fixture.root / source).read_bytes())
             self.assertIn(b'Apache License', (fixture.output / 'licenses/LICENSE').read_bytes())
@@ -135,7 +141,7 @@ class ReleaseImageTests(unittest.TestCase):
                 self.assert_rejected(fixture, {'hash': 'SHA-256', 'missing': 'No such file|cannot find|system cannot', 'invalid': 'gzip'}[problem])
 
     def test_required_binary_and_license_contents(self):
-        for relative in ('oc', *images.LICENSES):
+        for relative in ('oc', 'oc-console', *images.LICENSES):
             with self.subTest(missing=relative), tempfile.TemporaryDirectory() as temporary:
                 fixture = Fixture(temporary)
                 suffix = '/' + relative
@@ -242,7 +248,10 @@ elif args[:2] == ['image', 'inspect']:
 elif args[:1] == ['run']:
     assert args[1:4] == ['--rm', '--platform', 'linux/amd64']
     if args[-1] == '--version':
-        print('oc version ' + ('WRONG' if failure == 'version' else os.environ['MOCK_TAG']))
+        if 'oc-console' in args:
+            print('oc-console ' + os.environ['MOCK_TAG'])
+        else:
+            print('oc version ' + ('WRONG' if failure == 'version' else os.environ['MOCK_TAG']))
     elif args[-1] == '--help':
         print('OC help')
     else:
@@ -260,6 +269,8 @@ elif args[:1] == ['cp']:
     if source.endswith('/ca-bundle.crt'):
         assert args[1] == '-L', 'CA bundle must follow the UBI absolute symlink'
         destination.write_bytes(b'CA bundle contents')
+    elif source.endswith('/usr/bin/oc-console'):
+        destination.write_bytes((context / 'dist/oc-console-linux-amd64').read_bytes())
     elif source.endswith('/usr/bin/oc'):
         destination.write_bytes(b'wrong binary' if failure == 'binary' else (context / 'dist/oc-linux-amd64').read_bytes())
     else:
