@@ -36,9 +36,13 @@ const (
 )
 
 type Config struct {
-	DataDir        string
-	Identity       string
-	Backend        consoleapi.Backend
+	DataDir  string
+	Identity string
+	Backend  consoleapi.Backend
+	// BackendFactory creates a fresh, session-owned client after code validation.
+	// Backend remains the startup capability check and borrowed compatibility path.
+	// A successful factory must return a nonnil backend and cleanup callback.
+	BackendFactory func(context.Context) (consoleapi.Backend, func(), error)
 	Alias          string
 	BaseURL        string
 	LoginCode      string
@@ -51,12 +55,13 @@ type Config struct {
 }
 
 // sessionRuntime is selected at sign-in and never replaced for an active session.
-// Local mode borrows the startup client; the caller retains transport ownership.
+// A nil lifetime denotes the compatibility path borrowing the startup client.
 type sessionRuntime struct {
 	backend     consoleapi.Backend
 	writer      consoleapi.MutationBackend
 	settings    consoleapi.SettingsBackend
 	preferences *preferenceStore
+	lifetime    *backendLifetime
 }
 
 type session struct {
@@ -75,19 +80,21 @@ type sessionReply struct {
 	MaxUploadSize int64  `json:"maxUploadSize"`
 }
 
-// Server does not own its Backend. The caller must close any backend transport
-// after closing the server and stopping the HTTP listener.
+// Server owns clients returned by BackendFactory. A Config.Backend supplied
+// without a factory is borrowed and must be closed by the caller after shutdown.
 type Server struct {
 	// Startup defaults are copied into a session at login. Request handlers and
 	// background tasks must use that session's runtime instead of these fields.
-	preferences *preferenceStore
-	backend     consoleapi.Backend
-	alias       string
-	origin      string
-	host        string
-	code        [32]byte
-	ttl         time.Duration
-	assets      fs.FS
+	preferences    *preferenceStore
+	backend        consoleapi.Backend
+	backendFactory func(context.Context) (consoleapi.Backend, func(), error)
+	allowWrites    bool
+	alias          string
+	origin         string
+	host           string
+	code           [32]byte
+	ttl            time.Duration
+	assets         fs.FS
 
 	mu             sync.Mutex
 	closed         bool
@@ -104,6 +111,8 @@ type Server struct {
 	writeSlots     chan struct{}
 	planSlots      chan struct{}
 	workers        sync.WaitGroup
+	clients        sync.WaitGroup
+	loginSlots     chan struct{}
 	life           context.Context
 	stopLife       context.CancelFunc
 	streamIdle     time.Duration
@@ -160,11 +169,12 @@ func New(cfg Config) (*Server, error) {
 	life, stopLife := context.WithCancel(context.Background())
 	settings, _ := cfg.Backend.(consoleapi.SettingsBackend)
 	return &Server{
-		preferences: preferences, backend: cfg.Backend, alias: cfg.Alias, origin: "http://" + u.Host,
+		preferences: preferences, backend: cfg.Backend, backendFactory: cfg.BackendFactory, allowWrites: cfg.AllowWrites, alias: cfg.Alias, origin: "http://" + u.Host,
 		host: u.Host, code: sha256.Sum256([]byte(cfg.LoginCode)), ttl: cfg.SessionTTL,
 		assets: web.FS(), sessions: make(map[[32]byte]*session),
 		apiSlots: make(chan struct{}, 8), downloads: make(chan struct{}, 2),
-		writer: writer, settings: settings, maxUploadSize: cfg.MaxUploadSize, jobs: make(map[string]*job), writeSlots: make(chan struct{}, 2), planSlots: make(chan struct{}, 2), life: life, stopLife: stopLife, streamIdle: 30 * time.Second,
+		loginSlots: make(chan struct{}, 2),
+		writer:     writer, settings: settings, maxUploadSize: cfg.MaxUploadSize, jobs: make(map[string]*job), writeSlots: make(chan struct{}, 2), planSlots: make(chan struct{}, 2), life: life, stopLife: stopLife, streamIdle: 30 * time.Second,
 		allowSharing: cfg.AllowSharing, maxArchiveSize: cfg.MaxArchiveSize, archiveDir: cfg.ArchiveDir, archives: make(map[string]*archiveTask), archiveSlots: make(chan struct{}, 1),
 	}, nil
 }
@@ -182,6 +192,13 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Release the client after request/body cancellation and all handler cleanup.
+	var releaseClient func()
+	defer func() {
+		if releaseClient != nil {
+			releaseClient()
+		}
+	}()
 	requestCtx, requestCancel := context.WithCancel(r.Context())
 	stopServer := context.AfterFunc(s.life, requestCancel)
 	defer func() { stopServer(); requestCancel() }()
@@ -239,6 +256,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.login(w, r)
 		return
+	}
+	// Hold the selected client's transport through this entire request, including
+	// the response stream. Reauthentication in route handlers still checks expiry.
+	if sess, _ := s.authenticate(r); sess != nil {
+		if !sess.runtime.retain() {
+			writeError(w, http.StatusUnauthorized, "login_required", "Sign in with the code printed by OC.")
+			return
+		}
+		releaseClient = sess.runtime.release
 	}
 	if s.isJobRoute(r.URL.Path) {
 		s.serveJobs(w, r)
@@ -502,20 +528,28 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hash := sha256.Sum256([]byte(token))
+	runtime, err := s.newSessionRuntime(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "connection_unavailable", "Unable to open a storage connection. Try signing in again.")
+		return
+	}
 	ctx, cancel := context.WithCancel(s.life)
-	sess := &session{runtime: sessionRuntime{backend: s.backend, writer: s.writer, settings: s.settings, preferences: s.preferences}, csrf: csrf, expires: time.Now().Add(s.ttl), ctx: ctx, cancel: cancel}
+	sess := &session{runtime: runtime, csrf: csrf, expires: time.Now().Add(s.ttl), ctx: ctx, cancel: cancel}
 	s.mu.Lock()
 	// A login can finish reading its body after another request starts
 	// rotating credentials. Recheck the pause at the session commit point.
-	if s.closed || s.rotating || len(s.sessions) >= maxSessions {
+	if s.closed || s.rotating || len(s.sessions) >= maxSessions || r.Context().Err() != nil {
 		closed := s.closed
 		rotating := s.rotating
 		s.mu.Unlock()
 		cancel()
+		runtime.retire()
 		if closed {
 			writeError(w, http.StatusServiceUnavailable, "console_closed", "The console has stopped.")
 		} else if rotating {
 			writeError(w, http.StatusServiceUnavailable, "credential_change_pending", "The account secret is being changed. Wait for the result before restarting OC.")
+		} else if r.Context().Err() != nil {
+			writeError(w, http.StatusServiceUnavailable, "connection_unavailable", "The sign-in request stopped.")
 		} else {
 			writeError(w, http.StatusTooManyRequests, "too_many_sessions", "Too many console sessions are open. Close an existing session or wait for it to expire.")
 		}
@@ -557,6 +591,7 @@ func (s *Server) removeSessionLocked(token [32]byte, sess *session) {
 			delete(s.archives, id)
 		}
 	}
+	sess.runtime.retire()
 }
 
 func (s *Server) authenticate(r *http.Request) (*session, [32]byte) {

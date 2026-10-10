@@ -58,6 +58,7 @@ func TestRunLocalConsoleLifecycle(t *testing.T) {
 	const secretKey = "lifecycle-private-secret"
 	const sessionToken = "lifecycle-private-session"
 	var requests atomic.Int32
+	upstreamPeers := make(chan string, 4)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if r.Method != http.MethodGet || r.URL.Path != "/" || r.URL.RawQuery != "" {
@@ -70,6 +71,7 @@ func TestRunLocalConsoleLifecycle(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
+		upstreamPeers <- r.RemoteAddr
 		w.Header().Set("Content-Type", "application/xml")
 		fmt.Fprint(w, `<ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Owner><ID>operator</ID><DisplayName>operator</DisplayName></Owner><Buckets><Bucket><Name>lifecycle-bucket</Name><CreationDate>2026-10-08T00:00:00Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>`)
 	}))
@@ -179,6 +181,67 @@ func TestRunLocalConsoleLifecycle(t *testing.T) {
 	_ = response.Body.Close()
 	if response.StatusCode != http.StatusOK || decodeError != nil || len(listing.Buckets) != 1 || listing.Buckets[0].Name != "lifecycle-bucket" || requests.Load() != 1 {
 		t.Fatal("authenticated console did not return the real S3 bucket response")
+	}
+	firstPeer := <-upstreamPeers
+	secondJar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondClient := &http.Client{Transport: transport, Jar: secondJar, Timeout: 3 * time.Second}
+	request, err = http.NewRequest(http.MethodPost, baseURL+"/api/login", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Origin", baseURL)
+	request.Header.Set("Content-Type", "application/json")
+	response, err = secondClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, response.Body)
+	_ = response.Body.Close()
+	if response.StatusCode != 200 || len(secondJar.Cookies(u)) != 1 {
+		t.Fatal("second browser failed to sign in")
+	}
+	response, err = secondClient.Get(baseURL + "/api/buckets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, response.Body)
+	_ = response.Body.Close()
+	if response.StatusCode != 200 {
+		t.Fatal("second browser failed to read storage")
+	}
+	secondPeer := <-upstreamPeers
+	if firstPeer == secondPeer {
+		t.Fatal("browser sessions shared an upstream transport connection")
+	}
+	request, err = http.NewRequest(http.MethodPost, baseURL+"/api/logout", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Origin", baseURL)
+	request.Header.Set("X-CSRF-Token", session.CSRFToken)
+	response, err = client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, response.Body)
+	_ = response.Body.Close()
+	if response.StatusCode != 204 {
+		t.Fatal("first browser failed to log out")
+	}
+	response, err = secondClient.Get(baseURL + "/api/buckets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, response.Body)
+	_ = response.Body.Close()
+	if response.StatusCode != 200 {
+		t.Fatal("logging out the first browser retired the second browser's client")
+	}
+	if peer := <-upstreamPeers; peer != secondPeer {
+		t.Fatal("logout closed another session's upstream transport pool")
 	}
 	shutdownStarted := time.Now()
 	cancel()

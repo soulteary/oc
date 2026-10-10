@@ -263,6 +263,12 @@ func (s *Server) newArchive(w http.ResponseWriter, r *http.Request, sess *sessio
 		writeSlotError(w, err)
 		return
 	}
+	if !sess.runtime.retain() {
+		<-s.archiveSlots
+		s.mu.Unlock()
+		writeError(w, 409, "connection_ending", "This connection is ending.")
+		return
+	}
 	ctx, cancel := context.WithTimeout(sess.ctx, archiveTTL)
 	now := time.Now()
 	task := &archiveTask{info: archiveReply{ID: id, Status: "planning", Created: now, Expires: now.Add(archiveTTL)}, owner: sess, ctx: ctx, cancel: cancel, slot: true}
@@ -271,7 +277,11 @@ func (s *Server) newArchive(w http.ResponseWriter, r *http.Request, sess *sessio
 	s.workers.Add(1)
 	initial := task.info
 	s.mu.Unlock()
-	go func() { defer s.workers.Done(); s.prepareArchive(task, reader, args.Refs, args.Bucket, args.Prefix) }()
+	go func() {
+		defer s.workers.Done()
+		defer sess.runtime.release()
+		s.prepareArchive(task, reader, args.Refs, args.Bucket, args.Prefix)
+	}()
 	writeJSON(w, 202, initial)
 }
 

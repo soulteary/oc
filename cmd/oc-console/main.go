@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/soulteary/mc/internal/console"
+	"github.com/soulteary/mc/internal/consoleapi"
 	"github.com/soulteary/mc/internal/storageclient"
 )
 
@@ -133,6 +134,16 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	handler, err := console.New(console.Config{
 		DataDir: opts.dataDir, Identity: identity,
 		Backend: backend, Alias: opts.alias, BaseURL: baseURL,
+		BackendFactory: func(ctx context.Context) (consoleapi.Backend, func(), error) {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, err
+			}
+			client, err := storageclient.New(clientConfig)
+			if err != nil {
+				return nil, nil, err
+			}
+			return client, func() { client.Close() }, nil
+		},
 		LoginCode: loginCode, SessionTTL: 30 * time.Minute,
 		AllowWrites: opts.allowWrites, MaxUploadSize: opts.maxUploadSize,
 		AllowSharing: opts.allowSharing, MaxArchiveSize: opts.maxArchiveSize, ArchiveDir: opts.archiveDir,

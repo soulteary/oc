@@ -1,7 +1,7 @@
 // Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
 
 // Package storageclient implements the console's storage-only API using an
-// immutable startup identity. It never resolves local paths or CLI aliases.
+// immutable storage identity. It never resolves local paths or CLI aliases.
 package storageclient
 
 import (
