@@ -23,6 +23,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 
 from local_http import local_urlopen
 
@@ -264,6 +265,29 @@ def scenario(args, name, preview=False, record=None):
                 if time.monotonic() > deadline:
                     raise RuntimeError('OtterIO readiness timeout')
                 time.sleep(0.1)
+            # Browser=off must remove legacy routes without removing Admin.
+            legacy_endpoint = admin
+            legacy_context = ssl.create_default_context(cafile=str(adminca)) if tls else None
+            for method, path in [('GET', '/otterio/'),
+                                 ('POST', '/otterio/webrpc'),
+                                 ('PUT', '/otterio/upload/console-fixture/legacy.txt'),
+                                 ('GET', '/otterio/download/console-fixture/legacy.txt?token=invalid'),
+                                 ('POST', '/otterio/zip?token=invalid')]:
+                req = urllib.request.Request(legacy_endpoint + path, method=method,
+                    headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'},
+                    data=b'{"id":1,"jsonrpc":"2.0","method":"web.Login","params":{"username":"disabled-web-probe","password":"disabled-web-probe"}}' if method == 'POST' else (b'probe' if method == 'PUT' else None))
+                try:
+                    with local_urlopen(req, timeout=5, context=legacy_context) as response:
+                        raise RuntimeError(f'legacy Web route unexpectedly available: {method} {path}: {response.status}')
+                except urllib.error.HTTPError as error:
+                    payload = error.read()
+                    try:
+                        protocol_error = ET.fromstring(payload).findtext('Code')
+                    except ET.ParseError:
+                        protocol_error = None
+                    if error.code != 404 and (error.code not in (400, 403) or not protocol_error):
+                        raise RuntimeError(f'legacy Web route expected storage protocol rejection: {method} {path}: {error.code}') from None
+            checks.append('browser off rejects legacy assets, RPC, upload, download and ZIP routes')
             bucket = 'console-fixture'
             cli('mb', 'store/' + bucket)
             if preview and (args.writes or args.features):

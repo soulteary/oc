@@ -179,3 +179,13 @@ See [feature validation](console-features.md), [phase-three validation](console-
 The header switches between English and Chinese. After sign-in, the language, favorite object references and 20 most recently visited buckets are saved per storage identity (S3 endpoint plus access key). Files use SHA-256 identity names and mode 0600; they contain no credentials, sessions or login codes. Renaming an alias or rotating its secret does not change its preferences. This remains a single-identity process; all sessions opened with its login code use that identity.
 
 `--data-dir` selects a writable application data directory, defaulting to `<config-dir>/console-data`. Preferences remain writable in storage read-only mode. Save failures are displayed. The bridge Compose example mounts `./oc-console-data:/app-data` and passes `--data-dir /app-data`, keeping the OC configuration mount read-only.
+
+## Use OC as the primary UI with the legacy Web disabled
+
+The Compose example sets `OTTERIO_BROWSER=off`, disabling OtterIO's embedded page and legacy Web RPC/upload/download/ZIP routes. S3 remains on 9000; the internal Admin API remains on `--console-address :9001` and OC uses `--admin-url http://otterio:9001`. Open OC at `http://127.0.0.1:9090`. Keep the management listener. This changes only the deployment example, not OtterIO's server defaults.
+
+Back up the deployment configuration, retain the current OtterIO image version, and build the local OC image containing `oc-console` as described above. Verify that the legacy page is unavailable, then check browsing, uploads/downloads, deletion, ZIP, bucket settings and IAM in OC. Protected writes and historical versions still require server capabilities and identity permissions. Restart OC and verify language, favorites and recent visits persist.
+
+This is a single-identity local console: every session uses the startup alias identity. Deployments requiring independent user login, OIDC or centralized multi-user access should retain the legacy Web until those migration capabilities are available. Existing published images may not contain `oc-console`.
+
+To roll back, set `OTTERIO_BROWSER` to `'on'` and recreate storage with `docker compose up -d --no-deps otterio`; do not downgrade the server. The example does not publish 9001. To access the legacy page, temporarily add `127.0.0.1:9001:9001` and open `http://127.0.0.1:9001/otterio/`. Rollback does not undo configuration writes, credential rotation or object operations. Disable the legacy Web and remove the temporary port mapping when returning to OC.

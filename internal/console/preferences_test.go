@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -24,8 +25,12 @@ func TestPreferencesPersistAndSeparateIdentities(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(dir, identity+".json"))
-	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatalf("private file: %v %v", info, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Windows uses ACLs; os.FileMode does not report Unix owner-only permissions.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+		t.Fatalf("private file mode: %v", info.Mode())
 	}
 	loaded, err := newPreferenceStore(dir, identity)
 	if err != nil {
