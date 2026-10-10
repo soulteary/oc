@@ -27,6 +27,13 @@ pins: S3 SDK `github.com/soulteary/otterio-sdk/v7 v7.3.2`, server/admin module
 These build identities do not identify a remote server or establish compatibility
 with every historical OtterIO or third-party S3 service.
 
+**Known policy-update limitation:** `oc admin policy update` can clear a user's
+or group's policy assignments when passed an already assigned policy or an empty
+policy argument. This release does not fix that defect. Read the existing
+assignments with `oc admin user info` or `oc admin group info`, then use
+`oc admin policy set` with the complete desired comma-separated policy list and
+verify the result. See [administration guidance](docs/administration.md).
+
 Existing CLI configuration and `OC_*` / supported `MC_*` precedence remain.
 Back up configuration and pin release images or manifest digests before upgrading.
 Older archives and images are not retroactively updated with the console.
@@ -71,6 +78,11 @@ and [release procedure](docs/releasing.md).
 源码构建要求 Go 1.27.2。依赖继续固定为 S3 SDK v7.3.2、服务端 / 管理模块
 `v0.0.0-20261009091443-bcc238bc4c2c`、crc64nvme v1.1.3、md5-simd v1.2.0
 及 urfave/cli v3.14.0；它们不是远程服务端身份或历史版本、第三方 S3 的通用兼容证明。
+
+**已知策略更新限制：** `oc admin policy update` 遇到已绑定的策略或空策略参数时，
+可能清空用户或组的策略绑定，本次发布尚未修复。先用 `oc admin user info` 或
+`oc admin group info` 读取现有绑定，再用 `oc admin policy set` 提交期望保留的
+完整策略列表（多个策略以逗号分隔），并核对结果，见[管理说明](docs/zh_CN/administration.md)。
 
 保留现有 CLI 配置和 `OC_*` 优先于受支持 `MC_*` 的规则。升级前备份配置，
 固定版本或清单中的镜像摘要。已发布的旧归档和镜像不会补入控制台。
