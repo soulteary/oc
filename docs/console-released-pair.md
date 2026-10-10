@@ -83,9 +83,17 @@ This writes its report and removes the temporary Compose project. It requires
 Docker Desktop/Compose and host-loopback connectivity; it never reads the user's
 OC configuration. Example ports are not requirements for existing deployments.
 
-OtterIO's first deprecation-notice release was triggered separately with tag
-`RELEASE.2026-10-10T16-38-05Z`, source
-`8cc518b31ac8b69c8f855e19b4bd027f44275c47`. This is a distinct server identity;
-these acceptance results do not certify that new release. A pushed tag is not a
-published release; verify its final workflow/release status before counting a
-notified release cycle.
+## First notified OtterIO release
+
+[OtterIO `RELEASE.2026-10-10T16-38-05Z`](https://github.com/soulteary/otterio/releases/tag/RELEASE.2026-10-10T16-38-05Z)
+was published at `2026-10-10T16:46:29Z` (2026-10-11 00:46:29 Asia/Shanghai),
+source `8cc518b31ac8b69c8f855e19b4bd027f44275c47`. The public stable release
+contains the embedded Web deprecation notice, six programs, checksums and manifest.
+Its [release/promotion workflow](https://github.com/soulteary/otterio/actions/runs/38068493694)
+completed successfully. This is the first notified release cycle, not two.
+Browser defaults and opt-in fallback are retained.
+
+This new release is a distinct server identity; the acceptance reports above
+apply to the October 9 server pinned in Compose and do not certify the new pair.
+Do not change the deployment server version or mark additional migration gates
+complete based solely on the publication.
