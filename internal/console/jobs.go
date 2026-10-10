@@ -102,7 +102,7 @@ func (s *Server) serveJobs(w http.ResponseWriter, r *http.Request) {
 	if method != http.MethodGet && (!s.requireOrigin(w, r) || !s.requireCSRF(w, r, sess)) {
 		return
 	}
-	if s.writer == nil {
+	if sess.runtime.writer == nil {
 		writeError(w, 403, "writes_disabled", "Restart OC with writes explicitly enabled to use storage tasks.")
 		return
 	}
@@ -377,7 +377,7 @@ func (s *Server) uploadJob(w http.ResponseWriter, r *http.Request, sess *session
 	body, closeBody := boundedBody(w, r, ctx, s.streamIdle)
 	defer closeBody()
 	counter := &countingReader{reader: io.LimitReader(body, j.info.Size)}
-	result, uploadErr := s.writer.Upload(ctx, j.info.Bucket, j.info.Key, counter, j.info.Size, consoleapi.UploadOptions{Overwrite: j.info.Overwrite}, func(n int64) {
+	result, uploadErr := sess.runtime.writer.Upload(ctx, j.info.Bucket, j.info.Key, counter, j.info.Size, consoleapi.UploadOptions{Overwrite: j.info.Overwrite}, func(n int64) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if n > j.info.Transferred {
@@ -464,7 +464,7 @@ func (s *Server) planDeletion(w http.ResponseWriter, r *http.Request, sess *sess
 			if limit < 1 {
 				limit = 1
 			}
-			page, err := s.writer.ScanObjects(ctx, args.Bucket, prefix, cursor, limit)
+			page, err := sess.runtime.writer.ScanObjects(ctx, args.Bucket, prefix, cursor, limit)
 			if err != nil {
 				planErr = err
 				break
@@ -598,7 +598,7 @@ func (s *Server) runDeletion(j *job) {
 		if j.ctx.Err() != nil {
 			break
 		}
-		err := s.writer.DeleteObject(j.ctx, j.info.Bucket, j.info.Items[i].Key)
+		err := j.owner.runtime.writer.DeleteObject(j.ctx, j.info.Bucket, j.info.Items[i].Key)
 		s.mu.Lock()
 		if err == nil {
 			j.info.Items[i].Status = "succeeded"

@@ -113,6 +113,9 @@ func TestSettingsWritesHaveOriginCSRFConfirmationAndReadOnlyGates(t *testing.T) 
 				t.Fatal("read-only accepted mutation")
 			}
 			s.writer = b
+			for _, sess := range s.sessions {
+				sess.runtime.writer = b
+			}
 			for _, which := range []string{"cookie", "origin", "csrf"} {
 				r := testRequest(http.MethodPost, route, body, cookie)
 				r.Header.Set("X-CSRF-Token", reply.CSRFToken)

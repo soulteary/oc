@@ -44,7 +44,7 @@ func (s *Server) serveFeatures(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { <-s.apiSlots }()
 	if r.URL.Path == "/api/versions" {
-		s.listVersions(w, r)
+		s.listVersions(w, r, sess)
 		return
 	}
 	if r.URL.RawQuery != "" {
@@ -52,18 +52,18 @@ func (s *Server) serveFeatures(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/shares" {
-		s.createShare(w, r)
+		s.createShare(w, r, sess)
 		return
 	}
 	if r.URL.Path == "/api/objects/rename" {
 		s.renameObject(w, r, sess)
 		return
 	}
-	if s.writer == nil {
+	if sess.runtime.writer == nil {
 		writeError(w, 403, "writes_disabled", "Restart OC with writes explicitly enabled to manage buckets.")
 		return
 	}
-	backend, ok := s.backend.(consoleapi.BucketBackend)
+	backend, ok := sess.runtime.backend.(consoleapi.BucketBackend)
 	if !ok {
 		writeError(w, 501, "buckets_unsupported", "This connection does not support bucket management.")
 		return
@@ -120,7 +120,7 @@ func validObjectRef(ref consoleapi.ObjectRef) bool {
 	return validBucket(ref.Bucket) && ref.Key != "" && validKey(ref.Key) && validVersionID(ref.VersionID)
 }
 
-func (s *Server) listVersions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) listVersions(w http.ResponseWriter, r *http.Request, sess *session) {
 	q, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil || len(r.URL.RawQuery) > maxQueryLength || len(q) < 2 || len(q) > 4 || len(q["bucket"]) != 1 || len(q["key"]) != 1 || len(q["cursor"]) > 1 || len(q["limit"]) > 1 {
 		writeError(w, 400, "invalid_input", "Choose one exact object and a valid version page.")
@@ -141,7 +141,7 @@ func (s *Server) listVersions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_input", "Choose one exact object and a valid version page.")
 		return
 	}
-	backend, ok := s.backend.(consoleapi.VersionBackend)
+	backend, ok := sess.runtime.backend.(consoleapi.VersionBackend)
 	if !ok {
 		writeError(w, 501, "versions_unsupported", "This connection does not support object version history.")
 		return
@@ -161,12 +161,12 @@ func validShareName(name string) bool {
 	return len(name) <= 255 && utf8.ValidString(name) && !strings.ContainsAny(name, "\x00\r\n/\\") && name != "." && name != ".."
 }
 
-func (s *Server) createShare(w http.ResponseWriter, r *http.Request) {
+func (s *Server) createShare(w http.ResponseWriter, r *http.Request, sess *session) {
 	if !s.allowSharing {
 		writeError(w, 403, "sharing_disabled", "Restart OC with sharing explicitly enabled to create download links.")
 		return
 	}
-	backend, ok := s.backend.(consoleapi.ShareBackend)
+	backend, ok := sess.runtime.backend.(consoleapi.ShareBackend)
 	if !ok {
 		writeError(w, 501, "sharing_unsupported", "This connection does not support signed download links.")
 		return
@@ -191,11 +191,11 @@ func (s *Server) createShare(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renameObject(w http.ResponseWriter, r *http.Request, sess *session) {
-	if s.writer == nil {
+	if sess.runtime.writer == nil {
 		writeError(w, 403, "writes_disabled", "Writes are disabled.")
 		return
 	}
-	backend, ok := s.backend.(consoleapi.RenameBackend)
+	backend, ok := sess.runtime.backend.(consoleapi.RenameBackend)
 	if !ok {
 		writeError(w, 501, "rename_unsupported", "This connection does not support renaming.")
 		return
