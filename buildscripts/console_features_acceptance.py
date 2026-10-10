@@ -14,6 +14,26 @@ import zipfile
 from local_http import local_urlopen
 
 
+def poll_archive(request, task, pending_statuses=('planning', 'running')):
+    deadline = time.monotonic() + 20
+    while task['status'] in pending_statuses:
+        if time.monotonic() > deadline:
+            raise AssertionError('archive did not finish within the fixture budget')
+        time.sleep(0.02)
+        task = json.loads(request('/api/archives/' + task['id'])[0])
+    return task
+
+
+def wait_archive_download(request, task):
+    # Receiving Content-Length bytes does not acknowledge the handler's deferred
+    # file cleanup and archive-slot release. Read the authoritative task status
+    # before issuing another creation; never replay a POST after a busy response.
+    task = json.loads(request('/api/archives/' + task['id'])[0])
+    task = poll_archive(request, task, pending_statuses=('downloading',))
+    assert task['status'] == 'succeeded', task
+    return task
+
+
 def verify_features(root, bucket, cli, readonly, session, viewer, start_console, browser, stop,
                     credentials, endpoint, access, secret, context, signed_request, put_object,
                     checks, legacy=False):
@@ -45,15 +65,6 @@ def verify_features(root, bucket, cli, readonly, session, viewer, start_console,
     def bindings(request, kind, target):
         return response(request, '/api/iam/bindings?' + query(kind=kind, target=target), allow_keys=known_access)
 
-    def poll_archive(request, task):
-        deadline = time.monotonic() + 20
-        while task['status'] in ('planning', 'running'):
-            if time.monotonic() > deadline:
-                raise AssertionError('archive did not finish within the fixture budget')
-            time.sleep(0.02)
-            task = response(request, '/api/archives/' + task['id'])
-        return task
-
     def denied_archive(request, headers, refs):
         task = response(request, '/api/archives', 'POST', {'refs': refs}, 202, headers)
         task = poll_archive(request, task)
@@ -80,6 +91,7 @@ def verify_features(root, bucket, cli, readonly, session, viewer, start_console,
                 assert len(data) == entry['size']
                 actual[(entry['key'], entry.get('versionId', ''))] = data
             assert actual == expected_payloads
+        wait_archive_download(request, task)
         return len(raw)
 
     try:
