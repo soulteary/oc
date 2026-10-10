@@ -42,7 +42,17 @@ make build-console
   --admin-ca /path/to/admin-ca.pem
 ```
 
-## 本地 Docker 镜像
+## 正式 Docker 镜像
+
+`deploy/compose.console.yaml` 固定 OC `RELEASE.2026-10-10T11-42-18Z`
+及其已发布的多平台镜像摘要。初始化与控制台使用同一镜像，无需本地构建。
+保留已有数据与配置目录；初始化会更新 `store` 别名。示例端口不覆盖现有
+S3/Admin 地址配置。
+
+固定 OtterIO 发行版未提供控制台创建用户／组所需的条件 IAM 创建协议，
+完整 IAM 功能验收仍受阻。见[正式版本组合验收](../console-released-pair.md)。
+
+## 可选的本地 Docker 镜像
 
 仓库根目录的 `Dockerfile` 同时构建 `oc` 与 `oc-console`，镜像默认入口仍为 `oc`。`Dockerfile.release` 也包含两个程序；`Dockerfile.dev` 仍用于 CLI 镜像。
 
@@ -198,7 +208,7 @@ make test-console
 
 ## Docker bridge 网络
 
-使用 `deploy/compose.console.yaml`，将它复制到部署目录作为 `docker-compose.yaml`，并在同目录设置 `.env` 中的 `OTTERIO_ROOT_USER` 和 `OTTERIO_ROOT_PASSWORD`。重新构建本地镜像后，先启动 OtterIO，等待服务就绪，再运行 `docker compose run --rm oc-init` 和 `docker compose up -d --no-deps oc`。
+使用 `deploy/compose.console.yaml`，将它复制到部署目录作为 `docker-compose.yaml`，并在同目录设置 `.env` 中的 `OTTERIO_ROOT_USER` 和 `OTTERIO_ROOT_PASSWORD`。先运行 `docker compose pull` 拉取固定发行镜像，再启动 OtterIO，等待服务就绪，再运行 `docker compose run --rm oc-init` 和 `docker compose up -d --no-deps oc`。
 
 `--container-listen --address 0.0.0.0:9090 --public-url http://127.0.0.1:9090` 显式启用容器监听。`--public-url` 仍须为 HTTP 本机回环 URL，用于严格校验浏览器 Host 与 Origin；访问时应使用完全相同的地址。宿主机仅将控制台端口映射到回环地址。OtterIO 管理接口通过内部 `http://otterio:9001` 访问，无需映射到宿主机。默认启动方式仍只允许回环监听。
 
@@ -220,7 +230,7 @@ make test-console
 
 Compose 示例设置 `OTTERIO_BROWSER=off`，只关闭 OtterIO 内置网页及其 Web RPC、上传、下载和 ZIP 入口。S3 在 9000，内部 Admin API 保留在 `--console-address :9001`，OC 通过 `--admin-url http://otterio:9001` 访问它；浏览器使用 `http://127.0.0.1:9090`。不要随旧网页删除管理监听器。本次只改变示例部署，不改变 OtterIO 服务端默认值。
 
-迁移前备份部署配置，保留当前 OtterIO 镜像版本，并按上面的本地 Docker 镜像步骤构建含 `oc-console` 的 OC 镜像。启动后检查旧网页不可用，并在 OC 中验证浏览、上传下载、删除、ZIP、桶设置和 IAM；受保护写入及历史版本仍受服务端能力和当前身份权限限制。重启 OC 后确认语言、收藏和最近访问保留。
+迁移前备份部署配置，保留当前 OtterIO 镜像版本，并拉取 Compose 固定的正式 OC 镜像（开发时也可显式使用本地构建）。启动后检查旧网页不可用，并在 OC 中验证浏览、上传下载、删除、ZIP、桶设置和 IAM；受保护写入及历史版本仍受服务端能力和当前身份权限限制。重启 OC 后确认语言、收藏和最近访问保留。
 
 这仍是单身份本机控制台，同一进程的所有会话使用启动 alias 的身份。需要独立用户登录、OIDC 或多人集中部署的现有环境，应继续保留旧 Web，等待对应迁移能力完成。已有公开发布镜像不一定包含 `oc-console`，不能仅修改入口就假定可运行。
 
