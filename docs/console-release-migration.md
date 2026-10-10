@@ -36,9 +36,9 @@ Older published archives and images are not retroactively updated.
   capability headers and identity permissions; absence must remain a refusal
   or documented read-only fallback.
 - All local browser sessions share the startup alias identity. The source now
-  offers opt-in read-only native IAM login over direct HTTPS with independent
+  offers opt-in native IAM login (read-only by default, explicit storage write opt-in) over direct HTTPS with independent
   session clients (see the console guides). Previously published artifacts do
-  not acquire that feature. OIDC, shared writes/credential rotation, multi-instance
+  not acquire that feature. OIDC, identity-scoped credential rotation/revocation, multi-instance
   deployment and Range downloads remain outside the completed migration scope. Existing historical console reports apply
   only to the binaries and server profiles they name.
 

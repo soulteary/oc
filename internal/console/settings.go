@@ -41,6 +41,10 @@ func (s *Server) serveSettings(w http.ResponseWriter, r *http.Request) {
 		if !s.requireOrigin(w, r) || !s.requireCSRF(w, r, sess) {
 			return
 		}
+		if s.nativeLogin != nil && r.URL.Path == "/api/self-secret" {
+			writeError(w, 403, "identity_changes_disabled", "Native secret rotation requires identity-scoped session revocation and is not enabled yet.")
+			return
+		}
 		if sess.runtime.writer == nil {
 			writeError(w, 403, "writes_disabled", "Restart OC with writes explicitly enabled to change settings.")
 			return

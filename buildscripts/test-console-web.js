@@ -656,7 +656,7 @@ test("an interrupted save requires reading storage before another write and igno
 });
 
 test("secret rotation is available only for writable enabled IAM identity", async () => {
-  for (const options of [{ readOnly: true }, { selfAccount: { kind: "root" } }, { selfAccount: { kind: "sts" } }, { selfAccount: { kind: "service" } }, { selfAccount: { kind: "directory" } }, { selfAccount: { kind: "unknown", status: "unknown", canRotateSecret: false } }, { selfAccount: { status: "disabled" } }, { selfAccount: { canRotateSecret: false } }]) {
+  for (const options of [{ native: true, readOnly: false }, { readOnly: true }, { selfAccount: { kind: "root" } }, { selfAccount: { kind: "sts" } }, { selfAccount: { kind: "service" } }, { selfAccount: { kind: "directory" } }, { selfAccount: { kind: "unknown", status: "unknown", canRotateSecret: false } }, { selfAccount: { status: "disabled" } }, { selfAccount: { canRotateSecret: false } }]) {
     const h = createHarness(options);
     await h.ready();
     await h.fire("open-account");
@@ -1804,6 +1804,16 @@ test("native page suspension clears unsubmitted identity credentials", async () 
  await h.windowEvent("pagehide");
  assert.equal(h.element("login-secret").value,"");assert.equal(h.element("login-access-key").value,"");
  assert.equal(h.calls.filter(c=>c.url==="/api/login").length,0);
+});
+
+test("native writable sessions keep IAM actions hidden and cannot submit identity mutations", async () => {
+  const h = createHarness({ native: true, readOnly: false, capabilities: fullCapabilities });
+  await h.ready();
+  await h.fire("open-iam");
+  assert.equal(h.element("iam-action-form").hidden, true);
+  await h.fire("iam-action-form", "submit", { force: true });
+  assert.equal(h.calls.filter(call => call.url === "/api/iam/actions").length, 0);
+  assert.equal(h.element("workspace").hidden, false);
 });
 
 (async () => {

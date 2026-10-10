@@ -17,7 +17,7 @@ func TestNativeConfigurationRejectsStartupCredentialsAndInsecureEndpoints(t *tes
 	base := options{authMode: "native", s3URL: "https://s3.example", adminURL: "https://admin.example", publicURL: "https://console.example", address: "0.0.0.0:9090", tlsCert: "public.crt", tlsKey: "private.key"}
 	for _, change := range []func(*options){
 		func(o *options) { o.alias = "root-alias" }, func(o *options) { o.configDir = "/config" },
-		func(o *options) { o.containerListen = true }, func(o *options) { o.allowWrites = true },
+		func(o *options) { o.containerListen = true },
 		func(o *options) { o.publicURL = "http://console.example" }, func(o *options) { o.publicURL = "https://0.0.0.0:9090" },
 		func(o *options) { o.s3URL = "http://s3.example" }, func(o *options) { o.adminURL = "http://admin.example" },
 		func(o *options) { o.s3URL = "https://root:secret@s3.example" }, func(o *options) { o.adminURL = "https://admin.example/prefix" },
@@ -30,6 +30,7 @@ func TestNativeConfigurationRejectsStartupCredentialsAndInsecureEndpoints(t *tes
 			t.Fatal("unsafe native options accepted")
 		}
 	}
+	base.allowWrites = true
 	cfg, err := nativeClientConfig(base)
 	if err != nil || cfg.AccessKey != "" || cfg.SecretKey != "" || cfg.SessionToken != "" || cfg.S3URL != "https://s3.example" || cfg.AdminURL != "https://admin.example" {
 		t.Fatalf("fixed native target config invalid: %v", err)

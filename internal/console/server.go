@@ -153,8 +153,8 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 	if native {
-		if u.Scheme != "https" || cfg.Backend != nil || cfg.BackendFactory != nil || cfg.LoginCode != "" || cfg.AllowWrites {
-			return nil, errors.New("native login requires HTTPS, a dedicated authenticator and read-only storage access")
+		if u.Scheme != "https" || cfg.Backend != nil || cfg.BackendFactory != nil || cfg.LoginCode != "" {
+			return nil, errors.New("native login requires HTTPS, a dedicated authenticator")
 		}
 		if ip := net.ParseIP(u.Hostname()); ip != nil && ip.IsUnspecified() {
 			return nil, errors.New("native browser origin must name a reachable host")
@@ -190,7 +190,7 @@ func New(cfg Config) (*Server, error) {
 		return nil, errors.New("console archive limit must be between one byte and five GiB")
 	}
 	var writer consoleapi.MutationBackend
-	if cfg.AllowWrites {
+	if cfg.AllowWrites && !native {
 		var ok bool
 		writer, ok = cfg.Backend.(consoleapi.MutationBackend)
 		if !ok {
