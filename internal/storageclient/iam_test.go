@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/soulteary/mc/internal/consoleapi"
 	"github.com/soulteary/otterio/pkg/auth"
@@ -227,7 +226,8 @@ func TestIAMLostAndMalformedAcknowledgementsNeverRetryOrLeakSecrets(t *testing.T
 			}))
 			defer server.Close()
 			c := testClient(t, Config{S3URL: server.URL, AccessKey: "selected-access", SecretKey: iamTestSecret})
-			c.metadataTimeout = 2 * time.Second
+			// Keep the normal metadata deadline: this test checks acknowledgement
+			// handling, not latency, and IAM encryption is slower under -race.
 			_, err := c.IAMAction(context.Background(), consoleapi.IAMActionRequest{Action: "user.rotate", User: "alice", SecretKey: "supplied-secret-unsafe", ConfirmTarget: "alice"})
 			if status == 403 {
 				assertAPIError(t, err, 403, "AccessDenied")
