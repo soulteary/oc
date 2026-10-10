@@ -9,11 +9,11 @@
     <script src="/i18n.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
-  <body>
+  <body data-auth-mode="local">
     <main id="console-shell" class="shell">
       <header class="topbar">
         <button id="toggle-navigation" class="button quiet navigation-toggle" type="button" aria-label="Toggle navigation" aria-expanded="true" hidden>☰</button>
-        <a class="brand" href="/" aria-label="OC local console home"><span class="brand-mark" aria-hidden="true">oc</span><span>Local console</span></a>
+        <a class="brand" href="/" aria-label="OC local console home"><span class="brand-mark" aria-hidden="true">oc</span><span id="login-brand">Local console</span></a>
         <div class="topbar-right">
           <select id="console-language" aria-label="Language / 语言"><option value="zh">中文</option><option value="en">English</option></select>
           <span id="preferences-status" role="status" aria-live="polite"></span>
@@ -28,18 +28,27 @@
       </header>
 
       <section id="login-panel" class="login-panel" aria-labelledby="login-title">
-        <div class="eyebrow">YOUR STORAGE, LOCALLY</div>
+        <div id="login-eyebrow" class="eyebrow">YOUR STORAGE, LOCALLY</div>
         <h1 id="login-title">A clear view of<br>your objects.</h1>
-        <p class="login-description">Browse buckets, inspect objects, and download files from the alias selected in your OC terminal.</p>
-        <form id="login-form" class="login-card">
+        <p id="login-description" class="login-description">Browse buckets, inspect objects, and download files from the alias selected in your OC terminal.</p>
+        <form id="login-form" class="login-card" method="post" action="/api/login">
           <h2>Connect to OC</h2>
+          <div id="login-code-fields">
           <label for="login-code">Login code</label>
           <input id="login-code" name="code" type="password" autocomplete="one-time-code" spellcheck="false" required aria-describedby="code-help" placeholder="Paste the code from your terminal">
           <p id="code-help" class="help">Use the login code printed by <code>oc-console</code>. Your storage credentials stay in the local OC process.</p>
+          </div>
+          <div id="native-login-fields" hidden>
+            <label for="login-access-key">Access key</label>
+            <input id="login-access-key" name="accessKey" type="text" autocomplete="username" spellcheck="false" maxlength="128" required disabled>
+            <label for="login-secret">Secret key</label>
+            <input id="login-secret" name="secretKey" type="password" autocomplete="current-password" spellcheck="false" maxlength="128" required disabled aria-describedby="native-login-help">
+            <p id="native-login-help" class="help">Sign in with your native IAM user. Root, service accounts and temporary credentials are not accepted.</p>
+          </div>
           <button id="login-submit" class="button primary" type="submit">Open console <span aria-hidden="true">→</span></button>
           <p id="login-status" class="notice" role="status" aria-live="polite" tabindex="-1"></p>
         </form>
-        <p class="login-footnote">Writes are disabled by default. The OC process must explicitly enable them.</p>
+        <p id="login-footnote" class="login-footnote">Writes are disabled by default. The OC process must explicitly enable them.</p>
       </section>
 
       <section id="workspace" class="workspace" aria-label="Storage browser" hidden>

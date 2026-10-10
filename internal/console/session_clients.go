@@ -4,8 +4,10 @@ package console
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/soulteary/mc/internal/consoleapi"
 )
@@ -71,9 +73,9 @@ func (l *backendLifetime) takeCleanupLocked() func() {
 	return cleanup
 }
 
-func (s *Server) newSessionRuntime(ctx context.Context) (sessionRuntime, error) {
+func (s *Server) newSessionRuntime(ctx context.Context, credentials NativeCredentials) (sessionRuntime, error) {
 	runtime := sessionRuntime{backend: s.backend, writer: s.writer, settings: s.settings, preferences: s.preferences}
-	if s.backendFactory == nil {
+	if s.backendFactory == nil && s.nativeLogin == nil {
 		return runtime, nil
 	}
 	if err := tryAcquire(ctx, s.loginSlots); err != nil {
@@ -88,7 +90,22 @@ func (s *Server) newSessionRuntime(ctx context.Context) (sessionRuntime, error) 
 	}
 	s.clients.Add(1)
 	s.mu.Unlock()
-	backend, cleanup, err := s.backendFactory(ctx)
+	var backend consoleapi.Backend
+	var cleanup func()
+	var err error
+	if s.nativeLogin != nil {
+		var connection NativeConnection
+		authCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		connection, err = s.nativeLogin(authCtx, credentials)
+		credentials.SecretKey = ""
+		if err == nil && authCtx.Err() != nil {
+			err = authCtx.Err()
+		}
+		backend, cleanup, runtime.identity = connection.Backend, connection.Cleanup, connection.Identity
+	} else {
+		backend, cleanup, err = s.backendFactory(ctx)
+	}
 	accepted := false
 	defer func() {
 		if !accepted {
@@ -106,6 +123,12 @@ func (s *Server) newSessionRuntime(ctx context.Context) (sessionRuntime, error) 
 	}
 	if err := ctx.Err(); err != nil {
 		return sessionRuntime{}, err
+	}
+	if s.nativeLogin != nil {
+		_, identityErr := hex.DecodeString(runtime.identity)
+		if len(runtime.identity) != 64 || identityErr != nil {
+			return sessionRuntime{}, errors.New("authentication returned an invalid principal identity")
+		}
 	}
 	runtime.backend = backend
 	runtime.writer = nil

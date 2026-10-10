@@ -29,7 +29,7 @@ func (s *Server) serveFeatures(w http.ResponseWriter, r *http.Request) {
 	}
 	sess, _ := s.authenticate(r)
 	if sess == nil {
-		writeError(w, 401, "login_required", "Sign in with the code printed by OC.")
+		writeError(w, 401, "login_required", s.loginPrompt())
 		return
 	}
 	if method == http.MethodPost && (!s.requireOrigin(w, r) || !s.requireCSRF(w, r, sess)) {
