@@ -271,3 +271,41 @@ func TestEmptyAndUnknownDownloadsCompleteAndAllowConnectionReuse(t *testing.T) {
 		})
 	}
 }
+
+// A client may close immediately after Content-Length bytes. Cancellation
+// after the successful final flush must not turn a complete download into failure.
+type cancelAfterFlush struct {
+	*httptest.ResponseRecorder
+	cancel context.CancelFunc
+	size   int
+}
+
+func (w *cancelAfterFlush) Flush() {
+	w.ResponseRecorder.Flush()
+	if w.Body.Len() == w.size {
+		w.cancel()
+	}
+}
+func TestKnownLengthDownloadCompletesWhenClientClosesAfterFinalFlush(t *testing.T) {
+	s := testServer(t, &fakeBackend{}, 0)
+	for _, payload := range []string{"zip bytes", strings.Repeat("x", 100000)} {
+		ctx, cancel := context.WithCancel(context.Background())
+		w := &cancelAfterFlush{ResponseRecorder: httptest.NewRecorder(), cancel: cancel, size: len(payload)}
+		completed := s.downloadUsing(w, ctx, "objects.zip", func(context.Context) (consoleapi.Object, error) {
+			return consoleapi.Object{Body: io.NopCloser(strings.NewReader(payload)), Size: int64(len(payload))}, nil
+		})
+		canceledAtFlush := ctx.Err() != nil
+		cancel()
+		if !completed || w.Body.String() != payload || !canceledAtFlush {
+			t.Fatal("fully flushed known-length download marked incomplete")
+		}
+	}
+}
+func TestKnownLengthDownloadRejectsTruncatedBody(t *testing.T) {
+	s := testServer(t, &fakeBackend{}, 0)
+	if s.downloadUsing(httptest.NewRecorder(), context.Background(), "objects.zip", func(context.Context) (consoleapi.Object, error) {
+		return consoleapi.Object{Body: io.NopCloser(strings.NewReader("short")), Size: 10}, nil
+	}) {
+		t.Fatal("truncated download marked complete")
+	}
+}
