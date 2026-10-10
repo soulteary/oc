@@ -2,7 +2,7 @@
 
 [中文](zh_CN/console.md) · [Documentation](README.md) · [Migration plan](console-migration.md)
 
-`oc-console` is an optional source-built program for one operator and one configured S3 alias on the local machine. Browsing, downloads, ZIP archives and configuration reads are available in the default read-only mode. Explicit write mode adds bucket creation/empty-bucket deletion, uploads, object deletion and IAM administration. Historical versions, protected settings and policy binding changes require matching server protocols; presigned sharing has a separate opt-in flag. The existing OtterIO Web console remains available.
+`oc-console` is a program distributed alongside OC in new timestamp releases, also buildable from source for one operator and one configured S3 alias on the local machine. Browsing, downloads, ZIP archives and configuration reads are available in the default read-only mode. Explicit write mode adds bucket creation/empty-bucket deletion, uploads, object deletion and IAM administration. Historical versions, protected settings and policy binding changes require matching server protocols; presigned sharing has a separate opt-in flag. The existing OtterIO Web console remains available.
 
 ## Console navigation
 
@@ -12,7 +12,7 @@ Use the sidebar to switch between Overview, Buckets, Tasks, and Account. The top
 
 ## Local Docker image
 
-The root `Dockerfile` builds and includes both `oc` and `oc-console`, retaining `oc` as its default entrypoint. `Dockerfile.dev` and `Dockerfile.release` remain CLI-only.
+The root `Dockerfile` builds and includes both `oc` and `oc-console`, retaining `oc` as its default entrypoint. `Dockerfile.release` also includes both programs; `Dockerfile.dev` remains CLI-only.
 
 ```sh
 docker build -t soulteary/oc:local-console .

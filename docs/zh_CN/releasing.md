@@ -9,7 +9,7 @@ OC 使用 UTC 的 `RELEASE.YYYY-MM-DDTHH-MM-SSZ` 标签，与 OtterIO 一致。
 发布前还应检查该提交的 **CLI compatibility**，修复或明确审阅批准合同变化。
 发布任务只自动检查 `go.yml` 和 `codeql.yml`，没有强制执行独立的 CLI 合同工作流。
 
-根目录 `RELEASE_NOTES.md` 提供 GitHub Release 正文。带日期的发布准备记录保存在 `docs/releases/`；[2026-10-08 准备记录](../releases/2026-10-08-release-review.md)记录本次源码范围，[2026-10-07 准备记录](../releases/2026-10-07-release-review.md)继续作为历史保存。两份记录都不会为后续发布预留标签。
+根目录 `RELEASE_NOTES.md` 提供 GitHub Release 正文。带日期的发布准备记录保存在 `docs/releases/`；[2026-10-10 准备记录](../releases/2026-10-10-release-review.md)记录本次源码范围，[2026-10-07 准备记录](../releases/2026-10-07-release-review.md)继续作为历史保存。两份记录都不会为后续发布预留标签。
 
 ## 准备标签
 
@@ -33,7 +33,7 @@ git push origin "refs/tags/$TAG"
 
 工作流直接构建 `docs/compatibility.json` 中的 11 个目标：Linux amd64、arm64、arm（GOARM=7）、386、ppc64le、s390x；macOS amd64/arm64；FreeBSD amd64；Windows amd64/arm64。
 
-每个归档包含 `oc` 或 `oc.exe`、LICENSE、NOTICE、CREDITS、通知组件的 MIT 许可证、两种语言的 README 和兼容清单。Windows 使用 ZIP，其余平台使用 tar.gz。
+每个归档包含 `oc` 和 `oc-console`（Windows 均带 `.exe` 后缀）、LICENSE、NOTICE、CREDITS、通知组件的 MIT 许可证、两种语言的 README 和兼容清单。Windows 使用 ZIP，其余平台使用 tar.gz。
 
 11 个归档加上 `release-manifest.json` 和 `checksums.txt`，共 13 个上传附件。SHA-256 文件覆盖所有归档和发布清单。清单记录标签、源码 SHA、SDK/工具链基线、归档哈希，以及实际发布的容器镜像摘要。程序版本参数来自已验证标签和实际源码提交，不要求 SemVer，也不改变 SDK 依赖。写入镜像摘要后，工作流会重新计算发布清单的校验值。
 
@@ -42,13 +42,13 @@ git push origin "refs/tags/$TAG"
 新增的 `storage_sdk` 与 `otterio_kits` 分别记录独立 S3 客户端及已发布的 kits；旧字段 `otterio_sdk` 继续记录服务端 / 管理模块身份。
 
 `.goreleaser.yml` 仍可用于本地快照或软件包构建，但发布功能关闭；这个工作流不会调用它。
-这份本地配置包含 10 个编译目标，没有 `linux/386`，并使用自己的归档布局与软件包元数据；其输出不能替代正式的 11 平台构建及 `release-manifest.json`。正式归档与镜像只包含 `oc`；`oc-console` 仍是从源码构建的可选程序，不属于这个发布渠道。
+这份本地配置包含 10 个编译目标，没有 `linux/386`，并使用自己的归档布局与软件包元数据；其输出不能替代正式的 11 平台构建及 `release-manifest.json`。正式归档与镜像同时包含 `oc` 和 `oc-console`。
 
 ## 容器镜像
 
 启用容器发布的工作流会生成 `ghcr.io/soulteary/oc:RELEASE.YYYY-MM-DDTHH-MM-SSZ`，支持 `linux/amd64` 和 `linux/arm64`。镜像包含对应归档中的原始可执行文件、CA 证书，以及 LICENSE、NOTICE、CREDITS 和通知组件的 MIT 许可证。
 
-镜像入口是 `oc`，客户端参数直接放在镜像名后。工作流按摘要验证已推送镜像，再正式发布 GitHub Release。它检查索引恰好包含 Linux amd64/arm64，然后只在 Linux amd64 上运行 `--version`、`--help` 和本地复制冒烟测试，并将该程序与许可证逐字节比对准备好的归档目录。arm64 归档在准备镜像目录时会核对哈希，但工作流不运行 arm64 镜像；两个平台均已发布不代表两个平台均已完成运行验收。较早的纯归档版本，包括 `RELEASE.2026-10-07T14-10-00Z`，清单没有 `images` 字段，不能据此推断镜像存在。按[容器指南](containers.md)选择清单中记录了镜像身份的版本。
+镜像入口是 `oc`，客户端参数直接放在镜像名后；控制台使用 `--entrypoint oc-console` 启动。工作流按摘要验证已推送镜像，再正式发布 GitHub Release。它检查索引恰好包含 Linux amd64/arm64，然后只在 Linux amd64 上运行 `--version`、`--help` 和本地复制冒烟测试，同时运行控制台版本 / 帮助检查，并将两个程序与许可证逐字节比对准备好的归档目录。arm64 归档在准备镜像目录时会核对哈希，但工作流不运行 arm64 镜像；两个平台均已发布不代表两个平台均已完成运行验收。较早的纯归档版本，包括 `RELEASE.2026-10-07T14-10-00Z`，清单没有 `images` 字段，不能据此推断镜像存在。按[容器指南](containers.md)选择清单中记录了镜像身份的版本。
 
 如需同时推送 Docker Hub，在仓库 Actions secrets 中同时设置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`。镜像名为 `DOCKERHUB_USERNAME/oc`，使用相同的时间戳标签和平台。两项都未设置时跳过 Docker Hub；只设置一项会因凭据配置错误导致发布失败。GHCR 使用工作流的 GitHub token，不需要这两项凭据。
 
