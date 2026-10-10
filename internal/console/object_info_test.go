@@ -2,9 +2,10 @@ package console
 
 import (
 	"context"
-	"github.com/soulteary/mc/internal/consoleapi"
 	"net/http"
 	"testing"
+
+	"github.com/soulteary/mc/internal/consoleapi"
 )
 
 func TestObjectInfoUsesExactAuthenticatedScope(t *testing.T) {

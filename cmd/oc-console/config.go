@@ -153,7 +153,7 @@ func validateContainerListenAddress(address string) error {
 	}
 	ip, err := netip.ParseAddr(host)
 	if err != nil || !ip.IsUnspecified() || ip.Zone() != "" {
-		return errors.New("container address must use 0.0.0.0 or ::")
+		return errors.New("container address must use an unspecified IPv4 or IPv6 host (0.0.0.0 or ::)")
 	}
 	_, port, _ := net.SplitHostPort(address)
 	return validateListenAddress(net.JoinHostPort("127.0.0.1", port))
