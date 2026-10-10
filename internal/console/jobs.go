@@ -29,10 +29,11 @@ type job struct {
 	confirm [32]byte
 }
 
-// Wait waits for active storage mutations after Close has canceled sessions.
+// Wait drains active storage tasks and owned client cleanup after Close.
+// With BackendFactory configured, call Close before Wait.
 func (s *Server) Wait(ctx context.Context) error {
 	done := make(chan struct{})
-	go func() { s.workers.Wait(); close(done) }()
+	go func() { s.workers.Wait(); s.clients.Wait(); close(done) }()
 	select {
 	case <-done:
 		return nil
@@ -580,6 +581,12 @@ func (s *Server) executeDeletion(w http.ResponseWriter, r *http.Request, sess *s
 		writeSlotError(w, err)
 		return
 	}
+	if !sess.runtime.retain() {
+		<-s.writeSlots
+		s.mu.Unlock()
+		writeError(w, 409, "connection_ending", "This connection is ending.")
+		return
+	}
 	j.confirm = [32]byte{}
 	j.info.Status = "running"
 	j.info.Expires = j.owner.expires
@@ -592,7 +599,7 @@ func (s *Server) executeDeletion(w http.ResponseWriter, r *http.Request, sess *s
 }
 
 func (s *Server) runDeletion(j *job) {
-	defer func() { <-s.writeSlots; s.workers.Done() }()
+	defer func() { <-s.writeSlots; j.owner.runtime.release(); s.workers.Done() }()
 	failed := false
 	for i := range j.info.Items {
 		if j.ctx.Err() != nil {
