@@ -79,6 +79,9 @@ func TestFeatureBucketsRequireWriteGateExactConfirmationAndValidNames(t *testing
 		t.Fatal("read-only mode created a bucket")
 	}
 	s.writer = b
+	for _, sess := range s.sessions {
+		sess.runtime.writer = b
+	}
 	for _, body := range []string{`{"bucket":"ab"}`, `{"bucket":"127.0.0.1"}`, `{"bucket":"bad..name"}`, `{"bucket":"-bad-name"}`, `{"bucket":"good-bucket","extra":true}`, `{"bucket":"good-bucket"} {}`, `{"bucket":"good-bucket","confirmBucket":"other"}`} {
 		if w := jobRequest(s, http.MethodPost, "/api/buckets/create", body, cookie, reply.CSRFToken); w.Code != 400 {
 			t.Fatalf("accepted create body %s: %d", body, w.Code)
@@ -268,11 +271,17 @@ func TestRenameRequiresWriteGateCSRFAndExactScope(t *testing.T) {
 	s, base, cookie, reply := featureServer(t, false, false)
 	b := &fakeRenameBackend{fakeFeatureBackend: base}
 	s.backend = b
+	for _, sess := range s.sessions {
+		sess.runtime.backend = b
+	}
 	body := `{"bucket":"exact-bucket","key":"dir/中文 +%.txt","newKey":"dir/new.txt","etag":"etag"}`
 	if w := jobRequest(s, "POST", "/api/objects/rename", body, cookie, reply.CSRFToken); w.Code != 403 {
 		t.Fatal(w.Code)
 	}
 	s.writer = b
+	for _, sess := range s.sessions {
+		sess.runtime.writer = b
+	}
 	if w := jobRequest(s, "POST", "/api/objects/rename", body, cookie, ""); w.Code != 403 {
 		t.Fatal(w.Code)
 	}

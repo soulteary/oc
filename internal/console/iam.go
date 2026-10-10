@@ -34,12 +34,12 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 		if !s.requireOrigin(w, r) || !s.requireCSRF(w, r, sess) {
 			return
 		}
-		if s.writer == nil {
+		if sess.runtime.writer == nil {
 			writeError(w, 403, "writes_disabled", "Restart OC with writes explicitly enabled to manage IAM.")
 			return
 		}
 	}
-	backend, ok := s.backend.(consoleapi.IAMBackend)
+	backend, ok := sess.runtime.backend.(consoleapi.IAMBackend)
 	if !ok {
 		writeError(w, 501, "iam_unsupported", "This connection does not support IAM management.")
 		return

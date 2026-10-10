@@ -115,7 +115,7 @@ func (s *Server) servePreferences(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 401, "login_required", "Sign in with the code printed by OC.")
 		return
 	}
-	p := s.preferences
+	p := sess.runtime.preferences
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if r.Method == http.MethodPut {

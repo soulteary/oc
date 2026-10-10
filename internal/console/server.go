@@ -50,7 +50,17 @@ type Config struct {
 	ArchiveDir     string
 }
 
+// sessionRuntime is selected at sign-in and never replaced for an active session.
+// Local mode borrows the startup client; the caller retains transport ownership.
+type sessionRuntime struct {
+	backend     consoleapi.Backend
+	writer      consoleapi.MutationBackend
+	settings    consoleapi.SettingsBackend
+	preferences *preferenceStore
+}
+
 type session struct {
+	runtime sessionRuntime
 	csrf    string
 	expires time.Time
 	ctx     context.Context
@@ -68,6 +78,8 @@ type sessionReply struct {
 // Server does not own its Backend. The caller must close any backend transport
 // after closing the server and stopping the HTTP listener.
 type Server struct {
+	// Startup defaults are copied into a session at login. Request handlers and
+	// background tasks must use that session's runtime instead of these fields.
 	preferences *preferenceStore
 	backend     consoleapi.Backend
 	alias       string
@@ -284,7 +296,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/session" {
-		writeJSON(w, http.StatusOK, sessionReply{Alias: s.alias, CSRFToken: sess.csrf, ReadOnly: s.writer == nil, MaxUploadSize: s.maxUploadSize})
+		writeJSON(w, http.StatusOK, sessionReply{Alias: s.alias, CSRFToken: sess.csrf, ReadOnly: sess.runtime.writer == nil, MaxUploadSize: s.maxUploadSize})
 		return
 	}
 	ctx, cancel := context.WithCancel(r.Context())
@@ -310,28 +322,28 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.URL.Path {
 	case "/api/capabilities":
-		_, buckets := s.backend.(consoleapi.BucketBackend)
-		_, versions := s.backend.(consoleapi.VersionBackend)
+		_, buckets := sess.runtime.backend.(consoleapi.BucketBackend)
+		_, versions := sess.runtime.backend.(consoleapi.VersionBackend)
 		if len(q) > 1 || len(q["bucket"]) > 1 || (len(q) == 1 && len(q["bucket"]) != 1) || (q.Get("bucket") != "" && !validBucket(q.Get("bucket"))) {
 			writeError(w, 400, "invalid_input", "Choose one bucket for capability detection.")
 			return
 		}
-		if detector, ok := s.backend.(consoleapi.VersionCapabilityBackend); ok {
+		if detector, ok := sess.runtime.backend.(consoleapi.VersionCapabilityBackend); ok {
 			versions = false
 			if q.Get("bucket") != "" {
 				supported, err := detector.VersionSupported(ctx, q.Get("bucket"))
 				versions = err == nil && supported
 			}
 		}
-		_, rename := s.backend.(consoleapi.RenameBackend)
-		_, shares := s.backend.(consoleapi.ShareBackend)
-		_, archives := s.backend.(consoleapi.ReferenceBackend)
-		_, iam := s.backend.(consoleapi.IAMBackend)
+		_, rename := sess.runtime.backend.(consoleapi.RenameBackend)
+		_, shares := sess.runtime.backend.(consoleapi.ShareBackend)
+		_, archives := sess.runtime.backend.(consoleapi.ReferenceBackend)
+		_, iam := sess.runtime.backend.(consoleapi.IAMBackend)
 		// These describe implemented interfaces and explicit process gates.
 		// Individual reads still discover server protocols and permissions.
-		writeJSON(w, 200, map[string]any{"rename": rename && s.writer != nil, "bucketManagement": buckets, "versions": versions, "versioning": versions, "sharing": shares && s.allowSharing, "archives": archives, "iam": iam, "iamPolicyBindings": iam, "writesAllowed": s.writer != nil, "maxArchiveSize": s.maxArchiveSize, "maxArchiveObjects": maxPlanKeys})
+		writeJSON(w, 200, map[string]any{"rename": rename && sess.runtime.writer != nil, "bucketManagement": buckets, "versions": versions, "versioning": versions, "sharing": shares && s.allowSharing, "archives": archives, "iam": iam, "iamPolicyBindings": iam, "writesAllowed": sess.runtime.writer != nil, "maxArchiveSize": s.maxArchiveSize, "maxArchiveObjects": maxPlanKeys})
 	case "/api/buckets":
-		buckets, err := s.backend.ListBuckets(ctx)
+		buckets, err := sess.runtime.backend.ListBuckets(ctx)
 		if err != nil {
 			writeBackendError(w, err)
 			return
@@ -343,7 +355,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Buckets []consoleapi.Bucket `json:"buckets"`
 		}{buckets})
 	case "/api/account":
-		account, err := s.backend.AccountInfo(ctx)
+		account, err := sess.runtime.backend.AccountInfo(ctx)
 		if err != nil {
 			writeBackendError(w, err)
 			return
@@ -358,7 +370,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid_input", "The bucket, prefix, cursor or page size is invalid.")
 			return
 		}
-		page, err := s.backend.ListObjects(ctx, bucket, prefix, cursor, limit)
+		page, err := sess.runtime.backend.ListObjects(ctx, bucket, prefix, cursor, limit)
 		if err != nil {
 			writeBackendError(w, err)
 			return
@@ -373,7 +385,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, "invalid_input", "Choose an exact bucket and object key.")
 			return
 		}
-		backend, ok := s.backend.(consoleapi.ReferenceBackend)
+		backend, ok := sess.runtime.backend.(consoleapi.ReferenceBackend)
 		if !ok {
 			writeError(w, 501, "metadata_unsupported", "Object information is unavailable on this connection.")
 			return
@@ -396,9 +408,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		defer func() { <-s.downloads }()
 		if versionID := q.Get("versionId"); versionID != "" {
-			s.downloadReference(w, ctx, consoleapi.ObjectRef{Bucket: bucket, Key: key, VersionID: versionID})
+			s.downloadReference(w, ctx, sess, consoleapi.ObjectRef{Bucket: bucket, Key: key, VersionID: versionID})
 		} else {
-			s.download(w, ctx, bucket, key)
+			s.download(w, ctx, sess, bucket, key)
 		}
 	}
 }
@@ -491,7 +503,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	hash := sha256.Sum256([]byte(token))
 	ctx, cancel := context.WithCancel(s.life)
-	sess := &session{csrf: csrf, expires: time.Now().Add(s.ttl), ctx: ctx, cancel: cancel}
+	sess := &session{runtime: sessionRuntime{backend: s.backend, writer: s.writer, settings: s.settings, preferences: s.preferences}, csrf: csrf, expires: time.Now().Add(s.ttl), ctx: ctx, cancel: cancel}
 	s.mu.Lock()
 	// A login can finish reading its body after another request starts
 	// rotating credentials. Recheck the pause at the session commit point.
@@ -517,7 +529,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	})
 	s.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
-	writeJSON(w, http.StatusOK, sessionReply{Alias: s.alias, CSRFToken: csrf, ReadOnly: s.writer == nil, MaxUploadSize: s.maxUploadSize})
+	writeJSON(w, http.StatusOK, sessionReply{Alias: s.alias, CSRFToken: csrf, ReadOnly: sess.runtime.writer == nil, MaxUploadSize: s.maxUploadSize})
 }
 
 func (s *Server) removeSessionLocked(token [32]byte, sess *session) {
@@ -640,12 +652,14 @@ func writeSlotError(w http.ResponseWriter, err error) {
 	}
 }
 
-func (s *Server) download(w http.ResponseWriter, ctx context.Context, bucket, key string) {
-	s.downloadUsing(w, ctx, key, func(ctx context.Context) (consoleapi.Object, error) { return s.backend.OpenObject(ctx, bucket, key) })
+func (s *Server) download(w http.ResponseWriter, ctx context.Context, sess *session, bucket, key string) {
+	s.downloadUsing(w, ctx, key, func(ctx context.Context) (consoleapi.Object, error) {
+		return sess.runtime.backend.OpenObject(ctx, bucket, key)
+	})
 }
 
-func (s *Server) downloadReference(w http.ResponseWriter, ctx context.Context, ref consoleapi.ObjectRef) {
-	reader, ok := s.backend.(consoleapi.ReferenceBackend)
+func (s *Server) downloadReference(w http.ResponseWriter, ctx context.Context, sess *session, ref consoleapi.ObjectRef) {
+	reader, ok := sess.runtime.backend.(consoleapi.ReferenceBackend)
 	if !ok {
 		writeError(w, 501, "versions_unsupported", "This connection does not support version downloads.")
 		return

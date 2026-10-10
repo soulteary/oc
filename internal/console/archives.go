@@ -100,7 +100,7 @@ func (s *Server) serveArchives(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_input", "Archive requests do not accept URL parameters.")
 		return
 	}
-	reader, ok := s.backend.(consoleapi.ReferenceBackend)
+	reader, ok := sess.runtime.backend.(consoleapi.ReferenceBackend)
 	if !ok {
 		writeError(w, 501, "archives_unsupported", "This connection does not support archives.")
 		return
@@ -296,7 +296,7 @@ func (s *Server) prepareArchive(task *archiveTask, reader consoleapi.ReferenceBa
 	}()
 	planning, cancelPlanning := context.WithTimeout(task.ctx, 60*time.Second)
 	if bucket != "" {
-		lister, ok := s.backend.(interface {
+		lister, ok := task.owner.runtime.backend.(interface {
 			ScanObjects(context.Context, string, string, string, int) (consoleapi.Page, error)
 		})
 		if !ok {

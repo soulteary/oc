@@ -93,6 +93,9 @@ func TestIAMReadsAndMutationGuards(t *testing.T) {
 		t.Fatal("read-only IAM write accepted")
 	}
 	s.writer = b
+	for _, sess := range s.sessions {
+		sess.runtime.writer = b
+	}
 	for _, missing := range []string{"cookie", "origin", "csrf"} {
 		r := testRequest(http.MethodPost, "/api/iam/actions", body, cookie)
 		r.Header.Set("X-CSRF-Token", reply.CSRFToken)

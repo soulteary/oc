@@ -41,12 +41,12 @@ func (s *Server) serveSettings(w http.ResponseWriter, r *http.Request) {
 		if !s.requireOrigin(w, r) || !s.requireCSRF(w, r, sess) {
 			return
 		}
-		if s.writer == nil {
+		if sess.runtime.writer == nil {
 			writeError(w, 403, "writes_disabled", "Restart OC with writes explicitly enabled to change settings.")
 			return
 		}
 	}
-	if s.settings == nil {
+	if sess.runtime.settings == nil {
 		writeError(w, 501, "settings_unsupported", "This connection does not support account or bucket settings.")
 		return
 	}
@@ -64,7 +64,7 @@ func (s *Server) serveSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, "invalid_input", "Choose one exact bucket and a setting type.")
 			return
 		}
-		setting, err := s.settings.BucketSetting(ctx, q.Get("bucket"), q.Get("kind"))
+		setting, err := sess.runtime.settings.BucketSetting(ctx, q.Get("bucket"), q.Get("kind"))
 		if err != nil {
 			writeBackendError(w, err)
 			return
@@ -78,7 +78,7 @@ func (s *Server) serveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.URL.Path {
 	case "/api/self-account":
-		account, err := s.settings.SelfAccount(ctx)
+		account, err := sess.runtime.settings.SelfAccount(ctx)
 		if err != nil {
 			writeBackendError(w, err)
 			return
@@ -178,7 +178,7 @@ func (s *Server) saveBucketSetting(w http.ResponseWriter, r *http.Request, sess 
 		return
 	}
 	defer s.finishSettingsWrite(false)
-	setting, err := s.settings.SaveBucketSetting(r.Context(), args.Bucket, args.Kind, args.Document, args.Revision, args.Remove)
+	setting, err := sess.runtime.settings.SaveBucketSetting(r.Context(), args.Bucket, args.Kind, args.Document, args.Revision, args.Remove)
 	if err != nil {
 		writeBackendError(w, err)
 		return
@@ -202,7 +202,7 @@ func (s *Server) rotateOwnSecret(w http.ResponseWriter, r *http.Request, sess *s
 		return
 	}
 	defer s.finishSettingsWrite(true)
-	err := s.settings.RotateOwnSecret(r.Context(), args.NewSecret)
+	err := sess.runtime.settings.RotateOwnSecret(r.Context(), args.NewSecret)
 	args.NewSecret = ""
 	if err != nil {
 		var apiError *consoleapi.Error
