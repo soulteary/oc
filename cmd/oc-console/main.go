@@ -40,7 +40,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags := flag.NewFlagSet("oc-console", flag.ContinueOnError)
 	flags.SetOutput(errorOutput)
 	var opts options
-	flags.StringVar(&opts.authMode, "auth-mode", "local", "local login code or native IAM user login (read-only HTTPS)")
+	flags.StringVar(&opts.authMode, "auth-mode", "local", "local login code or native IAM user login (HTTPS; read-only by default)")
 	flags.StringVar(&opts.s3URL, "s3-url", "", "fixed HTTPS storage root URL for native login")
 	flags.StringVar(&opts.tlsCert, "tls-cert", "", "browser HTTPS certificate PEM for native login")
 	flags.StringVar(&opts.tlsKey, "tls-key", "", "browser HTTPS private key PEM for native login")

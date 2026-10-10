@@ -153,8 +153,8 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 	if native {
-		if u.Scheme != "https" || cfg.Backend != nil || cfg.BackendFactory != nil || cfg.LoginCode != "" || cfg.AllowWrites {
-			return nil, errors.New("native login requires HTTPS, a dedicated authenticator and read-only storage access")
+		if u.Scheme != "https" || cfg.Backend != nil || cfg.BackendFactory != nil || cfg.LoginCode != "" {
+			return nil, errors.New("native login requires HTTPS, a dedicated authenticator")
 		}
 		if ip := net.ParseIP(u.Hostname()); ip != nil && ip.IsUnspecified() {
 			return nil, errors.New("native browser origin must name a reachable host")
@@ -190,7 +190,7 @@ func New(cfg Config) (*Server, error) {
 		return nil, errors.New("console archive limit must be between one byte and five GiB")
 	}
 	var writer consoleapi.MutationBackend
-	if cfg.AllowWrites {
+	if cfg.AllowWrites && !native {
 		var ok bool
 		writer, ok = cfg.Backend.(consoleapi.MutationBackend)
 		if !ok {
@@ -853,16 +853,26 @@ func (s *Server) downloadUsing(w http.ResponseWriter, ctx context.Context, key s
 	w.WriteHeader(http.StatusOK)
 	// Errors after headers are sent terminate the stream; JSON must never be
 	// appended to a partial download. The backend stream is closed on all paths.
-	copied, copyErr := io.Copy(writer, readWithIdleTimeout{body: object.Body, idle: s.streamIdle, interrupt: func() { cancel(); closeBody() }})
+	reader := readWithIdleTimeout{body: object.Body, idle: s.streamIdle, interrupt: func() { cancel(); closeBody() }}
+	var copied int64
+	var copyErr error
+	if object.Size >= 0 {
+		// Content-Length lets the client close as soon as these bytes arrive.
+		// Do not wait for a further upstream read after the final successful flush.
+		copied, copyErr = io.CopyN(writer, reader, object.Size)
+	} else {
+		copied, copyErr = io.Copy(writer, reader)
+	}
 	if copyErr == nil && object.Size >= 0 && copied != object.Size {
 		copyErr = io.ErrUnexpectedEOF
 	}
-	if copyErr == nil {
+	if copyErr == nil && object.Size <= 0 {
 		// Even an empty object must flush its headers under a write deadline.
 		// This also renews the bound for net/http's final chunk after EOF.
 		_, copyErr = writer.Write(nil)
 	}
-	if copyErr != nil || ctx.Err() != nil {
+	complete := copyErr == nil && (object.Size > 0 || ctx.Err() == nil)
+	if !complete {
 		// A truncated chunked download must not end with a successful final
 		// chunk. Native HTTP writers support deadlines; in-memory test writers
 		// have no connection to abort.
@@ -870,7 +880,7 @@ func (s *Server) downloadUsing(w http.ResponseWriter, ctx context.Context, key s
 			panic(http.ErrAbortHandler)
 		}
 	}
-	return copyErr == nil && ctx.Err() == nil
+	return complete
 }
 
 type flushWriter struct {

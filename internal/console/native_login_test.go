@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/soulteary/mc/internal/consoleapi"
 )
@@ -67,7 +68,7 @@ func nativeFixtureAuthenticator(closed *atomic.Int32) func(context.Context, Nati
 	}
 }
 
-func TestNativeModeRequiresDedicatedHTTPSReadOnlyAuthentication(t *testing.T) {
+func TestNativeModeRequiresDedicatedHTTPSAuthentication(t *testing.T) {
 	var closed atomic.Int32
 	auth := nativeFixtureAuthenticator(&closed)
 	for _, change := range []func(*Config){
@@ -75,7 +76,6 @@ func TestNativeModeRequiresDedicatedHTTPSReadOnlyAuthentication(t *testing.T) {
 		func(c *Config) { c.BaseURL = "https://0.0.0.0:9090" },
 		func(c *Config) { c.Backend = &fakeBackend{} },
 		func(c *Config) { c.LoginCode = "shared-code" },
-		func(c *Config) { c.AllowWrites = true },
 		func(c *Config) {
 			c.BackendFactory = func(context.Context) (consoleapi.Backend, func(), error) { return nil, nil, nil }
 		},
@@ -216,5 +216,96 @@ func TestNativeReloginKeepsPreferenceStoreUntilRetiredRequestsDrain(t *testing.T
 	next, _ := s.authenticate(nativeRequest("GET", "/api/session", "", nextCookie))
 	if next.runtime.preferences != sess.runtime.preferences {
 		t.Fatal("re-login forked preferences while a revoked request was still finishing")
+	}
+}
+
+func TestNativeWritesUseOwnBackendAndIdentityChangesCannotStopServer(t *testing.T) {
+	backends := map[string]*fakeFeatureBackend{}
+	s, err := New(Config{NativeLogin: func(_ context.Context, c NativeCredentials) (NativeConnection, error) {
+		b := &fakeFeatureBackend{fakeMutationBackend: &fakeMutationBackend{fakeBackend: &fakeBackend{}}}
+		backends[c.AccessKey] = b
+		return NativeConnection{Backend: b, Cleanup: func() {}, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(c.AccessKey)))}, nil
+	}, Alias: "storage", BaseURL: nativeOrigin, AllowWrites: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { drainOwnedClients(t, s) })
+	alice, ar := nativeSignIn(t, s, "alice")
+	bob, br := nativeSignIn(t, s, "bob")
+	if ar.ReadOnly || br.ReadOnly {
+		t.Fatal("native write opt-in lost")
+	}
+	post := func(path, body string, cookie *http.Cookie, reply sessionReply) *httptest.ResponseRecorder {
+		r := nativeRequest("POST", path, body, cookie)
+		r.Header.Set("X-CSRF-Token", reply.CSRFToken)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w
+	}
+	if w := post("/api/buckets/create", `{"bucket":"alice-bucket"}`, alice, ar); w.Code != 200 {
+		t.Fatalf("write failed: %s", w.Body.String())
+	}
+	if backends["alice"].creates.Load() != 1 || backends["bob"].creates.Load() != 0 {
+		t.Fatal("write crossed identities")
+	}
+	for _, path := range []string{"/api/iam/actions", "/api/self-secret"} {
+		if w := post(path, `{}`, alice, ar); w.Code != 403 || !strings.Contains(w.Body.String(), "identity_changes_disabled") {
+			t.Fatalf("identity gate failed: %d %s", w.Code, w.Body.String())
+		}
+	}
+	select {
+	case <-s.Done():
+		t.Fatal("identity mutation stopped shared server")
+	default:
+	}
+	if w := post("/api/logout", "", alice, ar); w.Code != 204 {
+		t.Fatal("logout failed")
+	}
+	if w := post("/api/buckets/create", `{"bucket":"bob-bucket"}`, bob, br); w.Code != 200 {
+		t.Fatalf("other user's writes interrupted: %s", w.Body.String())
+	}
+	if backends["bob"].creates.Load() != 1 {
+		t.Fatal("other session lost its writer")
+	}
+}
+
+func TestNativeLogoutCancelsOnlyItsInflightWrite(t *testing.T) {
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	s, err := New(Config{Alias: "storage", BaseURL: nativeOrigin, AllowWrites: true, NativeLogin: func(_ context.Context, c NativeCredentials) (NativeConnection, error) {
+		b := &fakeFeatureBackend{fakeMutationBackend: &fakeMutationBackend{fakeBackend: &fakeBackend{}}}
+		if c.AccessKey == "alice" {
+			b.create = func(ctx context.Context, _ string) error { close(started); <-ctx.Done(); return ctx.Err() }
+		}
+		return NativeConnection{Backend: b, Cleanup: func() {}, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(c.AccessKey)))}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { drainOwnedClients(t, s) })
+	alice, ar := nativeSignIn(t, s, "alice")
+	bob, br := nativeSignIn(t, s, "bob")
+	r := nativeRequest("POST", "/api/buckets/create", `{"bucket":"alice-bucket"}`, alice)
+	r.Header.Set("X-CSRF-Token", ar.CSRFToken)
+	go func(request *http.Request) { defer close(finished); s.ServeHTTP(httptest.NewRecorder(), request) }(r)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("write did not start")
+	}
+	r = nativeRequest("POST", "/api/logout", "", alice)
+	r.Header.Set("X-CSRF-Token", ar.CSRFToken)
+	s.ServeHTTP(httptest.NewRecorder(), r)
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("logout did not cancel owned write")
+	}
+	r = nativeRequest("POST", "/api/buckets/create", `{"bucket":"bob-bucket"}`, bob)
+	r.Header.Set("X-CSRF-Token", br.CSRFToken)
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("logout interrupted another user: %s", w.Body.String())
 	}
 }

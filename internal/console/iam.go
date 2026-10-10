@@ -34,6 +34,10 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 		if !s.requireOrigin(w, r) || !s.requireCSRF(w, r, sess) {
 			return
 		}
+		if s.nativeLogin != nil {
+			writeError(w, 403, "identity_changes_disabled", "Native IAM changes require identity-scoped session revocation and are not enabled yet.")
+			return
+		}
 		if sess.runtime.writer == nil {
 			writeError(w, 403, "writes_disabled", "Restart OC with writes explicitly enabled to manage IAM.")
 			return

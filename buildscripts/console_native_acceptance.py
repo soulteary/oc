@@ -20,8 +20,10 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
     wrong_secret = secrets.token_hex(24)
     credentials.extend([other_access, other_secret, wrong_secret])
     cli('admin', 'user', 'add', 'store', other_access, other_secret)
+    write_bucket = 'native-write-' + secrets.token_hex(6)
     policy = root / 'native-exact-object-policy.json'
     policy.write_text(json.dumps({'Version': '2012-10-17', 'Statement': [
+        {'Effect': 'Allow', 'Action': ['s3:*'], 'Resource': ['arn:aws:s3:::' + write_bucket, 'arn:aws:s3:::' + write_bucket + '/*']},
         {'Effect': 'Allow', 'Action': ['s3:GetBucketLocation'], 'Resource': ['arn:aws:s3:::' + bucket]},
         {'Effect': 'Allow', 'Action': ['s3:GetObject'], 'Resource': ['arn:aws:s3:::' + bucket + '/stream.bin']},
     ]}))
@@ -33,7 +35,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 '--s3-url', endpoint, '--admin-url', admin, '--s3-ca', str(s3ca),
                 '--admin-ca', str(adminca), '--address', urllib.parse.urlsplit(base).netloc,
                 '--public-url', base, '--tls-cert', str(browser_ca),
-                '--tls-key', str(tls_dir / 'private.key'), '--data-dir', str(data_dir)],
+                '--tls-key', str(tls_dir / 'private.key'), '--data-dir', str(data_dir), '--allow-writes'],
                 env=env, stdout=log, stderr=log)
             deadline = time.monotonic() + 10
             while 'URL: ' not in log_path.read_text():
@@ -58,7 +60,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 assert cookie.name == '__Host-oc_console_session' and cookie.secure and not cookie.domain_specified
                 assert cookie.path == '/' and cookie.has_nonstandard_attr('HttpOnly')
                 assert cookie.get_nonstandard_attr('SameSite') == 'Lax'
-            assert alice_session['readOnly'] and bob_session['readOnly']
+            assert not alice_session['readOnly'] and not bob_session['readOnly']
             query = urllib.parse.urlencode({'bucket': bucket, 'key': 'plain.txt'})
             assert alice('/api/download?' + query)[0] == b'console acceptance\n'
             bob('/api/download?' + query, expected=403)
@@ -77,7 +79,21 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             another = browser(base, tls_context)
             another_session = json.loads(another('/api/login', 'POST', {'accessKey': viewer_access, 'secretKey': viewer_secret})[0])
             assert json.loads(another('/api/preferences')[0])['language'] == 'en'
-            for path in ('/api/uploads', '/api/iam/actions', '/api/self-secret'):
+            bob_headers = {'X-CSRF-Token': bob_session['csrfToken']}
+            alice('/api/buckets/create', 'POST', {'bucket': write_bucket}, expected=403, headers=alice_headers)
+            bob('/api/buckets/create', 'POST', {'bucket': write_bucket}, headers=bob_headers)
+            payload = b'native isolated upload\n'
+            upload = json.loads(bob('/api/uploads', 'POST', {'bucket': write_bucket, 'key': 'own.txt', 'size': len(payload)}, expected=201, headers=bob_headers)[0])
+            alice('/api/uploads/' + upload['id'], 'PUT', payload, expected=404, headers=alice_headers)
+            completed = json.loads(bob('/api/uploads/' + upload['id'], 'PUT', payload, headers=bob_headers)[0])
+            assert completed['status'] == 'succeeded'
+            own_query = urllib.parse.urlencode({'bucket': write_bucket, 'key': 'own.txt'})
+            assert bob('/api/download?' + own_query)[0] == payload
+            alice('/api/download?' + own_query, expected=403)
+            cli('rm', 'store/' + write_bucket + '/own.txt')
+            bob('/api/buckets/delete', 'POST', {'bucket': write_bucket, 'confirmBucket': write_bucket}, headers=bob_headers)
+            checks.append('native write opt-in preserves upstream permissions: authorized user creates/deletes its exact bucket and uploads exact bytes; other user denied object and upload task access')
+            for path in ('/api/iam/actions', '/api/self-secret'):
                 alice(path, 'POST', {}, expected=403, headers=alice_headers)
             alice('/api/logout', 'POST', expected=403)
             alice('/api/logout', 'POST', expected=204, headers=alice_headers)
@@ -94,7 +110,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 assert len(path.stem) == 64
                 content = path.read_bytes()
                 assert not any(value.encode() in content for value in credentials)
-            checks.append('native preferences persist per target/user; same-user sessions share them, other users do not; logout is browser-specific and writes are blocked')
+            checks.append('native preferences persist per target/user; same-user sessions share them, other users do not; logout is browser-specific; identity mutations stay blocked without stopping other sessions')
             stop(process)
             assert process.returncode == 0
             # Restore the fixture's IAM set before later feature acceptance lists
@@ -103,6 +119,6 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             cli('admin', 'policy', 'remove', 'store', 'console-native-exact-object')
             assert not any(value in log_path.read_text() for value in credentials)
             checks.append('native process shutdown drains clients and startup/preferences disclose no credentials')
-            return {'users': 2, 'browserTLS': 'verified', 'storageTLS': 'verified', 'rootLogin': 'denied', 'writes': 'disabled'}
+            return {'users': 2, 'browserTLS': 'verified', 'storageTLS': 'verified', 'rootLogin': 'denied', 'writes': 'explicit opt-in; per-user bucket create/delete verified; identity changes disabled'}
         finally:
             stop(process)

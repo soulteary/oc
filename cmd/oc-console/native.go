@@ -28,9 +28,6 @@ func nativeClientConfig(opts options) (storageclient.Config, error) {
 	if opts.allowSharing && opts.shareURL == "" {
 		return cfg, errors.New("native sharing requires an explicit HTTPS --share-url")
 	}
-	if opts.allowWrites {
-		return cfg, errors.New("native login currently supports read-only storage access; shared writes require a later migration phase")
-	}
 	if opts.tlsCert == "" || opts.tlsKey == "" {
 		return cfg, errors.New("native login requires --tls-cert and --tls-key")
 	}
@@ -118,7 +115,7 @@ func runNative(ctx context.Context, opts options, output io.Writer) error {
 	if err != nil {
 		return errors.New("cannot load browser TLS certificate and key")
 	}
-	handler, err := console.New(console.Config{NativeLogin: nativeAuthenticator(cfg), Alias: "storage", BaseURL: opts.publicURL, DataDir: opts.dataDir, SessionTTL: 30 * time.Minute, AllowSharing: opts.allowSharing, MaxArchiveSize: opts.maxArchiveSize, ArchiveDir: opts.archiveDir})
+	handler, err := console.New(console.Config{NativeLogin: nativeAuthenticator(cfg), Alias: "storage", BaseURL: opts.publicURL, DataDir: opts.dataDir, SessionTTL: 30 * time.Minute, AllowWrites: opts.allowWrites, MaxUploadSize: opts.maxUploadSize, AllowSharing: opts.allowSharing, MaxArchiveSize: opts.maxArchiveSize, ArchiveDir: opts.archiveDir})
 	if err != nil {
 		return errors.New("cannot initialize native HTTPS console")
 	}
@@ -129,7 +126,7 @@ func runNative(ctx context.Context, opts options, output io.Writer) error {
 	}
 	defer listener.Close()
 	server := &http.Server{Handler: handler, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}}, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
-	if _, err := fmt.Fprintf(output, "OC console (native IAM login, read-only)\nURL: %s\nSessions expire after 30 minutes. Each browser signs in with its own IAM access key and secret.\n", opts.publicURL); err != nil {
+	if _, err := fmt.Fprintf(output, "OC console (native IAM login)\nURL: %s\nSessions expire after 30 minutes. Each browser signs in with its own IAM access key and secret.\n", opts.publicURL); err != nil {
 		return errors.New("cannot print console startup information")
 	}
 	serveError := make(chan error, 1)

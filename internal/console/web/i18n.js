@@ -1509,6 +1509,10 @@
     "状态不可用"
   ],
   [
+    "Secret rotation is unavailable in native login mode. Use an administrative client to change credentials.",
+    "原生登录模式暂不支持改密，请通过管理客户端修改凭据。"
+  ],
+  [
     "This local console is read-only. Secret rotation is disabled.",
     "本机控制台为只读模式，密钥轮换已禁用。"
   ],

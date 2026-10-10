@@ -1521,7 +1521,7 @@
   }
 
   function canRotateSecret() {
-    return state.authenticated && !state.readOnly && selfAccount?.kind === "iam" && selfAccount.status === "enabled" && selfAccount.canRotateSecret === true;
+    return !nativeLogin && state.authenticated && !state.readOnly && selfAccount?.kind === "iam" && selfAccount.status === "enabled" && selfAccount.canRotateSecret === true;
   }
 
   function renderAccountBuckets() {
@@ -1761,7 +1761,7 @@
       setText("self-account-summary", `${labels[account.kind]} · ${account.status === "unknown" ? "status unavailable" : account.status}`);
       setText("self-account-status", "");
       elements["self-secret-form"].hidden = !canRotateSecret();
-      const message = state.readOnly ? "This local console is read-only. Secret rotation is disabled." : account.kind === "unknown" || account.status === "unknown" ? "This server does not provide safe current-identity discovery. Secret rotation is unavailable; bucket browsing remains independent." : account.kind !== "iam" ? "This identity cannot rotate its secret here. Manage root, temporary, service, and directory credentials through their respective owner or identity provider." : !canRotateSecret() ? "The storage server does not permit secret rotation for this identity." : "Secret rotation changes only this IAM user's secret and preserves its account status. OC does not write the new secret to your alias file.";
+      const message = nativeLogin ? "Secret rotation is unavailable in native login mode. Use an administrative client to change credentials." : state.readOnly ? "This local console is read-only. Secret rotation is disabled." : account.kind === "unknown" || account.status === "unknown" ? "This server does not provide safe current-identity discovery. Secret rotation is unavailable; bucket browsing remains independent." : account.kind !== "iam" ? "This identity cannot rotate its secret here. Manage root, temporary, service, and directory credentials through their respective owner or identity provider." : !canRotateSecret() ? "The storage server does not permit secret rotation for this identity." : "Secret rotation changes only this IAM user's secret and preserves its account status. OC does not write the new secret to your alias file.";
       setText("self-secret-help", message);
     } catch (error) {
       if (!currentRequest("self-account", request) || error.name === "AbortError") return;
@@ -2355,7 +2355,7 @@
       elements["iam-action"].append(option);
     }
     elements["iam-action"].value = iamActions[kind]?.[0] || "";
-    elements["iam-action-form"].hidden = state.readOnly || !(iamActions[kind]?.length);
+    elements["iam-action-form"].hidden = nativeLogin || state.readOnly || !(iamActions[kind]?.length);
     elements["iam-list"].replaceChildren();
     setText("iam-action-status", "");
     configureIAMAction();
@@ -2459,7 +2459,7 @@
           policy.setAttribute("data-no-i18n", ""); policy.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
           card.append(policy);
         }
-        if (!state.readOnly && kind !== "policies") card.append(actionButton("Choose for change", () => {
+        if (!nativeLogin && !state.readOnly && kind !== "policies") card.append(actionButton("Choose for change", () => {
           iamRecord = record;
           elements["iam-action"].value = iamActions[kind][1] || iamActions[kind][0];
           configureIAMAction();
@@ -2476,7 +2476,7 @@
 
   async function applyIAMAction(event) {
     event.preventDefault();
-    if (!featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
+    if (nativeLogin || !featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
     const action = elements["iam-action"].value;
     const body = { action, confirmTarget: elements["iam-confirm"].value };
     for (const [name, input] of Object.entries(iamInputs)) {
