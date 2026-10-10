@@ -1,6 +1,18 @@
 "use strict";
 (() => {
  const pairs = [
+ ["YOUR STORAGE", "你的存储空间"],
+ ["Read-only access. Your storage permissions apply to every operation.", "当前为只读模式，每项操作都受你的存储权限约束。"],
+ ["Storage console", "存储控制台"],
+ ["Access key", "Access Key"],
+ ["Secret key", "Secret Key"],
+ ["Sign in to the configured storage server with your own IAM credentials.", "使用自己的 IAM 凭据登录已配置的存储服务器。"],
+ ["Sign in with your native IAM user. Root, service accounts and temporary credentials are not accepted.", "请使用原生 IAM 用户登录。不接受 root、服务账户和临时凭据。"],
+ ["Your session has expired or changed. Sign in again with your IAM credentials.", "会话已过期或发生变更，请使用自己的 IAM 凭据重新登录。"],
+ ["You are logged out. Sign in again with your IAM credentials.", "已退出登录，请使用自己的 IAM 凭据重新登录。"],
+ ["Sign in with an enabled native IAM user and its current secret.", "请使用已启用的原生 IAM 用户及其当前 Secret Key 登录。"],
+ ["Unable to verify a storage connection. Check server support and try signing in again.", "无法验证存储连接，请检查服务器是否支持身份验证后重新登录。"],
+
  ["Type the complete target name or access key again; it must exactly match the field above", "再次输入完整的目标名称或 Access Key，必须与上方对应字段完全一致"],
  ["At least 8 characters; leave blank to generate when optional", "至少 8 个字符；可选时留空自动生成"],
  ["Secret key must contain 8–128 characters. Leave it blank to generate one when optional.", "Secret Key 长度必须为 8–128 个字符；可选时留空自动生成。"],
@@ -2009,7 +2021,7 @@
  }
  function setLanguage(value) {
    if (value !== "en" && value !== "zh") return;
-   language = value; document.title = value === "zh" ? "OC · 本地控制台" : "OC · Local console"; document.documentElement.lang = value === "zh" ? "zh-CN" : "en";
+   language = value; document.title = document.body?.dataset?.authMode === "native" ? (value === "zh" ? "OC · 存储控制台" : "OC · Storage console") : (value === "zh" ? "OC · 本地控制台" : "OC · Local console"); document.documentElement.lang = value === "zh" ? "zh-CN" : "en";
    const select = document.getElementById("console-language"); if(select) select.value = value;
    refresh();
  }

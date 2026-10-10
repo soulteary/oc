@@ -1,8 +1,29 @@
-# Local Web console
+# OC Web console
 
 [中文](zh_CN/console.md) · [Documentation](README.md) · [Migration plan](console-migration.md)
 
-`oc-console` is a program distributed alongside OC in new timestamp releases, also buildable from source for one operator and one configured S3 alias on the local machine. Browsing, downloads, ZIP archives and configuration reads are available in the default read-only mode. Explicit write mode adds bucket creation/empty-bucket deletion, uploads, object deletion and IAM administration. Historical versions, protected settings and policy binding changes require matching server protocols; presigned sharing has a separate opt-in flag. The existing OtterIO Web console remains available.
+`oc-console` is a program distributed alongside OC in new timestamp releases, also buildable from source. Its default local mode serves one operator and one configured S3 alias on the local machine. Browsing, downloads, ZIP archives and configuration reads are available in the default read-only mode. Explicit write mode adds bucket creation/empty-bucket deletion, uploads, object deletion and IAM administration. Historical versions, protected settings and policy binding changes require matching server protocols; presigned sharing has a separate opt-in flag. The existing OtterIO Web console remains available.
+
+## Native IAM login over HTTPS (source build)
+
+The opt-in native mode serves multiple browser users against one administrator-configured storage target. Each browser supplies its own IAM access key and secret over HTTPS; OC verifies a signed `GET /otterio/admin/v3/self-credentials` reply with `X-Otterio-Self-Credentials: v1`, `kind: iam` and `status: enabled` before issuing a session. Login does not require listing buckets. Root, STS, service-account and directory identities are refused, as are legacy/unknown discovery replies. Sessions use separate storage clients and host-only Secure, HttpOnly, SameSite=Lax cookies. Secrets stay in process memory and are cleared from the form upon submission or page suspension; OC does not save them to browser storage, cookies, CLI configuration or preference files.
+
+Build from the source containing this feature; the previously pinned release/Compose example does not gain native login automatically:
+
+```sh
+make build-console
+./oc-console --auth-mode native \
+  --s3-url https://s3.example.com --admin-url https://admin.example.com \
+  --address 0.0.0.0:9090 --public-url https://console.example.com:9090 \
+  --tls-cert /etc/oc/public.crt --tls-key /etc/oc/private.key \
+  --data-dir /var/lib/oc-console
+```
+
+The browser connection uses TLS directly in OC. Storage and management endpoints must also use HTTPS; add `--s3-ca` and `--admin-ca` for private CAs. Redirects and browser-selected storage endpoints are refused. Forwarded headers do not establish a trusted HTTPS connection. Use a single OC instance for this first phase: sessions are in memory, expire after 30 minutes and are lost on restart. The global limit is 16 sessions, with at most four per native user and 30 login attempts per minute across the instance; existing global API/download/archive limits still apply. Without `--data-dir`, preferences last only while at least one session for that user remains active. Persistent preference filenames hash both configured endpoints, the authentication kind and the access key; different users do not share preferences, and changing a secret does not change that identity.
+
+Native mode is read-only in this phase: `--allow-writes` is rejected. Bucket/IAM/configuration reads, downloads and ZIP archives continue to use each user's server-enforced permissions; optional sharing requires `--allow-sharing --share-url https://...`. Native mode does not read an alias/config directory or accept local login codes. Local mode and its explicit write support remain available. Shared writes/credential rotation, OIDC, session revocation on credential changes and multi-instance deployment need later migration changes. Keep the old OtterIO Web console and rollback path until those gates and release acceptance are complete.
+
+[Recorded TLS acceptance](console-native-https-results.json) names the tested binaries, SDK pin and patched server profile; it is not proof for a different published server or OC release.
 
 ## Console navigation
 

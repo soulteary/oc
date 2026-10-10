@@ -123,6 +123,7 @@ function createHarness(options = {}) {
   }
   elements.get("settings-kind").value = "policy";
   document = {
+    body: { dataset: { authMode: options.native ? "native" : "local" } },
     activeElement: null,
     getElementById(id) { assert.ok(elements.has(id), `script references missing HTML id ${id}`); return elements.get(id); },
     createElement(tagName) { return new Element(tagName); },
@@ -1771,6 +1772,38 @@ test("an unconfirmed IAM reply never displays claimed credentials", async () => 
   assert.equal(h.element("iam-result-secret").value, "");
   assert.equal(h.element("login-submit").disabled, true);
   assert.equal(h.calls.filter(call => call.url === "/api/iam/actions").length, 1);
+});
+
+test("native login submits only own credentials, preserves secret bytes and clears fields before acknowledgement", async () => {
+ assert.match(html, /<form[^>]*id="login-form"[^>]*method="post"[^>]*action="\/api\/login"/);
+ const h=createHarness({native:true,readOnly:true});await h.ready();await h.fire("logout");
+ assert.equal(h.element("native-login-fields").hidden,false);assert.equal(h.element("login-code-fields").hidden,true);
+ assert.equal(h.element("login-code").disabled,true);assert.equal(h.element("login-secret").disabled,false);
+ const pending=deferred();h.route("POST","/api/login",()=>pending.promise);
+ h.element("login-access-key").value="alice";h.element("login-secret").value=" leading + % 中文 trailing ";
+ await h.fire("login-form","submit");
+ const call=h.calls.find(c=>c.url==="/api/login");
+ assert.deepEqual(JSON.parse(call.body),{accessKey:"alice",secretKey:" leading + % 中文 trailing "});
+ assert.equal(h.element("login-secret").value,"");assert.equal(h.element("login-access-key").value,"");
+ pending.resolve(response({alias:"storage",csrfToken:"user-csrf",readOnly:true}));await settle();
+ assert.equal(h.element("workspace").hidden,false);
+});
+
+test("native authentication denial keeps credentials cleared and focuses the native form", async () => {
+ const h=createHarness({native:true,readOnly:true});await h.ready();await h.fire("logout");
+ h.route("POST","/api/login",()=>response({code:"invalid_credentials",message:"Sign in with an enabled native IAM user and its current secret."},401));
+ h.element("login-access-key").value="alice";h.element("login-secret").value="wrong-secret";
+ await h.fire("login-form","submit");
+ assert.equal(h.element("workspace").hidden,true);assert.equal(h.element("login-secret").value,"");
+ assert.equal(h.activeElement(),h.element("login-access-key"));assert.ok(!h.element("login-status").textContent.includes("terminal"));
+});
+
+test("native page suspension clears unsubmitted identity credentials", async () => {
+ const h=createHarness({native:true,readOnly:true});await h.ready();await h.fire("logout");
+ h.element("login-access-key").value="alice";h.element("login-secret").value="unsubmitted-secret";
+ await h.windowEvent("pagehide");
+ assert.equal(h.element("login-secret").value,"");assert.equal(h.element("login-access-key").value,"");
+ assert.equal(h.calls.filter(c=>c.url==="/api/login").length,0);
 });
 
 (async () => {

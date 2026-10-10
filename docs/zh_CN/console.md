@@ -1,8 +1,29 @@
-# 本机 Web 控制台
+# OC Web 控制台
 
 [English](../console.md) · [文档目录](README.md) · [完整迁移计划](../console-migration.md)
 
-`oc-console` 随新的时间戳发行版一同分发，也可从源码构建，一个进程连接一个已配置的 S3 别名，供一个操作员在本机使用。默认支持桶列表、前缀导航、分页、下载和 ZIP 归档；显式开启写模式后支持存储桶创建/空桶删除、文件上传、对象及前缀删除、IAM 管理和逐项任务结果。历史版本、受保护配置及权限绑定修改需要对应的服务端协议；预签名分享另需显式开启。账户概览与配置读取独立于桶列举权限。现有 OtterIO Web 控制台继续保留。
+`oc-console` 随新的时间戳发行版一同分发，也可从源码构建，默认本地模式下，一个进程连接一个已配置的 S3 别名，供一个操作员在本机使用。默认支持桶列表、前缀导航、分页、下载和 ZIP 归档；显式开启写模式后支持存储桶创建/空桶删除、文件上传、对象及前缀删除、IAM 管理和逐项任务结果。历史版本、受保护配置及权限绑定修改需要对应的服务端协议；预签名分享另需显式开启。账户概览与配置读取独立于桶列举权限。现有 OtterIO Web 控制台继续保留。
+
+## 原生 IAM 用户登录与 HTTPS（需从源码构建）
+
+原生模式让多个浏览器用户访问管理员指定的同一组存储端点。每个用户通过 HTTPS 提交自己的 IAM Access Key 和 Secret Key；OC 先签名请求 `GET /otterio/admin/v3/self-credentials`，仅在服务端明确返回 `X-Otterio-Self-Credentials: v1`、`kind: iam`、`status: enabled` 后创建会话。登录不要求列举桶的权限。root、STS、服务账户、目录账户及旧协议的“身份未知”响应均不接受。各会话有独立存储客户端，Cookie 使用 host-only、Secure、HttpOnly、SameSite=Lax。提交或页面挂起时清空凭据表单，OC 不将 Secret Key 保存到浏览器存储、Cookie、CLI 配置或偏好文件中。
+
+需要从包含此功能的源码构建；现有固定版本的发行包和 Compose 示例不会自动获得新功能：
+
+```sh
+make build-console
+./oc-console --auth-mode native \
+  --s3-url https://s3.example.com --admin-url https://admin.example.com \
+  --address 0.0.0.0:9090 --public-url https://console.example.com:9090 \
+  --tls-cert /etc/oc/public.crt --tls-key /etc/oc/private.key \
+  --data-dir /var/lib/oc-console
+```
+
+OC 直接处理浏览器 TLS，S3 和管理端点也必须使用 HTTPS；私有 CA 分别通过 `--s3-ca` 和 `--admin-ca` 指定。不接受请求重定向或浏览器指定的后端端点，转发头不能替代真实 HTTPS 连接。首阶段使用单个 OC 实例：会话保存在内存中，30 分钟过期，重启后重新登录；全局最多 16 个会话，同一原生用户最多四个，全实例每分钟最多 30 次登录尝试，沿用现有全局 API、下载和归档资源上限。不指定 `--data-dir` 时，偏好只保留到该用户最后一个活动会话退出。持久偏好文件名由固定端点、身份类型和 Access Key 的哈希生成，用户之间不共享，修改 Secret Key 不改变偏好身份。
+
+本阶段原生模式只读，拒绝 `--allow-writes`。桶、IAM 和配置读取、下载、ZIP 均受各用户在服务端的权限约束；分享需显式添加 `--allow-sharing --share-url https://...`。原生模式不读取 alias/CLI 配置，也不接受本地登录码；本地模式及其显式写入功能继续保留。多人写入与凭据轮换、OIDC、凭据变化后的会话撤销和多实例部署仍需后续实现与验收。在这些能力和发行版验收完成前，继续保留旧 Web 与回退入口。
+
+[TLS 验收记录](../console-native-https-results.json)注明了实际测试的二进制、SDK 固定版本和服务端补丁组合，不能作为其他发行版的兼容性证明。
 
 ## 界面导航
 
