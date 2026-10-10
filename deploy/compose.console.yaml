@@ -1,6 +1,6 @@
 services:
   otterio:
-    image: ghcr.io/soulteary/otterio:RELEASE.2026-10-09T15-22-07Z
+    image: ghcr.io/soulteary/otterio:RELEASE.2026-10-09T15-22-07Z@sha256:7ddf211748d11bb8f6af23576f19eaf5b2675f70f647e38ed9fdd14912824ba8
     restart: unless-stopped
     command: [server, --address, ':9000', --console-address, ':9001', /data]
     environment:
@@ -15,7 +15,7 @@ services:
     networks: [otterio-network]
 
   oc-init:
-    image: soulteary/oc:local-console
+    image: ghcr.io/soulteary/oc:RELEASE.2026-10-10T11-42-18Z@sha256:f4a042ae7b9a2fb3b32c8984d36a53aea77cb69bd8469002f3cfb11d1b246dd6
     restart: 'no'
     entrypoint: [oc]
     command:
@@ -35,7 +35,7 @@ services:
     networks: [otterio-network]
 
   oc:
-    image: soulteary/oc:local-console
+    image: ghcr.io/soulteary/oc:RELEASE.2026-10-10T11-42-18Z@sha256:f4a042ae7b9a2fb3b32c8984d36a53aea77cb69bd8469002f3cfb11d1b246dd6
     restart: unless-stopped
     entrypoint: [oc-console]
     command:

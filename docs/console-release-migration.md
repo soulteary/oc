@@ -21,12 +21,14 @@ Older published archives and images are not retroactively updated.
 
 ## Compatibility and evidence
 
-- Local source baseline: the first migration change `dea77905`, followed by
-  CI fixes through `f62ccfbc`. The next release records its own source commit.
+- Published OC replacement: `RELEASE.2026-10-10T11-42-18Z`, source
+  `ee1846d587a6548db4e595d653ca4f54baea2b1a`. Both executables are distributed
+  together; the Compose example pins the manifest image digest for initialization
+  and the Console. Older published releases remain unchanged.
 - SDK/admin build dependencies: use the exact independent identities recorded
   in `compatibility.json`; those pins are not a claim about a remote server.
-- Compose server candidate: `RELEASE.2026-10-09T15-22-07Z`, fixed in
-  `deploy/compose.console.yaml`. The browser-off migration result is recorded
+- Compose server candidate (also pinned by its published image digest): `RELEASE.2026-10-09T15-22-07Z`, fixed in
+  `deploy/compose.console.yaml`. The original source browser-off migration result is recorded
   in `docs/console-browser-off-results.json`; use its recorded source/binary
   scope, not historical patch profiles as proof for a different release.
 - Historical versions and third-party S3 require their own acceptance.
@@ -52,6 +54,13 @@ without changing its image or data volumes. In the bridge example, publish
 9001 to host loopback if browser access is required. Returning to the old UI
 does not undo writes, rotated secrets or lifecycle transitions. Do not downgrade
 storage without separate data/configuration compatibility verification.
+
+## Released-pair validation
+
+See [published pair evidence and limits](console-released-pair.md). The new
+release removes the distribution blocker, but does not complete full IAM
+compatibility or the notified deprecation window. Do not infer that every
+function in historical patched-server reports works on the pinned release.
 
 ## Gate before changing the server default
 

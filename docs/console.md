@@ -10,7 +10,22 @@ After login, Overview shows the capacity reported for buckets accessible to the 
 
 Use the sidebar to switch between Overview, Buckets, Tasks, and Account. The top navigation button collapses the sidebar. The bucket directory provides a searchable table with permission summaries, capacity, creation dates, refresh, and creation. Select a bucket to open its files; the back button returns to the directory. Configuration actions use the selected bucket. Object operations and bucket settings remain in the bucket browser; upload and deletion results appear in Tasks. ZIP preparation still uses the browser's ZIP task button. Switching pages preserves loaded locations and tasks. Recent visits are saved per storage identity and restored after login. Narrow screens use horizontal navigation and a single-column overview.
 
-## Local Docker image
+## Published Docker image
+
+The bridge deployment in `deploy/compose.console.yaml` pins OC
+`RELEASE.2026-10-10T11-42-18Z` by its published multi-platform image digest.
+Both initialization and Console use that same image. No local build is required.
+Run `docker compose pull`, start OtterIO and wait for readiness, then run
+`docker compose run --rm oc-init` and `docker compose up -d --no-deps oc`.
+Preserve existing data/configuration directories; initialization changes the
+`store` alias. The S3/Admin ports shown in the example do not override your
+existing configured endpoint addresses.
+
+The pinned OtterIO release does not expose the conditional IAM creation
+protocol required for Console user/group creation. Full IAM feature acceptance
+therefore remains blocked. See [released-pair evidence](console-released-pair.md).
+
+## Optional local Docker image
 
 The root `Dockerfile` builds and includes both `oc` and `oc-console`, retaining `oc` as its default entrypoint. `Dockerfile.release` also includes both programs; `Dockerfile.dev` remains CLI-only.
 
@@ -184,8 +199,8 @@ The header switches between English and Chinese. After sign-in, the language, fa
 
 The Compose example sets `OTTERIO_BROWSER=off`, disabling OtterIO's embedded page and legacy Web RPC/upload/download/ZIP routes. S3 remains on 9000; the internal Admin API remains on `--console-address :9001` and OC uses `--admin-url http://otterio:9001`. Open OC at `http://127.0.0.1:9090`. Keep the management listener. This changes only the deployment example, not OtterIO's server defaults.
 
-Back up the deployment configuration, retain the current OtterIO image version, and build the local OC image containing `oc-console` as described above. Verify that the legacy page is unavailable, then check browsing, uploads/downloads, deletion, ZIP, bucket settings and IAM in OC. Protected writes and historical versions still require server capabilities and identity permissions. Restart OC and verify language, favorites and recent visits persist.
+Back up the deployment configuration, retain the current OtterIO image version, and pull the pinned released OC image from the Compose example (or explicitly build a local image for development). Verify that the legacy page is unavailable, then check browsing, uploads/downloads, deletion, ZIP, bucket settings and IAM in OC. Protected writes and historical versions still require server capabilities and identity permissions. Restart OC and verify language, favorites and recent visits persist.
 
-This is a single-identity local console: every session uses the startup alias identity. Deployments requiring independent user login, OIDC or centralized multi-user access should retain the legacy Web until those migration capabilities are available. Existing published images may not contain `oc-console`.
+This is a single-identity local console: every session uses the startup alias identity. Deployments requiring independent user login, OIDC or centralized multi-user access should retain the legacy Web until those migration capabilities are available. The pinned release includes `oc-console`; older published images may not.
 
 To roll back, set `OTTERIO_BROWSER` to `'on'` and recreate storage with `docker compose up -d --no-deps otterio`; do not downgrade the server. The example does not publish 9001. To access the legacy page, temporarily add `127.0.0.1:9001:9001` and open `http://127.0.0.1:9001/otterio/`. Rollback does not undo configuration writes, credential rotation or object operations. Disable the legacy Web and remove the temporary port mapping when returning to OC.
