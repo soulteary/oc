@@ -176,7 +176,7 @@
         <p class="help">Use 8–128 UTF-8 bytes. Your access key stays the same. After rotation, update the alias in your terminal and restart OC console; its old sessions cannot be reused.</p>
         <p id="self-secret-status" class="notice" role="status" aria-live="polite" tabindex="-1"></p>
         <div class="dialog-footer"><button id="review-secret" class="button danger-quiet" type="button">Review secret rotation</button></div>
-        <div id="secret-confirmation" class="secret-confirmation" hidden><p class="dialog-description">Rotate the secret for this process's current IAM identity? This stops the console and revokes all its local sessions. Stop active transfers and deletions before continuing.</p><div class="dialog-footer settings-actions"><button id="cancel-secret" class="button quiet" type="button">Back</button><button id="confirm-secret" class="button danger" type="submit">Rotate secret and stop console</button></div></div>
+        <div id="secret-confirmation" class="secret-confirmation" hidden><p id="secret-confirmation-help" class="dialog-description">Rotate the secret for this process's current IAM identity? This stops the console and revokes all its local sessions. Stop active transfers and deletions before continuing.</p><div class="dialog-footer settings-actions"><button id="cancel-secret" class="button quiet" type="button">Back</button><button id="confirm-secret" class="button danger" type="submit">Rotate secret and stop console</button></div></div>
       </form>
     </dialog>
 

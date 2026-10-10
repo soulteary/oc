@@ -248,7 +248,7 @@ func TestNativeWritesUseOwnBackendAndIdentityChangesCannotStopServer(t *testing.
 	if backends["alice"].creates.Load() != 1 || backends["bob"].creates.Load() != 0 {
 		t.Fatal("write crossed identities")
 	}
-	for _, path := range []string{"/api/iam/actions", "/api/self-secret"} {
+	for _, path := range []string{"/api/iam/actions"} {
 		if w := post(path, `{}`, alice, ar); w.Code != 403 || !strings.Contains(w.Body.String(), "identity_changes_disabled") {
 			t.Fatalf("identity gate failed: %d %s", w.Code, w.Body.String())
 		}

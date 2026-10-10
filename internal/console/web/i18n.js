@@ -1508,10 +1508,12 @@
     "status unavailable",
     "状态不可用"
   ],
-  [
-    "Secret rotation is unavailable in native login mode. Use an administrative client to change credentials.",
-    "原生登录模式暂不支持改密，请通过管理客户端修改凭据。"
-  ],
+  ["Your secret was changed. Your sessions have ended. Sign in with the new secret.", "密钥已修改，你的会话已结束。请使用新密钥重新登录。"],
+  ["The secret change could not be confirmed. Your sessions have ended. Verify the current secret before signing in; do not repeat the change automatically.", "无法确认改密结果，你的会话已结束。请核实当前密钥后重新登录，不要自动重试改密。"],
+  ["Changing your secret and ending your sessions…", "正在修改密钥并结束你的会话…"],
+  ["Change your IAM secret? All your sessions on this console will end. Other users remain signed in. Complete active writes before continuing.", "确认修改你的 IAM 密钥？你在此控制台的所有会话都会结束，其他用户保持登录。请先完成正在进行的写入。"],
+  ["Change secret and sign out", "修改密钥并退出登录"],
+  ["Changing your secret ends all your sessions on this console. Other users remain signed in.", "修改密钥会结束你在此控制台的全部会话，其他用户保持登录。"],
   [
     "This local console is read-only. Secret rotation is disabled.",
     "本机控制台为只读模式，密钥轮换已禁用。"

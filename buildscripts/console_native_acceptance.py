@@ -93,8 +93,21 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             cli('rm', 'store/' + write_bucket + '/own.txt')
             bob('/api/buckets/delete', 'POST', {'bucket': write_bucket, 'confirmBucket': write_bucket}, headers=bob_headers)
             checks.append('native write opt-in preserves upstream permissions: authorized user creates/deletes its exact bucket and uploads exact bytes; other user denied object and upload task access')
-            for path in ('/api/iam/actions', '/api/self-secret'):
+            for path in ('/api/iam/actions',):
                 alice(path, 'POST', {}, expected=403, headers=alice_headers)
+            bob_other = browser(base, tls_context)
+            bob_other('/api/login', 'POST', {'accessKey': other_access, 'secretKey': other_secret})
+            changed_secret = secrets.token_hex(24)
+            credentials.append(changed_secret)
+            changed = json.loads(bob('/api/self-secret', 'POST', {'newSecret': changed_secret, 'confirm': True}, headers=bob_headers)[0])
+            assert changed == {'outcome': 'confirmed', 'loginRequired': True}
+            bob('/api/session', expected=401)
+            bob_other('/api/session', expected=401)
+            alice('/api/session')
+            another('/api/session')
+            bob('/api/login', 'POST', {'accessKey': other_access, 'secretKey': other_secret}, expected=401)
+            bob('/api/login', 'POST', {'accessKey': other_access, 'secretKey': changed_secret})
+            checks.append('native self-secret rotation revokes all sessions of that user only; old secret fails, new secret logs in, other users remain available')
             alice('/api/logout', 'POST', expected=403)
             alice('/api/logout', 'POST', expected=204, headers=alice_headers)
             alice('/api/session', expected=401)
@@ -110,7 +123,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 assert len(path.stem) == 64
                 content = path.read_bytes()
                 assert not any(value.encode() in content for value in credentials)
-            checks.append('native preferences persist per target/user; same-user sessions share them, other users do not; logout is browser-specific; identity mutations stay blocked without stopping other sessions')
+            checks.append('native preferences persist per target/user; same-user sessions share them, other users do not; logout is browser-specific; IAM mutations stay blocked without stopping other sessions')
             stop(process)
             assert process.returncode == 0
             # Restore the fixture's IAM set before later feature acceptance lists
@@ -119,6 +132,6 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             cli('admin', 'policy', 'remove', 'store', 'console-native-exact-object')
             assert not any(value in log_path.read_text() for value in credentials)
             checks.append('native process shutdown drains clients and startup/preferences disclose no credentials')
-            return {'users': 2, 'browserTLS': 'verified', 'storageTLS': 'verified', 'rootLogin': 'denied', 'writes': 'explicit opt-in; per-user bucket create/delete verified; identity changes disabled'}
+            return {'users': 2, 'browserTLS': 'verified', 'storageTLS': 'verified', 'rootLogin': 'denied', 'writes': 'explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; IAM mutations disabled'}
         finally:
             stop(process)
