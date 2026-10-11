@@ -1,5 +1,5 @@
 {
-  "dateUTC": "2026-10-11T08:35:58.440211+00:00",
+  "dateUTC": "2026-10-11T09:18:11.223879+00:00",
   "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
   "serverSource": "6f6d0835ddff68020f1491c403b958fade22841f",
   "sdkPin": "v0.0.0-20261009091443-bcc238bc4c2c",
@@ -409,13 +409,13 @@
       }
     },
     "oc-console": {
-      "sha256": "93383bcd6c58a5646e5ba7eccc0f6260d47eb512630032889242b2503dd1f9d0",
+      "sha256": "5196cad0adbbfdab7471b4b60f3586ed774685897210c62af5188a6fd17046c5",
       "buildInfo": {
         "GoVersion": "go1.27.2",
         "Path": "github.com/soulteary/mc/cmd/oc-console",
         "Main": {
           "Path": "github.com/soulteary/mc",
-          "Version": "v0.0.0-20261011082943-f71de60f9ae1+dirty"
+          "Version": "v0.0.0-20261011091503-06f2777e9b9d+dirty"
         },
         "Deps": [
           {
@@ -617,11 +617,11 @@
           },
           {
             "Key": "vcs.revision",
-            "Value": "f71de60f9ae1a47a950edc6c3686c731c3b49534"
+            "Value": "06f2777e9b9dc14b1b0d0ab6471cf88a3584f704"
           },
           {
             "Key": "vcs.time",
-            "Value": "2026-10-11T08:29:43Z"
+            "Value": "2026-10-11T09:15:03Z"
           },
           {
             "Key": "vcs.modified",
@@ -1270,7 +1270,10 @@
         "external secret replacement revokes the old native browser credentials; only the new secret can log in",
         "native account activation enforces manager permission, never revives revoked sessions and does not stop self-targeted manager sessions",
         "native user disable requires manager permission, revokes all target sessions before any follow-up request, and later enable permits only a fresh login",
+        "native user deletion rejects unauthorized operators and users with groups/service accounts without revoking target sessions",
+        "native user deletion retires all target sessions; recreating the identical username/secret cannot revive old cookies and requires fresh login",
         "native self-disable acknowledges before retiring own session, keeps shared console available and requires fresh login after administrative activation",
+        "native self-deletion acknowledges before ending own session, rejects deleted credentials and leaves other users available",
         "native manager creates new IAM user/group/service credential with own permissions; unauthorized create, existing-user replacement rejected; other identity edits remain gated; other sessions continue",
         "native preferences persist per target/user; same-user sessions share them, other users do not; logout is browser-specific; unsupported IAM mutations stay blocked without stopping other sessions",
         "external user deletion revokes that browser on its next request without ending another user session",
@@ -1284,7 +1287,7 @@
         "browserTLS": "verified",
         "storageTLS": "verified",
         "rootLogin": "denied",
-        "writes": "explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; user disable and exact-target session retirement verified; unsupported IAM mutations disabled"
+        "writes": "explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; user disable/delete and exact-target session retirement verified; unsupported IAM mutations disabled"
       }
     },
     {
@@ -1307,7 +1310,10 @@
         "external secret replacement revokes the old native browser credentials; only the new secret can log in",
         "native account activation enforces manager permission, never revives revoked sessions and does not stop self-targeted manager sessions",
         "native user disable requires manager permission, revokes all target sessions before any follow-up request, and later enable permits only a fresh login",
+        "native user deletion rejects unauthorized operators and users with groups/service accounts without revoking target sessions",
+        "native user deletion retires all target sessions; recreating the identical username/secret cannot revive old cookies and requires fresh login",
         "native self-disable acknowledges before retiring own session, keeps shared console available and requires fresh login after administrative activation",
+        "native self-deletion acknowledges before ending own session, rejects deleted credentials and leaves other users available",
         "native manager creates new IAM user/group/service credential with own permissions; unauthorized create, existing-user replacement rejected; other identity edits remain gated; other sessions continue",
         "native preferences persist per target/user; same-user sessions share them, other users do not; logout is browser-specific; unsupported IAM mutations stay blocked without stopping other sessions",
         "external user deletion revokes that browser on its next request without ending another user session",
@@ -1321,7 +1327,7 @@
         "browserTLS": "verified",
         "storageTLS": "verified",
         "rootLogin": "denied",
-        "writes": "explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; user disable and exact-target session retirement verified; unsupported IAM mutations disabled"
+        "writes": "explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; user disable/delete and exact-target session retirement verified; unsupported IAM mutations disabled"
       }
     }
   ],
@@ -1343,7 +1349,7 @@
     },
     {
       "name": "console_native_acceptance.py",
-      "sha256": "6cbf40c5d3629f184ec623e54992837ddeacbe0f7ab336c20bc2c9bfb70601c7"
+      "sha256": "cc496d9b65ea4b4a7c581401fcd8d65d5afcf1a05edd3bbf20323be4def631f8"
     }
   ],
   "serverPatches": [

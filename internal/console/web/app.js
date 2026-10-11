@@ -2290,7 +2290,7 @@
     policies: [],
   };
   if (nativeLogin) {
-    iamActions.users = ["user.create", "user.enable", "user.disable"];
+    iamActions.users = ["user.create", "user.enable", "user.disable", "user.delete"];
     iamActions.groups = ["group.create"];
     iamActions["service-accounts"] = ["service-account.create"];
   }
@@ -2490,7 +2490,7 @@
     event.preventDefault();
     if (!featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
     const action = elements["iam-action"].value;
-    if (nativeLogin && !["user.create", "user.enable", "user.disable", "group.create", "service-account.create"].includes(action)) return;
+    if (nativeLogin && !["user.create", "user.enable", "user.disable", "user.delete", "group.create", "service-account.create"].includes(action)) return;
     const body = { action, confirmTarget: elements["iam-confirm"].value };
     for (const [name, input] of Object.entries(iamInputs)) {
       if (name === "policies") body.policies = [...new Set(input.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];
@@ -2519,7 +2519,7 @@
       if (!currentRequest("iam-action", request)) return;
       if (result?.outcome !== "confirmed") throw new APIError(0, "UnknownIAMOutcome", "The change was not confirmed. Verify storage before retrying.");
       if (nativeLogin && result?.loginRequired) {
-        showLogin("Your account was disabled. An administrator must enable it before you can sign in again.");
+        showLogin(action === "user.delete" ? "Your account was deleted. Contact an administrator before signing in again." : "Your account was disabled. An administrator must enable it before you can sign in again.");
         return;
       }
       if (nativeLogin && result?.restartRequired) throw new APIError(0, "UnknownIAMOutcome", "The creation was not safely confirmed.");
@@ -2552,7 +2552,7 @@
       if (error.restartRequired || error.status === 0 || error.code === "outcome_unknown") {
         if (nativeLogin) {
           if (error.loginRequired) {
-            showLogin("Your account may have been disabled. Verify its status with an administrator before signing in again. This request was not repeated.");
+            showLogin("Your account may have been disabled or deleted. Verify its status with an administrator before signing in again. This request was not repeated.");
             return;
           }
           elements["iam-confirm"].value = "";
