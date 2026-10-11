@@ -17,7 +17,7 @@ import (
 )
 
 func TestRelationshipServiceCreationSingleDispatchProtectedAck(t *testing.T) {
-	for _, scenario := range []string{"confirmed", "supplied-secret", "missing-marker", "duplicate-marker", "wrong-parent", "wrong-key", "session-token", "expiration", "disabled", "unknown", "denied"} {
+	for _, scenario := range []string{"confirmed", "supplied-secret", "missing-marker", "duplicate-marker", "wrong-parent", "wrong-key", "session-token", "expiration", "disabled", "duplicate-credential", "unexpected-field", "unknown", "denied"} {
 		t.Run(scenario, func(t *testing.T) {
 			var writes atomic.Int32
 			relation := consoleapi.IAMRelationships{Kind: "user", Target: "parent", State: "known", CoupledServiceCreation: true, Revision: strings.Repeat("a", 64), ExpiresAt: time.Now().Add(20 * time.Second), AffectedAccessKeys: []string{"parent"}}
@@ -78,6 +78,14 @@ func TestRelationshipServiceCreationSingleDispatchProtectedAck(t *testing.T) {
 					credential["expiration"] = time.Now().Add(time.Minute)
 				case "disabled":
 					credential["status"] = "off"
+				}
+				if scenario == "unexpected-field" {
+					credential["extra"] = true
+				}
+				if scenario == "duplicate-credential" {
+					encrypted, _ := madmin.EncryptData(iamTestSecret, []byte(`{"credentials":{"accessKey":"new-child","secretKey":"generated-secret-123","parentUser":"other","parentUser":"parent"}}`))
+					w.Write(encrypted)
+					return
 				}
 				iamEncrypted(t, w, map[string]any{"credentials": credential})
 			}))

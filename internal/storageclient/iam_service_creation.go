@@ -90,6 +90,17 @@ func (c *Client) IAMCreateRelationshipServiceAccount(ctx context.Context, args c
 	if err != nil || len(fields) != 1 || fields["credentials"] == nil {
 		return result, outcomeUnknown()
 	}
+	credentialFields, err := managementJSONObject(fields["credentials"])
+	if err != nil {
+		return result, outcomeUnknown()
+	}
+	for field := range credentialFields {
+		switch field {
+		case "accessKey", "secretKey", "parentUser", "expiration", "sessionToken", "status", "groups":
+		default:
+			return result, outcomeUnknown()
+		}
+	}
 	var created madmin.AddServiceAccountResp
 	if json.Unmarshal(decoded, &created) != nil || !consoleapi.ValidIAMAccessKey(created.Credentials.AccessKey) || len(created.Credentials.SecretKey) < 8 || len(created.Credentials.SecretKey) > 128 || created.Credentials.ParentUser != args.User || created.Credentials.SessionToken != "" || !created.Credentials.Expiration.IsZero() || len(created.Credentials.Groups) != 0 || (created.Credentials.Status != "" && created.Credentials.Status != "on") || (args.AccessKey != "" && args.AccessKey != created.Credentials.AccessKey) || (args.SecretKey != "" && args.SecretKey != created.Credentials.SecretKey) {
 		return result, outcomeUnknown()
