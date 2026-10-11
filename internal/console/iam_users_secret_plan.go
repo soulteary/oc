@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"sync"
 	"time"
 
@@ -21,22 +22,22 @@ type nativeUserSecretBackend interface {
 // The plan lives only on the server. Its owner, fixed storage namespace and
 // immutable pre-submit scopes are never deserialized from a browser request.
 type nativeUserSecretPlan struct {
-	mu            sync.Mutex
-	used          bool
-	owner         *session
-	lifetime      *backendLifetime
-	actorIdentity string
-	actorUser     string
-	backend       nativeUserSecretBackend
-	storageTarget string
-	target        string
-	binding       consoleapi.IAMBindings
-	relation      consoleapi.IAMRelationships
-	impact        identityImpact
+	owned                    consoleapi.Backend
+	lifetime                 *backendLifetime
+	actorIdentity, actorUser string
+	mu                       sync.Mutex
+	used                     bool
+	owner                    *session
+	backend                  nativeUserSecretBackend
+	storageTarget            string
+	target                   string
+	binding                  consoleapi.IAMBindings
+	relation                 consoleapi.IAMRelationships
+	impact                   identityImpact
 }
 
 func prepareNativeUserSecretPlan(ctx context.Context, sess *session, target string) (*nativeUserSecretPlan, error) {
-	if sess == nil || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || !consoleapi.ValidIAMAccessKey(target) {
+	if sess == nil || sess.oidc != nil || sess.ctx == nil || sess.ctx.Err() != nil || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || !consoleapi.ValidIAMAccessKey(target) {
 		return nil, errUnknownIdentityScope
 	}
 	backend, ok := sess.runtime.backend.(nativeUserSecretBackend)
@@ -79,7 +80,7 @@ func prepareNativeUserSecretPlan(ctx context.Context, sess *session, target stri
 	}
 	relation.AffectedAccessKeys = append([]string{}, relation.AffectedAccessKeys...)
 	binding.Policies = append([]string{}, binding.Policies...)
-	return &nativeUserSecretPlan{owner: sess, lifetime: sess.runtime.lifetime, actorIdentity: sess.runtime.identity, actorUser: sess.nativeUser, backend: backend, storageTarget: storageTarget, target: target, binding: binding, relation: relation, impact: identityImpact{known: true, scopes: append([]identityScope(nil), scopes...)}}, nil
+	return &nativeUserSecretPlan{owner: sess, owned: sess.runtime.backend, lifetime: sess.runtime.lifetime, actorIdentity: sess.runtime.identity, actorUser: sess.nativeUser, backend: backend, storageTarget: storageTarget, target: target, binding: binding, relation: relation, impact: identityImpact{known: true, scopes: append([]identityScope(nil), scopes...)}}, nil
 }
 func (plan *nativeUserSecretPlan) consume(sess *session, now time.Time) bool {
 	if plan == nil {
@@ -87,7 +88,8 @@ func (plan *nativeUserSecretPlan) consume(sess *session, now time.Time) bool {
 	}
 	plan.mu.Lock()
 	defer plan.mu.Unlock()
-	if plan.used || plan.owner != sess || sess == nil || plan.lifetime != sess.runtime.lifetime || plan.actorIdentity != sess.runtime.identity || plan.actorUser != sess.nativeUser || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || plan.backend.IAMStorageTarget() != plan.storageTarget || !now.Before(plan.relation.ExpiresAt) {
+	kind := reflect.TypeOf(plan.owned)
+	if plan.used || plan.owner != sess || sess == nil || sess.oidc != nil || sess.ctx == nil || sess.ctx.Err() != nil || kind == nil || !kind.Comparable() || sess.runtime.backend != plan.owned || plan.lifetime != sess.runtime.lifetime || plan.actorIdentity != sess.runtime.identity || plan.actorUser != sess.nativeUser || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || plan.backend.IAMStorageTarget() != plan.storageTarget || !now.Before(plan.relation.ExpiresAt) {
 		return false
 	}
 	plan.used = true
@@ -132,7 +134,6 @@ func (s *Server) executeNativeUserSecretPlan(w http.ResponseWriter, r *http.Requ
 	revoke := false
 	defer func() { mutation.finish(revoke) }()
 	result, err := plan.backend.IAMRotateRelationshipUserSecret(r.Context(), plan.binding, plan.relation, secret)
-	secret = ""
 	if err != nil {
 		var failure *consoleapi.Error
 		if errors.As(err, &failure) && failure != nil && failure.Code != "outcome_unknown" && (failure.Status >= 400 && failure.Status < 500 || failure.Status == 501) {

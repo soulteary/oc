@@ -4,9 +4,11 @@ package console
 import (
 	"context"
 	"errors"
-	"github.com/soulteary/mc/internal/consoleapi"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/soulteary/mc/internal/consoleapi"
 )
 
 type bindingPlanTestBackend struct {
@@ -85,5 +87,32 @@ func TestRelationshipBindingPlanRetiresCapturedScopeOnUnknown(t *testing.T) {
 				t.Fatal("retirement was not captured, scoped and single dispatch")
 			}
 		})
+	}
+}
+
+func TestRelationshipPlansRejectOwnedBackendReplacement(t *testing.T) {
+	s := nativeRotationFixture(t, func(context.Context, string) error { return nil }, nil)
+	nativeSignIn(t, s, "alice")
+	owner := findNativePlanSession(s, "alice")
+	b := &bindingPlanTestBackend{userSecretPlanTestBackend: secretPlanBackend(owner, "alice")}
+	b.relation.CoupledBindings = true
+	owner.runtime.backend = b
+	args := consoleapi.IAMActionRequest{Action: "user.policies", User: "alice", ConfirmTarget: "alice", Revision: b.binding.Revision, Policies: []string{}}
+	binding, err := prepareNativeRelationshipBindingPlan(context.Background(), owner, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret, err := prepareNativeUserSecretPlan(context.Background(), owner, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := owner.runtime.backend
+	owner.runtime.backend = &userSecretPlanTestBackend{Backend: original, target: b.target, relation: b.relation, binding: b.binding}
+	if binding.consume(owner) || secret.consume(owner, time.Now()) {
+		t.Fatal("plan followed a replacement client with the same storage target")
+	}
+	owner.runtime.backend = original
+	if !binding.consume(owner) || !secret.consume(owner, time.Now()) {
+		t.Fatal("rejected replacement consumed the original plan")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"sync"
 	"time"
 
@@ -19,18 +20,21 @@ type nativeRelationshipBindingBackend interface {
 }
 
 type nativeRelationshipBindingPlan struct {
-	mu       sync.Mutex
-	used     bool
-	owner    *session
-	backend  nativeRelationshipBindingBackend
-	binding  consoleapi.IAMBindings
-	relation consoleapi.IAMRelationships
-	impact   identityImpact
-	policies []string
+	owned                    consoleapi.Backend
+	lifetime                 *backendLifetime
+	actorIdentity, actorUser string
+	mu                       sync.Mutex
+	used                     bool
+	owner                    *session
+	backend                  nativeRelationshipBindingBackend
+	binding                  consoleapi.IAMBindings
+	relation                 consoleapi.IAMRelationships
+	impact                   identityImpact
+	policies                 []string
 }
 
 func prepareNativeRelationshipBindingPlan(ctx context.Context, sess *session, args consoleapi.IAMActionRequest) (*nativeRelationshipBindingPlan, error) {
-	if sess == nil || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || !consoleapi.ValidIAMAction(args) || (args.Action != "user.policies" && args.Action != "group.policies") {
+	if sess == nil || sess.oidc != nil || sess.ctx == nil || sess.ctx.Err() != nil || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || !consoleapi.ValidIAMAction(args) || (args.Action != "user.policies" && args.Action != "group.policies") {
 		return nil, errUnknownIdentityScope
 	}
 	backend, ok := sess.runtime.backend.(nativeRelationshipBindingBackend)
@@ -81,7 +85,7 @@ func prepareNativeRelationshipBindingPlan(ctx context.Context, sess *session, ar
 	}
 	relation.AffectedAccessKeys = append([]string{}, relation.AffectedAccessKeys...)
 	binding.Policies = append([]string{}, binding.Policies...)
-	return &nativeRelationshipBindingPlan{owner: sess, backend: backend, binding: binding, relation: relation, impact: identityImpact{known: true, scopes: append([]identityScope{}, scopes...)}, policies: append([]string{}, args.Policies...)}, nil
+	return &nativeRelationshipBindingPlan{owner: sess, owned: sess.runtime.backend, lifetime: sess.runtime.lifetime, actorIdentity: sess.runtime.identity, actorUser: sess.nativeUser, backend: backend, binding: binding, relation: relation, impact: identityImpact{known: true, scopes: append([]identityScope{}, scopes...)}, policies: append([]string{}, args.Policies...)}, nil
 }
 
 func (plan *nativeRelationshipBindingPlan) consume(sess *session) bool {
@@ -90,7 +94,8 @@ func (plan *nativeRelationshipBindingPlan) consume(sess *session) bool {
 	}
 	plan.mu.Lock()
 	defer plan.mu.Unlock()
-	if plan.used || plan.owner != sess || sess == nil || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || plan.backend.IAMStorageTarget() != plan.relation.StorageTarget || !time.Now().Before(plan.relation.ExpiresAt) {
+	kind := reflect.TypeOf(plan.owned)
+	if plan.used || plan.owner != sess || sess == nil || sess.oidc != nil || sess.ctx == nil || sess.ctx.Err() != nil || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || sess.nativeUser != plan.actorUser || sess.runtime.identity != plan.actorIdentity || sess.runtime.lifetime != plan.lifetime || kind == nil || !kind.Comparable() || sess.runtime.backend != plan.owned || plan.backend.IAMStorageTarget() != plan.relation.StorageTarget || !time.Now().Before(plan.relation.ExpiresAt) {
 		return false
 	}
 	plan.used = true

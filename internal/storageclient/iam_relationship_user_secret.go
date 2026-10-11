@@ -23,7 +23,6 @@ func (c *Client) IAMRotateRelationshipUserSecret(ctx context.Context, binding co
 	data, err := json.Marshal(struct {
 		NewSecretKey string `json:"newSecretKey"`
 	}{secret})
-	secret = ""
 	if err != nil {
 		return result, invalidRequest()
 	}
