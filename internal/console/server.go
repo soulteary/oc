@@ -48,6 +48,8 @@ type NativeConnection struct {
 	Backend  consoleapi.Backend
 	Cleanup  func()
 	Identity string
+	// Verify must recheck the owned credentials against the signed identity endpoint.
+	Verify func(context.Context) error
 }
 
 type Config struct {
@@ -79,6 +81,7 @@ type sessionRuntime struct {
 	preferences *preferenceStore
 	lifetime    *backendLifetime
 	identity    string
+	verify      func(context.Context) error
 }
 
 type session struct {
@@ -116,35 +119,36 @@ type Server struct {
 	ttl             time.Duration
 	assets          fs.FS
 
-	mu             sync.Mutex
-	closed         bool
-	rotating       bool
-	nativeRotating map[string]bool
-	nativeEpoch    uint64
-	nativeRevoked  map[string]uint64
-	nativeLogins   int
-	sessions       map[[32]byte]*session
-	loginWindow    time.Time
-	loginCount     int
-	apiSlots       chan struct{}
-	downloads      chan struct{}
-	writer         consoleapi.MutationBackend
-	settings       consoleapi.SettingsBackend
-	maxUploadSize  int64
-	jobs           map[string]*job
-	writeSlots     chan struct{}
-	planSlots      chan struct{}
-	workers        sync.WaitGroup
-	clients        sync.WaitGroup
-	loginSlots     chan struct{}
-	life           context.Context
-	stopLife       context.CancelFunc
-	streamIdle     time.Duration
-	allowSharing   bool
-	maxArchiveSize int64
-	archiveDir     string
-	archives       map[string]*archiveTask
-	archiveSlots   chan struct{}
+	mu                sync.Mutex
+	closed            bool
+	rotating          bool
+	nativeRotating    map[string]bool
+	nativeEpoch       uint64
+	nativeRevoked     map[string]uint64
+	nativeLogins      int
+	sessions          map[[32]byte]*session
+	loginWindow       time.Time
+	loginCount        int
+	apiSlots          chan struct{}
+	downloads         chan struct{}
+	writer            consoleapi.MutationBackend
+	settings          consoleapi.SettingsBackend
+	maxUploadSize     int64
+	jobs              map[string]*job
+	writeSlots        chan struct{}
+	planSlots         chan struct{}
+	workers           sync.WaitGroup
+	clients           sync.WaitGroup
+	loginSlots        chan struct{}
+	verificationSlots chan struct{}
+	life              context.Context
+	stopLife          context.CancelFunc
+	streamIdle        time.Duration
+	allowSharing      bool
+	maxArchiveSize    int64
+	archiveDir        string
+	archives          map[string]*archiveTask
+	archiveSlots      chan struct{}
 }
 
 func New(cfg Config) (*Server, error) {
@@ -215,8 +219,8 @@ func New(cfg Config) (*Server, error) {
 		host: u.Host, code: sha256.Sum256([]byte(cfg.LoginCode)), ttl: cfg.SessionTTL,
 		assets: web.FS(), sessions: make(map[[32]byte]*session),
 		apiSlots: make(chan struct{}, 8), downloads: make(chan struct{}, 2),
-		loginSlots: make(chan struct{}, 2),
-		writer:     writer, settings: settings, maxUploadSize: cfg.MaxUploadSize, jobs: make(map[string]*job), writeSlots: make(chan struct{}, 2), planSlots: make(chan struct{}, 2), life: life, stopLife: stopLife, streamIdle: 30 * time.Second,
+		loginSlots: make(chan struct{}, 2), verificationSlots: make(chan struct{}, 8),
+		writer: writer, settings: settings, maxUploadSize: cfg.MaxUploadSize, jobs: make(map[string]*job), writeSlots: make(chan struct{}, 2), planSlots: make(chan struct{}, 2), life: life, stopLife: stopLife, streamIdle: 30 * time.Second,
 		allowSharing: cfg.AllowSharing, maxArchiveSize: cfg.MaxArchiveSize, archiveDir: cfg.ArchiveDir, archives: make(map[string]*archiveTask), archiveSlots: make(chan struct{}, 1),
 	}, nil
 }
@@ -318,6 +322,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		releaseClient = sess.runtime.release
+		if s.nativeLogin != nil && strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/logout" {
+			if !s.verifyNativeSession(w, r, sess) {
+				return
+			}
+		}
 	}
 	if s.isJobRoute(r.URL.Path) {
 		s.serveJobs(w, r)

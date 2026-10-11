@@ -64,7 +64,7 @@ func nativeFixtureAuthenticator(closed *atomic.Int32) func(context.Context, Nati
 		backend := &fakeBackend{list: func(context.Context) ([]consoleapi.Bucket, error) {
 			return []consoleapi.Bucket{{Name: user + "-bucket"}}, nil
 		}}
-		return NativeConnection{Backend: backend, Cleanup: func() { closed.Add(1) }, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte("fixed-target/native/"+user)))}, nil
+		return NativeConnection{Verify: func(context.Context) error { return nil }, Backend: backend, Cleanup: func() { closed.Add(1) }, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte("fixed-target/native/"+user)))}, nil
 	}
 }
 
@@ -224,7 +224,7 @@ func TestNativeWritesUseOwnBackendAndIdentityChangesCannotStopServer(t *testing.
 	s, err := New(Config{NativeLogin: func(_ context.Context, c NativeCredentials) (NativeConnection, error) {
 		b := &fakeFeatureBackend{fakeMutationBackend: &fakeMutationBackend{fakeBackend: &fakeBackend{}}}
 		backends[c.AccessKey] = b
-		return NativeConnection{Backend: b, Cleanup: func() {}, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(c.AccessKey)))}, nil
+		return NativeConnection{Verify: func(context.Context) error { return nil }, Backend: b, Cleanup: func() {}, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(c.AccessKey)))}, nil
 	}, Alias: "storage", BaseURL: nativeOrigin, AllowWrites: true})
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +277,7 @@ func TestNativeLogoutCancelsOnlyItsInflightWrite(t *testing.T) {
 		if c.AccessKey == "alice" {
 			b.create = func(ctx context.Context, _ string) error { close(started); <-ctx.Done(); return ctx.Err() }
 		}
-		return NativeConnection{Backend: b, Cleanup: func() {}, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(c.AccessKey)))}, nil
+		return NativeConnection{Verify: func(context.Context) error { return nil }, Backend: b, Cleanup: func() {}, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(c.AccessKey)))}, nil
 	}})
 	if err != nil {
 		t.Fatal(err)

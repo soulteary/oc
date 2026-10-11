@@ -102,7 +102,7 @@ func (s *Server) newSessionRuntime(ctx context.Context, credentials NativeCreden
 		if err == nil && authCtx.Err() != nil {
 			err = authCtx.Err()
 		}
-		backend, cleanup, runtime.identity = connection.Backend, connection.Cleanup, connection.Identity
+		backend, cleanup, runtime.identity, runtime.verify = connection.Backend, connection.Cleanup, connection.Identity, connection.Verify
 	} else {
 		backend, cleanup, err = s.backendFactory(ctx)
 	}
@@ -125,6 +125,9 @@ func (s *Server) newSessionRuntime(ctx context.Context, credentials NativeCreden
 		return sessionRuntime{}, err
 	}
 	if s.nativeLogin != nil {
+		if runtime.verify == nil {
+			return sessionRuntime{}, errors.New("native connection does not support identity revalidation")
+		}
 		_, identityErr := hex.DecodeString(runtime.identity)
 		if len(runtime.identity) != 64 || identityErr != nil {
 			return sessionRuntime{}, errors.New("authentication returned an invalid principal identity")

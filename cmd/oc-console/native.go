@@ -102,7 +102,7 @@ func nativeAuthenticator(target storageclient.Config) func(context.Context, cons
 			return console.NativeConnection{}, err
 		}
 		identity := fmt.Sprintf("%x", sha256.Sum256([]byte(target.S3URL+"\x00"+target.AdminURL+"\x00native\x00"+credentials.AccessKey)))
-		return console.NativeConnection{Backend: client, Cleanup: client.Close, Identity: identity}, nil
+		return console.NativeConnection{Verify: client.AuthenticateNative, Backend: client, Cleanup: client.Close, Identity: identity}, nil
 	}
 }
 

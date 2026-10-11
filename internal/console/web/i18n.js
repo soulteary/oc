@@ -1513,6 +1513,7 @@
   ["Changing your secret and ending your sessions…", "正在修改密钥并结束你的会话…"],
   ["Change your IAM secret? All your sessions on this console will end. Other users remain signed in. Complete active writes before continuing.", "确认修改你的 IAM 密钥？你在此控制台的所有会话都会结束，其他用户保持登录。请先完成正在进行的写入。"],
   ["Change secret and sign out", "修改密钥并退出登录"],
+  ["Unable to verify your identity. Try again when the storage service is available.", "暂时无法验证身份，请在存储服务恢复后重试。"],
   ["Changing your secret ends all your sessions on this console. Other users remain signed in.", "修改密钥会结束你在此控制台的全部会话，其他用户保持登录。"],
   [
     "This local console is read-only. Secret rotation is disabled.",
