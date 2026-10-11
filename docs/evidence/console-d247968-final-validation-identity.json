@@ -1,0 +1,29 @@
+{
+  "acceptanceOCSource": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+  "evidenceHarnessCheckout": "5ea06b46ae0a71025284c073b696e3a568090274",
+  "serverSource": "d2479684b344fb1f2975f546471888749f75d671",
+  "serverGoVersion": "go1.27.2",
+  "serverBuildSettings": [
+    "build\t-buildmode=exe",
+    "build\t-compiler=gc",
+    "build\tCGO_ENABLED=1",
+    "build\tCGO_CFLAGS=",
+    "build\tCGO_CPPFLAGS=",
+    "build\tCGO_CXXFLAGS=",
+    "build\tCGO_LDFLAGS=",
+    "build\tGOARCH=arm64",
+    "build\tGOOS=darwin",
+    "build\tGOARM64=v8.0",
+    "build\tvcs=git",
+    "build\tvcs.revision=d2479684b344fb1f2975f546471888749f75d671",
+    "build\tvcs.time=2026-10-11T20:45:05Z",
+    "build\tvcs.modified=false"
+  ],
+  "firstRunOnly": true,
+  "maximumConcurrentFixtureFamilies": 2,
+  "binarySHA256": {
+    "server": "f4691efaa11c790257fb8a5a80f950a3aa6ce1ecb8a3cd25291b3cbecd71b699",
+    "cli": "202d29371a0d4bc3dfc84594225ff81b5dcaddff1096dee9fc405d34a7b6af89",
+    "console": "635b4b0703129fdb2d923e8e3fcd3d65cf34a703df5b26d5e42a5de2f9b9c400"
+  }
+}
