@@ -87,3 +87,18 @@ func TestOIDCDataDirectoryDefault(t *testing.T) {
 		}
 	}
 }
+
+func TestOIDCFixedEndpointsAcceptPreferenceConfigDirectory(t *testing.T) {
+	opts := options{authMode: "oidc", configDir: "custom", s3URL: "https://s3.example", adminURL: "https://admin.example", publicURL: "https://console.example", address: "127.0.0.1:9090", tlsCert: "public.crt", tlsKey: "private.key"}
+	cfg, err := oidcClientConfig(opts)
+	if err != nil || cfg.S3URL != opts.s3URL || cfg.AccessKey != "" || cfg.SecretKey != "" {
+		t.Fatalf("OIDC fixed endpoints rejected preference directory: %v", err)
+	}
+	if opts.configDir != "custom" {
+		t.Fatal("preference directory lost")
+	}
+	opts.alias = "startup-root"
+	if _, err := oidcClientConfig(opts); err == nil {
+		t.Fatal("OIDC inherited alias credentials")
+	}
+}

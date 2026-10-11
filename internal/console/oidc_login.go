@@ -89,18 +89,6 @@ func (s *Server) serveOIDC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { <-s.verificationSlots }()
-	s.mu.Lock()
-	if time.Since(s.loginWindow) >= time.Minute {
-		s.loginWindow, s.loginCount = time.Now(), 0
-	}
-	s.loginCount++
-	tooMany := s.loginCount > maxLoginAttempts
-	s.mu.Unlock()
-	if tooMany {
-		w.Header().Set("Retry-After", "60")
-		writeError(w, 429, "too_many_attempts", "Wait before signing in again.")
-		return
-	}
 	q, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil || len(r.URL.RawQuery) > maxQueryLength {
 		writeError(w, 400, "invalid_callback", "Start a new sign-in.")
@@ -109,6 +97,20 @@ func (s *Server) serveOIDC(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/oidc/login" {
 		if len(q) != 0 {
 			writeError(w, 400, "invalid_input", "Start a new sign-in.")
+			return
+		}
+		// Charge only sign-in starts; callbacks consume the pending attempt
+		// created by Begin and must not spend the shared budget a second time.
+		s.mu.Lock()
+		if time.Since(s.loginWindow) >= time.Minute {
+			s.loginWindow, s.loginCount = time.Now(), 0
+		}
+		s.loginCount++
+		tooMany := s.loginCount > maxLoginAttempts
+		s.mu.Unlock()
+		if tooMany {
+			w.Header().Set("Retry-After", "60")
+			writeError(w, 429, "too_many_attempts", "Wait before signing in again.")
 			return
 		}
 		binding, err := randomToken()

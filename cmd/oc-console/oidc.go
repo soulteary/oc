@@ -87,6 +87,13 @@ func oidcDataDir(opts options, getenv func(string) string) (string, error) {
 	return filepath.Join(configDir, "console-data"), nil
 }
 
+func oidcClientConfig(opts options) (storageclient.Config, error) {
+	// The config directory has already selected preference storage. OIDC
+	// still uses fixed endpoints and never loads alias credentials from it.
+	opts.configDir = ""
+	return nativeClientConfig(opts)
+}
+
 func runOIDC(ctx context.Context, opts options, output io.Writer) error {
 	var err error
 	opts.dataDir, err = oidcDataDir(opts, os.Getenv)
@@ -96,7 +103,7 @@ func runOIDC(ctx context.Context, opts options, output io.Writer) error {
 	if opts.sessionTTL < time.Minute || opts.sessionTTL > 24*time.Hour {
 		return errors.New("OIDC session lifetime must be between 1m and 24h")
 	}
-	cfg, err := nativeClientConfig(opts)
+	cfg, err := oidcClientConfig(opts)
 	if err != nil {
 		return err
 	}

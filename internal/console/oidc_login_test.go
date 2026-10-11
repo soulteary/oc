@@ -217,3 +217,32 @@ func TestOIDCPrincipalSessionBudgetIsolated(t *testing.T) {
 	// These entries represent budget occupancy, without owned clients/workers.
 	clear(s.sessions)
 }
+
+func TestOIDCInvalidCallbacksDoNotSpendLoginBudget(t *testing.T) {
+	s := oidcTestServer(t)
+	for i := 0; i < maxLoginAttempts+1; i++ {
+		w := httptest.NewRecorder()
+		s.serveOIDC(w, oidcRequest("/api/oidc/callback?state=a&code=b"))
+		if w.Code != 400 {
+			t.Fatalf("invalid callback consumed login capacity: %d", w.Code)
+		}
+	}
+	s.mu.Lock()
+	if s.loginCount != 0 {
+		s.mu.Unlock()
+		t.Fatal("callbacks exhausted login starts")
+	}
+	s.loginCount = maxLoginAttempts
+	s.loginWindow = time.Now()
+	s.mu.Unlock()
+	w := httptest.NewRecorder()
+	s.serveOIDC(w, oidcRequest("/api/oidc/callback?state=a&code=b"))
+	if w.Code != 400 {
+		t.Fatal("callback charged an already started attempt twice")
+	}
+	w = httptest.NewRecorder()
+	s.serveOIDC(w, oidcRequest("/api/oidc/login"))
+	if w.Code != 429 {
+		t.Fatal("login-start rate limit removed")
+	}
+}
