@@ -268,6 +268,23 @@ test("language switching translates UI and preserves exact data values", async (
  assert.equal(window.OCI18n.translate("Preparing upload…"),"正在准备上传…");
 });
 
+test("diagnostics labels translate while snapshot values remain exact", () => {
+ const navigation={nodeValue:"服务诊断",parentElement:{closest:()=>null}};
+ const title={nodeValue:"服务诊断",parentElement:{closest:()=>null}};
+ const values=["Version","Failed","版本","失败"].map(nodeValue=>({nodeValue,parentElement:{closest:selector=>selector.split(",").includes("#diagnostics-body") ? {} : null}}));
+ const nodes=[navigation,title,...values];
+ const document={title:"",documentElement:{},body:{querySelectorAll:()=>[]},getElementById:()=>null,createTreeWalker(){let i=0;return {nextNode:()=>nodes[i++]||null};}};
+ const window={}; let observe;
+ class MutationObserver { constructor(callback){observe=callback;} observe(){} }
+ vm.runInNewContext(fs.readFileSync(path.join(web,"i18n.js"),"utf8"),{document,window,MutationObserver});
+ for(const language of ["en","zh","en"]){
+  window.OCI18n.setLanguage(language); observe();
+  assert.equal(navigation.nodeValue,language==="en" ? "Service diagnostics" : "服务诊断");
+  assert.equal(title.nodeValue,navigation.nodeValue);
+  assert.deepEqual(values.map(node=>node.nodeValue),["Version","Failed","版本","失败"]);
+ }
+});
+
 test("saved favorites and recent visits restore independently of bucket listing", async () => {
   const h = createHarness({listDenied:true, preferences:{language:"en",favorites:[{bucket:"private",key:"exact/中文 +%.jpg"}],recent:["private","other"]}});
   await h.ready();
@@ -1887,6 +1904,44 @@ test("native deletion of an absent account returns self to login without replay"
   assert.equal(h.element("login-submit").disabled,false);
   assert.equal(h.calls.filter(c=>c.url==="/api/iam/actions").length,1);
  }
+});
+
+test("diagnostics render whitelist as text and retain other navigation", async () => {
+ const h=createHarness();
+ h.route("GET","/api/diagnostics/server",()=>response({nodes:[{state:"online",version:"<img src=x>",uptimeSeconds:12,heapBytes:1024,drives:2,secret:"forbidden"}]}));
+ await h.ready(); await h.fire("nav-diagnostics");
+ assert.equal(h.element("diagnostics-page").hidden,false);
+ assert.equal(h.element("diagnostics-body").children.length,1);
+ assert.match(h.element("diagnostics-body").textContent,/<img src=x>/);
+ assert.doesNotMatch(h.element("diagnostics-body").textContent,/forbidden/);
+ await h.fire("nav-overview"); assert.equal(h.element("diagnostics-page").hidden,true);
+ await h.fire("logout"); assert.equal(h.element("diagnostics-body").textContent,"");
+});
+test("diagnostics permission and protocol failures do not log out or retry", async () => {
+ for(const status of [403,501,502]) {
+  const h=createHarness(); h.route("GET","/api/diagnostics/server",()=>response({code:"diagnostic_error",message:"upstream detail must not be shown"},status));
+  await h.ready(); await h.fire("nav-diagnostics");
+  assert.equal(h.element("workspace").hidden,false);
+  assert.doesNotMatch(h.element("diagnostics-status").textContent,/upstream detail/);
+  assert.equal(h.calls.filter(c=>c.url==="/api/diagnostics/server").length,1);
+  assert.equal(h.element("diagnostics-refresh").disabled,false);
+ }
+});
+test("diagnostics pending requests abort and ignore late responses on logout or navigation", async () => {
+ for(const target of ["logout","nav-overview"]) {
+  const late=deferred(); const h=createHarness();
+  h.route("GET","/api/diagnostics/server",()=>late.promise);
+  await h.ready(); await h.fire("nav-diagnostics");
+  const call=h.calls.find(c=>c.url==="/api/diagnostics/server");
+  await h.fire(target); assert.equal(call.signal.aborted,true);
+  late.resolve(response({nodes:[{state:"online",version:"late",uptimeSeconds:0,heapBytes:0,drives:0}]})); await settle();
+  assert.equal(h.element("diagnostics-body").textContent,"");
+ }
+});
+test("diagnostics session expiry clears snapshots and returns to login", async () => {
+ const h=createHarness(); h.route("GET","/api/diagnostics/server",()=>response({code:"unauthorized",message:"expired"},401));
+ await h.ready(); await h.fire("nav-diagnostics");
+ assert.equal(h.element("workspace").hidden,true); assert.equal(h.element("diagnostics-body").textContent,"");
 });
 
 (async () => {

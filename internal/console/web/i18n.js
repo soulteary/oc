@@ -1,6 +1,21 @@
 "use strict";
 (() => {
  const pairs = [
+ ["Service diagnostics", "服务诊断"],
+ ["State", "状态"], ["Version", "版本"],
+ ["Server diagnostics (administrator permission required)", "服务诊断（需要管理员权限）"],
+ ["Requires admin:ServerInfo on your storage identity. Values come from the storage server. Platform, runtime and total cluster capacity are not available here.", "当前存储身份需具备 admin:ServerInfo 权限。数据来自存储服务器。此处尚不提供平台、运行时和集群总容量。"],
+ ["Refresh snapshot", "刷新快照"],
+ ["Loading server diagnostics…", "正在读取服务诊断…"],
+ ["Snapshot loaded. Refresh to request current server values.", "快照已加载，刷新可读取服务端当前值。"],
+ ["Your storage identity lacks admin:ServerInfo permission. Other console features remain available.", "当前存储身份没有 admin:ServerInfo 权限，其他控制台功能仍可使用。"],
+ ["Server diagnostics are unavailable with this backend.", "当前后端不提供服务诊断。"],
+ ["The storage server returned an invalid diagnostics response. Try refreshing.", "存储服务器返回的诊断响应无效，请尝试刷新。"],
+ ["Uptime (seconds)", "运行时间（秒）"],
+ ["Heap memory", "堆内存"],
+ ["Drives", "驱动数量"],
+ ["Node", "节点"],
+
  ["YOUR STORAGE", "你的存储空间"],
  ["Read-only access. Your storage permissions apply to every operation.", "当前为只读模式，每项操作都受你的存储权限约束。"],
  ["Storage console", "存储控制台"],
@@ -1953,7 +1968,7 @@
  let language = "zh";
  const sources = new WeakMap();
  const attributes = new WeakMap();
- const excluded = "[data-no-i18n],pre,code,textarea,#console-language,#alias-name,#object-info-key,#object-info-bucket,#object-info-etag,#object-info-type,#image-preview-title,#upload-selected-name,#upload-bucket,#replace-key,#replace-bucket,#delete-items,#archive-items,#iam-result-access,#iam-result-secret,#stopped-result-access,#stopped-result-secret";
+ const excluded = "[data-no-i18n],pre,code,textarea,#console-language,#diagnostics-body,#alias-name,#object-info-key,#object-info-bucket,#object-info-etag,#object-info-type,#image-preview-title,#upload-selected-name,#upload-bucket,#replace-key,#replace-bucket,#delete-items,#archive-items,#iam-result-access,#iam-result-secret,#stopped-result-access,#stopped-result-secret";
  function translate(text) {
    const leading = text.match(/^\s*/)[0], trailing = text.match(/\s*$/)[0];
    const trimmed = text.trim();

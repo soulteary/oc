@@ -26,7 +26,7 @@
 
 handler 仅 GET、无 query，使用现有 apiSlots 并发上限与 sess.ctx 取消，响应 no-store。退出、到期、关闭由 session cancel 结束 HTTP 读取；请求取消也结束读取并关闭响应体。它是一次快照，无长订阅、持久 cursor、重连或事件回放语义，也无需引入慢消费者缓冲。
 
-UI 应显示“服务器诊断（需管理员权限）”，不得把本机 runtime 或 OC 版本当上游服务器值。501 表示接口未实现，403 表示当前身份无权限，502 表示协议/响应失败。主 UI 和共享 capability 响应由协调者拥有，尚未接入。
+UI 应显示“服务器诊断（需管理员权限）”，不得把本机 runtime 或 OC 版本当上游服务器值。501 表示接口未实现，403 表示当前身份无权限，502 表示协议/响应失败。主 UI 已提供独立“服务诊断”导航与手动刷新，无后台轮询。所有节点值以 textContent 展示；403 不影响其他功能，退出/到期清空结果，离开诊断页面取消在途请求。无需新增 capability 标志。
 
 ## 验证
 
@@ -39,3 +39,9 @@ UI 应显示“服务器诊断（需管理员权限）”，不得把本机 runt
 审查修复：HTTP 200 必须包含非空 servers，每节点必须是对象，有合法 online/offline/initializing state、mem_stats 和 HeapAlloc；online/initializing 必须有非空 version。null、空对象、空数组、null 节点、缺必填字段均返回统一 502。根据 SDK 实际 JSON 的 omitempty，零 uptime/空 drives 可以省略，offline 的 version 可以省略；HeapAlloc=0 合法且仍必填。显式 null 数值/驱动列表及负数等非法形状不作合法零值解释。
 
 上述发布资产的 modified 标记表示 base revision **不能代表二进制全部确切源码**。证据绑定实际资产 SHA，而不是声称它等同于 clean `8cc518b...` 源码构建。若另以干净源码 checkout 构建服务，应分别记录源码 revision、clean/modified 状态和该构建的 SHA，不能混用本资产证据。
+
+## 普通用户发现接口的后续契约
+
+这次 UI 不关闭旧字段。普通用户等价仍要求 OtterIO 提供按当前主体认证的最小只读发现协议：服务器版本、OS/arch、Go runtime/CPU、明确来源的集群 ObjectsTotalSize。字段应来自 OtterIO 实际运行实例/集群统计，带统计时间与缺失语义；不能使用 OC 本机 runtime、当前主体可见桶求和或启动管理员查询。协议还需明确集群字段对普通用户的授权边界，拒绝未经许可的 endpoint、hostname、公共域、配置、其他账户数据等泄露。新增服务端协议应单独 PR 冻结路径、版本和权限，之后再声明最低支持版本并提供 OC 适配；当前管理快照不能证明这些字段等价。
+
+UI 验证：87 个 DOM/fetch 行为组通过，其中 5 组新增验证翻译切换与诊断原值保持、白名单文本、403/501/502 无自动重试、退出/导航取消与忽略迟到响应、401 清理。真实 Chromium 1280 × 900 临时页面检查诊断导航、快照表与返回概览，未出现页面异常；截图保存于临时目录，使用合成快照，此浏览器检查不冒充真实服务权限验收。

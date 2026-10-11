@@ -59,6 +59,7 @@
           <button id="nav-favorites" type="button" class="navigation-item">收藏路径</button>
           <p class="navigation-group">运维管理</p>
           <button id="nav-tasks" type="button" class="navigation-item">任务中心</button>
+          <button id="nav-diagnostics" type="button" class="navigation-item">服务诊断</button>
           <button id="nav-account" type="button" class="navigation-item">账户与权限</button>
           <p class="navigation-note">单连接 · 本机会话<br>操作权限由存储服务验证</p>
         </aside>
@@ -73,6 +74,13 @@
           <article class="overview-card"><h2>连接状态</h2><p id="overview-connection"></p><p class="overview-help">月度流量、请求趋势及告警尚未接入。任务结果可在任务中心查看。</p></article>
         </section>
         <div class="connection-line"><span class="connection-dot" aria-hidden="true"></span><span>Connected to</span><strong id="alias-name"></strong><span class="connection-note">Local session</span></div>
+        <section id="diagnostics-page" class="overview-card" hidden aria-labelledby="diagnostics-title">
+          <h2 id="diagnostics-title">Server diagnostics (administrator permission required)</h2>
+          <p class="overview-help">Requires admin:ServerInfo on your storage identity. Values come from the storage server. Platform, runtime and total cluster capacity are not available here.</p>
+          <button id="diagnostics-refresh" class="button quiet" type="button">Refresh snapshot</button>
+          <p id="diagnostics-status" class="overview-help" role="status" aria-live="polite"></p>
+          <div class="table-wrap"><table class="objects-table"><thead><tr><th>Node</th><th>State</th><th>Version</th><th>Uptime (seconds)</th><th>Heap memory</th><th>Drives</th></tr></thead><tbody id="diagnostics-body"></tbody></table></div>
+        </section>
         <section id="favorites-page" class="overview-card" hidden><h2>收藏路径</h2><p class="overview-help">收藏按当前存储身份保存，重新登录后恢复。</p><div id="favorite-list" class="favorite-list"></div></section>
         <section id="bucket-directory" class="bucket-directory" hidden aria-label="存储桶列表">
           <div class="directory-toolbar"><button id="directory-create" class="button primary" type="button" hidden>创建存储桶</button><button id="directory-account" class="button quiet" type="button">授权信息</button><label for="bucket-search" class="sr-only">搜索存储桶名称</label><input id="bucket-search" type="search" placeholder="搜索存储桶名称"><button id="directory-refresh" class="button quiet" type="button">刷新</button></div>
