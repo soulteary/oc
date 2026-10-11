@@ -1889,6 +1889,44 @@ test("native deletion of an absent account returns self to login without replay"
  }
 });
 
+test("diagnostics render whitelist as text and retain other navigation", async () => {
+ const h=createHarness();
+ h.route("GET","/api/diagnostics/server",()=>response({nodes:[{state:"online",version:"<img src=x>",uptimeSeconds:12,heapBytes:1024,drives:2,secret:"forbidden"}]}));
+ await h.ready(); await h.fire("nav-diagnostics");
+ assert.equal(h.element("diagnostics-page").hidden,false);
+ assert.equal(h.element("diagnostics-body").children.length,1);
+ assert.match(h.element("diagnostics-body").textContent,/<img src=x>/);
+ assert.doesNotMatch(h.element("diagnostics-body").textContent,/forbidden/);
+ await h.fire("nav-overview"); assert.equal(h.element("diagnostics-page").hidden,true);
+ await h.fire("logout"); assert.equal(h.element("diagnostics-body").textContent,"");
+});
+test("diagnostics permission and protocol failures do not log out or retry", async () => {
+ for(const status of [403,501,502]) {
+  const h=createHarness(); h.route("GET","/api/diagnostics/server",()=>response({code:"diagnostic_error",message:"upstream detail must not be shown"},status));
+  await h.ready(); await h.fire("nav-diagnostics");
+  assert.equal(h.element("workspace").hidden,false);
+  assert.doesNotMatch(h.element("diagnostics-status").textContent,/upstream detail/);
+  assert.equal(h.calls.filter(c=>c.url==="/api/diagnostics/server").length,1);
+  assert.equal(h.element("diagnostics-refresh").disabled,false);
+ }
+});
+test("diagnostics pending requests abort and ignore late responses on logout or navigation", async () => {
+ for(const target of ["logout","nav-overview"]) {
+  const late=deferred(); const h=createHarness();
+  h.route("GET","/api/diagnostics/server",()=>late.promise);
+  await h.ready(); await h.fire("nav-diagnostics");
+  const call=h.calls.find(c=>c.url==="/api/diagnostics/server");
+  await h.fire(target); assert.equal(call.signal.aborted,true);
+  late.resolve(response({nodes:[{state:"online",version:"late",uptimeSeconds:0,heapBytes:0,drives:0}]})); await settle();
+  assert.equal(h.element("diagnostics-body").textContent,"");
+ }
+});
+test("diagnostics session expiry clears snapshots and returns to login", async () => {
+ const h=createHarness(); h.route("GET","/api/diagnostics/server",()=>response({code:"unauthorized",message:"expired"},401));
+ await h.ready(); await h.fire("nav-diagnostics");
+ assert.equal(h.element("workspace").hidden,true); assert.equal(h.element("diagnostics-body").textContent,"");
+});
+
 (async () => {
   let passed = 0;
   for (const item of tests) {
