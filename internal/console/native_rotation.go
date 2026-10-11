@@ -12,6 +12,10 @@ import (
 // writes (including multipart abort) must finish first. Other users' reads and
 // logins remain available; competing writes receive the ordinary busy response.
 func (s *Server) rotateNativeSecret(w http.ResponseWriter, r *http.Request, sess *session, secret string) {
+	if !nativePrincipalScope(sess.runtime.identity).valid() {
+		writeError(w, 409, "identity_impact_unknown", "The affected identity cannot be established safely.")
+		return
+	}
 	s.mu.Lock()
 	if s.closed || sess.ctx.Err() != nil || s.nativeRotating[sess.runtime.identity] || s.nativeUserChanging[sess.nativeUser] {
 		s.mu.Unlock()
@@ -35,10 +39,7 @@ func (s *Server) rotateNativeSecret(w http.ResponseWriter, r *http.Request, sess
 	defer func() {
 		s.mu.Lock()
 		if revoke {
-			s.nativeEpoch++
-			if s.nativeLogins > 0 {
-				s.nativeRevoked[sess.runtime.identity] = s.nativeEpoch
-			}
+			_ = s.revocations.revoke(nativePrincipalScope(sess.runtime.identity))
 			for token, other := range s.sessions {
 				if other.runtime.identity == sess.runtime.identity {
 					s.removeSessionLocked(token, other)
