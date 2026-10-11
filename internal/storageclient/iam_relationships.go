@@ -67,6 +67,11 @@ func decodeIAMRelationships(data []byte, header http.Header, kind, target string
 			return result, iamRelationshipsUnknown()
 		}
 	}
+	if capability, ok := fields["coupledBindings"]; ok {
+		if json.Unmarshal(capability, &result.CoupledBindings) != nil {
+			return result, iamRelationshipsUnknown()
+		}
+	}
 	if parent, ok := fields["nativeParent"]; ok {
 		if json.Unmarshal(parent, &result.NativeParent) != nil {
 			return result, iamRelationshipsUnknown()

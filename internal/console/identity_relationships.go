@@ -2,6 +2,7 @@
 package console
 
 import (
+	"encoding/hex"
 	"github.com/soulteary/mc/internal/consoleapi"
 	"time"
 )
@@ -45,7 +46,8 @@ func (snapshot identityRelationshipSnapshot) impact(target, revision string, now
 // relationshipImpactFromSnapshot accepts only a target-bound response from
 // an owned production client. It does not turn an OIDC subject into an IAM key.
 func relationshipImpactFromSnapshot(snapshot consoleapi.IAMRelationships, storageTarget string, now time.Time) ([]identityScope, error) {
-	if snapshot.State != "known" || snapshot.StorageTarget != storageTarget || snapshot.AffectedAccessKeys == nil {
+	_, revisionErr := hex.DecodeString(snapshot.Revision)
+	if snapshot.State != "known" || snapshot.StorageTarget != storageTarget || snapshot.AffectedAccessKeys == nil || len(snapshot.Revision) != 64 || revisionErr != nil || !consoleapi.ValidIAMName(snapshot.Target) || (snapshot.Kind != "user" && snapshot.Kind != "group" && snapshot.Kind != "service-account") {
 		return nil, errUnknownIdentityScope
 	}
 	scopes := make([]identityScope, 0, len(snapshot.AffectedAccessKeys))

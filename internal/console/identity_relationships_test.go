@@ -2,6 +2,8 @@
 package console
 
 import (
+	"github.com/soulteary/mc/internal/consoleapi"
+	"strings"
 	"testing"
 	"time"
 )
@@ -61,5 +63,26 @@ func TestIdentityRelationshipFailClosed(t *testing.T) {
 	scopes[0] = identityScope{}
 	if _, err := snapshot.impact("target", "revision", now); err != nil {
 		t.Fatal("caller mutated authority")
+	}
+}
+
+func TestProductionRelationshipImpactTargetBound(t *testing.T) {
+	now := time.Now()
+	snapshot := consoleapi.IAMRelationships{Kind: "group", Target: "native-group", State: "known", Revision: strings.Repeat("a", 64), StorageTarget: "fixed-target", ExpiresAt: now.Add(time.Second), AffectedAccessKeys: []string{}}
+	impact, err := relationshipImpactFromSnapshot(snapshot, "fixed-target", now)
+	if err != nil || impact == nil || len(impact) != 0 {
+		t.Fatal("known empty production snapshot rejected")
+	}
+	if _, err := relationshipImpactFromSnapshot(snapshot, "other-target", now); err == nil {
+		t.Fatal("foreign target accepted")
+	}
+	snapshot.AffectedAccessKeys = nil
+	if _, err := relationshipImpactFromSnapshot(snapshot, "fixed-target", now); err == nil {
+		t.Fatal("unknown set accepted")
+	}
+	snapshot.AffectedAccessKeys = []string{"native-parent", "native-child"}
+	impact, err = relationshipImpactFromSnapshot(snapshot, "fixed-target", now)
+	if err != nil || len(impact) != 2 || impact[0] != nativeUserScope("native-parent") {
+		t.Fatal("authority not converted to native scopes")
 	}
 }

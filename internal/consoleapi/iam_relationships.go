@@ -13,6 +13,7 @@ type IAMRelationshipsBackend interface {
 }
 
 type IAMRelationships struct {
+	CoupledBindings    bool      `json:"coupledBindings"`
 	Kind               string    `json:"kind"`
 	Target             string    `json:"target"`
 	State              string    `json:"state"`
@@ -23,4 +24,15 @@ type IAMRelationships struct {
 	// StorageTarget is bound by the owned client, never accepted from the server
 	// response or browser. It isolates identical access keys on different stores.
 	StorageTarget string `json:"-"`
+}
+
+// IAMRelationshipMutationsBackend sends a single request with both the binding
+// and relationship conditions. It never falls back to an unconditional write.
+type IAMRelationshipMutationsBackend interface {
+	IAMReplaceRelationshipBindings(context.Context, IAMBindings, IAMRelationships, []string) (IAMRelationshipMutationResult, error)
+}
+type IAMRelationshipMutationResult struct {
+	Outcome  string           `json:"outcome"`
+	Bindings IAMBindings      `json:"bindings"`
+	Impact   IAMRelationships `json:"impact"`
 }
