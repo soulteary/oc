@@ -82,3 +82,7 @@ CLI/Console程序仍是同一clean source a7ebefb0；新Darwin/Linux服务端精
 最终 OC a7ebefb0 + OtterIO d2479684 的真实 Keycloak 浏览器顺序复验全部首次通过：single TLS 13项协议+11项 Chromium，dual 独立CA TLS 14项协议+11项 Chromium；两套清理通过。刷新事件均2次，固定150秒到期401，双CA错误AdminCA拒绝，外部WebIdentity空native parent兼容保持。[原始报告说明](../../console-oidc-browser-acceptance.md)保存实际来源/程序摘要/夹具与临时浏览器证书处理边界。
 
 任务01/02/03状态 verified 仅指开发验收；28项正式发行替代矩阵仍未认证。任务04/05/06进入后续审查，不假称已发布或删除。完整后续分工、证据和迁移门禁见[交接文件](handoff.md)。原checkout、生产部署、旧Web默认与资源均保持；所有本轮提交均在隔离分支，未推送。
+
+## PR 准备
+
+合入最新 origin/main eac4e204（STS 等待 IAM policies、Range 登录参数修正），无冲突。合并后的测试夹具再次运行 Range、diagnostics、真实 OIDC STS，全部通过。固定运行程序仍 OC a7ebefb0 与 server d2479684；[新增报告](../../evidence/console-pr-protocols-after-main-merge.json)记录实际 harness 与程序身份，不冒称重新构建运行程序。后续按用户要求推送两个开发分支并创建配套 PR。
