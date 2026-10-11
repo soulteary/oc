@@ -39,6 +39,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
     names = {role: prefix + '-' + role for role in ('manager', 'target', 'unrelated', 'denied')}
     secrets_by_role = {role: secrets.token_hex(24) for role in names}
     policies, groups = [], []
+    public_child_keys = []
     processes = []
     child = None
     own_cleanup = {'status': 'running', 'processes': [], 'errors': []}
@@ -83,7 +84,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
     def action(client, body, expected=200, csrf=True):
         payload = client('/api/iam/actions', 'POST', body, expected=expected,
                          headers=client.csrf if csrf else {},
-                         allowed_credentials=tuple(names.values()) + ((child['accessKey'],) if child else ()))[0]
+                         allowed_credentials=tuple(names.values()) + tuple(public_child_keys) + ((child['accessKey'],) if child else ()))[0]
         return json.loads(payload)
 
     def bindings(client, kind, target):
@@ -315,6 +316,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         if not all(temporary.values()):
             raise RuntimeError('lifecycle STS credentials incomplete')
         credentials.extend(temporary.values())
+        public_child_keys.append(temporary['accessKey'])
         browser(base, tls_context)('/api/login', 'POST', {'accessKey': temporary['accessKey'], 'secretKey': temporary['secretKey']}, expected=401)
         checks.append('real STS credentials cannot create native browser sessions; child authorization is tested through signed S3 requests')
 
