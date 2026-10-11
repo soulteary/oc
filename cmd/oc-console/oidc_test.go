@@ -44,3 +44,11 @@ func TestOIDCTransportRejectsOtherOrigins(t *testing.T) {
 		}
 	}
 }
+
+func TestOIDCCallbackRootURL(t *testing.T) {
+	for _, root := range []string{"https://console.example", "https://console.example/"} {
+		if got := oidcCallbackURL(root); got != "https://console.example/api/oidc/callback" {
+			t.Fatal("incorrect callback root")
+		}
+	}
+}

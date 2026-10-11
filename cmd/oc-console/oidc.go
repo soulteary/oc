@@ -62,6 +62,10 @@ func readOIDCSecret(path string) (string, error) {
 	}
 	return secret, nil
 }
+func oidcCallbackURL(publicURL string) string {
+	return strings.TrimRight(publicURL, "/") + "/api/oidc/callback"
+}
+
 func runOIDC(ctx context.Context, opts options, output io.Writer) error {
 	if opts.sessionTTL < time.Minute || opts.sessionTTL > 24*time.Hour {
 		return errors.New("OIDC session lifetime must be between 1m and 24h")
@@ -96,7 +100,7 @@ func runOIDC(ctx context.Context, opts options, output io.Writer) error {
 	sts.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: cfg.RootCAs}
 	defer idp.CloseIdleConnections()
 	defer sts.CloseIdleConnections()
-	client, err := oidc.New(ctx, oidc.Config{Issuer: opts.oidcIssuer, ClientID: opts.oidcClientID, ClientSecret: secret, RedirectURI: opts.publicURL + "/api/oidc/callback", STSEndpoint: cfg.S3URL, Scopes: []string{"offline_access"}, MaxSessionLifetime: opts.sessionTTL, Transport: &oidcTransport{issuer: issuerOrigin, storage: storageOrigin, idp: idp, sts: sts}})
+	client, err := oidc.New(ctx, oidc.Config{Issuer: opts.oidcIssuer, ClientID: opts.oidcClientID, ClientSecret: secret, RedirectURI: oidcCallbackURL(opts.publicURL), STSEndpoint: cfg.S3URL, Scopes: []string{"offline_access"}, MaxSessionLifetime: opts.sessionTTL, Transport: &oidcTransport{issuer: issuerOrigin, storage: storageOrigin, idp: idp, sts: sts}})
 	if err != nil {
 		return errors.New("cannot initialize OIDC provider; verify fixed endpoints and client configuration")
 	}
