@@ -346,7 +346,11 @@ func (s *Server) uploadJob(w http.ResponseWriter, r *http.Request, sess *session
 		writeError(w, 404, "not_found", "This task does not exist.")
 		return
 	}
-	if j.info.Kind != "upload" || j.info.Status != "waiting" || j.ctx.Err() != nil || !time.Now().Before(j.info.Expires) {
+	executionContext := j.ctx
+	if sess.oidc != nil {
+		executionContext = sess.ctx
+	}
+	if j.info.Kind != "upload" || j.info.Status != "waiting" || executionContext.Err() != nil || !time.Now().Before(j.info.Expires) {
 		s.mu.Unlock()
 		writeError(w, 409, "task_state", "This upload cannot be started again.")
 		return
@@ -361,11 +365,16 @@ func (s *Server) uploadJob(w http.ResponseWriter, r *http.Request, sess *session
 		writeError(w, 400, "invalid_input", "The upload length does not match the registered file size.")
 		return
 	}
-	if err := tryAcquire(j.ctx, s.writeSlots); err != nil {
+	if err := tryAcquire(executionContext, s.writeSlots); err != nil {
 		s.mu.Unlock()
 		writeSlotError(w, err)
 		return
 	}
+	if sess.oidc != nil {
+		j.cancel()
+		j.ctx, j.cancel = context.WithCancel(sess.ctx)
+	}
+	j.owner = sess
 	j.timer.Stop()
 	j.info.Status = "running"
 	j.info.Expires = j.owner.expires

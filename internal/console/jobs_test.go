@@ -653,3 +653,43 @@ func TestOIDCDeletionPlanUsesRefreshedGenerationContext(t *testing.T) {
 		})
 	}
 }
+
+func TestOIDCWaitingUploadUsesRefreshedGenerationContext(t *testing.T) {
+	for _, expireBefore := range []bool{false, true} {
+		t.Run(fmt.Sprint(expireBefore), func(t *testing.T) {
+			oldctx, oldcancel := context.WithCancel(context.Background())
+			defer oldcancel()
+			currentctx, currentcancel := context.WithCancel(context.Background())
+			defer currentcancel()
+			backend := &fakeMutationBackend{fakeBackend: &fakeBackend{}}
+			backend.upload = func(ctx context.Context, _, _ string, body io.Reader, size int64, _ consoleapi.UploadOptions, progress func(int64)) (consoleapi.UploadResult, error) {
+				oldcancel()
+				if err := ctx.Err(); err != nil {
+					return consoleapi.UploadResult{}, err
+				}
+				n, err := io.Copy(io.Discard, body)
+				progress(n)
+				return consoleapi.UploadResult{Size: n, ETag: "saved"}, err
+			}
+			s := mutationServer(t, backend)
+			stable := &oidcSession{}
+			old := &session{ctx: oldctx, expires: time.Now().Add(time.Minute), oidc: stable}
+			current := &session{ctx: currentctx, expires: time.Now().Add(time.Minute), oidc: stable, runtime: sessionRuntime{writer: backend}}
+			j := s.createJob(httptest.NewRecorder(), old, consoleapi.Job{Kind: "upload", Status: "waiting", Bucket: "bucket", Key: "key", Size: 4, Count: 1}, time.Minute)
+			if j == nil {
+				t.Fatal("upload registration unavailable")
+			}
+			if expireBefore {
+				oldcancel()
+			}
+			r := httptest.NewRequest(http.MethodPut, "/api/uploads/"+j.info.ID, strings.NewReader("data"))
+			r.Header.Set("Content-Type", "application/octet-stream")
+			w := httptest.NewRecorder()
+			s.uploadJob(w, r, current, j.info.ID)
+			info := jobResponse(t, w, 200)
+			if info.Status != "succeeded" || info.Completed != 1 || info.Transferred != 4 {
+				t.Fatalf("old generation interrupted upload: %+v", info)
+			}
+		})
+	}
+}
