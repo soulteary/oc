@@ -191,6 +191,73 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
             target, target_second = login('target'), login('target')
             checks.append(kind + ' binding stale revision conflicts without overwrite/retirement; fresh coupled edit retires affected parent sessions only')
 
+        group = groups[0]
+        def group_action(name, members=None):
+            body = {'action': 'group.' + name, 'group': group, 'confirmTarget': group}
+            if members is not None:
+                body['members'] = members
+            result = action(manager, body)
+            require_confirmed(result)
+            expected_status = {'enable': 'enabled', 'disable': 'disabled', 'delete': 'deleted'}.get(name)
+            if expected_status and result['group']['status'] != expected_status:
+                raise RuntimeError('group mutation did not confirm requested status')
+            return result
+
+        group_action('disable')
+        target('/api/session', expected=401);target_second('/api/session', expected=401)
+        unrelated('/api/session');manager('/api/session')
+        target, target_second = login('target'), login('target')
+        group_action('enable')
+        target('/api/session', expected=401);target_second('/api/session', expected=401)
+        target, target_second = login('target'), login('target')
+        group_action('add-members', [names['unrelated']])
+        target('/api/session', expected=401);unrelated('/api/session', expected=401)
+        manager('/api/session')
+        target, target_second, unrelated = login('target'), login('target'), login('unrelated')
+        group_action('remove-members', [names['target'], names['unrelated']])
+        target('/api/session', expected=401);target_second('/api/session', expected=401);unrelated('/api/session', expected=401)
+        manager('/api/session')
+        target, target_second, unrelated = login('target'), login('target'), login('unrelated')
+        group_action('delete')
+        groups.remove(group)
+        manager('/api/session');target('/api/session');unrelated('/api/session')
+        checks.append('group disable/enable and member add/remove retire captured affected user sessions; empty group deletion keeps unrelated sessions available')
+
+        def service_action(name, **extra):
+            result = action(manager, {'action': 'service-account.' + name,
+                            'accessKey': child['accessKey'], 'confirmTarget': child['accessKey'], **extra})
+            require_confirmed(result)
+            if result['serviceAccount']['accessKey'] != child['accessKey'] or result['serviceAccount']['parentUser'] != names['target']:
+                raise RuntimeError('service mutation response changed target or parent')
+            expected_status = {'enable': 'on', 'disable': 'off', 'delete': 'deleted'}.get(name)
+            if expected_status and result['serviceAccount']['status'] != expected_status:
+                raise RuntimeError('service mutation did not confirm requested status')
+            return result
+
+        service_action('disable')
+        child_request('GET', 'plain.txt', expected=403)
+        manager('/api/session');target('/api/session');unrelated('/api/session')
+        service_action('enable')
+        child_request('GET', 'plain.txt')
+        new_child_secret = secrets.token_hex(24)
+        credentials.append(new_child_secret)
+        service_action('rotate', secretKey=new_child_secret)
+        child_request('GET', 'plain.txt', expected=403)
+        child['secretKey'] = new_child_secret
+        child_request('GET', 'plain.txt')
+        narrow_policy = json.dumps({'Version': '2012-10-17', 'Statement': [
+            {'Effect': 'Allow', 'Action': ['s3:GetObject'], 'Resource': ['arn:aws:s3:::' + bucket + '/stream.bin']}]})
+        service_action('policy', policy=narrow_policy)
+        child_request('GET', 'plain.txt', expected=403)
+        child_request('GET', 'stream.bin')
+        child_request('PUT', prefix + '-child.txt', b'denied', 403)
+        service_action('delete')
+        child_request('GET', 'stream.bin', expected=403)
+        child = None
+        cli('rm', 'store/' + bucket + '/' + prefix + '-child.txt')
+        target('/api/session');target_second('/api/session');unrelated('/api/session');manager('/api/session')
+        checks.append('real service child disable/enable, secret rotation, parent-intersected policy and deletion enforce signed S3 credentials while native parent/unrelated browser sessions continue')
+
         # Regrant admin directly before testing admin self-targeted rotation.
         cli('admin', 'policy', 'set', 'store', 'consoleAdmin', 'user=' + names['manager'])
         manager_second = login('manager')
@@ -201,7 +268,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         secrets_by_role['manager'] = self_secret
         login('manager')
         checks.append('administrator self rotation acknowledges loginRequired before retiring own sessions; new login and unrelated users remain available')
-        return {'capabilityMode': 'required-supported', 'positiveMutationCoverage': ['user.rotate-other', 'user.rotate-self', 'disabled-user.rotate', 'user.policies', 'group.policies'], 'serviceChildBrowserSessions': 'unsupported: native service login is rejected, not counted as retirement coverage', 'serviceChildSignedS3': 'parent secret rotation retains authorized read; policy narrowing retains read and denies write', 'tls': 'verified independent fixture browser and storage/Admin CA'}
+        return {'capabilityMode': 'required-supported', 'positiveMutationCoverage': ['user.rotate-other', 'user.rotate-self', 'disabled-user.rotate', 'user.policies', 'group.policies', 'group.status-members-delete', 'service-account.status-secret-policy-delete'], 'serviceChildBrowserSessions': 'unsupported: native service login is rejected, not counted as retirement coverage', 'serviceChildSignedS3': 'parent secret rotation retains authorized read; policy narrowing retains read and denies write', 'tls': 'verified independent fixture browser and storage/Admin CA'}
     finally:
         for process, log in reversed(processes):
             stop(process)
