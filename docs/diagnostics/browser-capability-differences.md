@@ -34,4 +34,8 @@ UI 应显示“服务器诊断（需管理员权限）”，不得把本机 runt
 
 实际验收：本切片已对独立临时数据服务器 `6f6d0835ddff68020f1491c403b958fade22841f` 原始构建执行管理员快照读取和临时 readwrite IAM 用户 403 负例；账户创建/绑定/清理由测试管理员完成，待测普通用户的读取使用其自身凭据。该证据仅覆盖单 HTTP 隔离服务，不代表 TLS、分离 admin listener 或正式发行矩阵认证。独立重跑：`python3 buildscripts/test-console-diagnostics.py --server /path/to/otterio`。
 
-正式服务器复核：对 `/private/tmp/oc-parallel-release-server/otterio-darwin-arm64`（源码 `8cc518b31ac8b69c8f855e19b4bd027f44275c47`）运行同一隔离脚本，管理员快照成功、临时 readwrite IAM 用户诊断 403，清理完成。仍仅是单 HTTP 诊断后端证据，不是完整控制台或 TLS 发行组合认证。
+正式服务器复核：对 `/private/tmp/oc-parallel-release-server/otterio-darwin-arm64`（base revision `8cc518b31ac8b69c8f855e19b4bd027f44275c47`，资产 SHA256 `48b673ad0e03723eeeedb2ab5773569093b426d8fa04e132d17183ac7afb6f9c`，构建标记 `vcs.modified=true`）运行同一隔离脚本，管理员快照成功、临时 readwrite IAM 用户诊断 403，清理完成。仍仅是单 HTTP 诊断后端证据，不是完整控制台或 TLS 发行组合认证。
+
+审查修复：HTTP 200 必须包含非空 servers，每节点必须是对象，有合法 online/offline/initializing state、mem_stats 和 HeapAlloc；online/initializing 必须有非空 version。null、空对象、空数组、null 节点、缺必填字段均返回统一 502。根据 SDK 实际 JSON 的 omitempty，零 uptime/空 drives 可以省略，offline 的 version 可以省略；HeapAlloc=0 合法且仍必填。显式 null 数值/驱动列表及负数等非法形状不作合法零值解释。
+
+上述发布资产的 modified 标记表示 base revision **不能代表二进制全部确切源码**。证据绑定实际资产 SHA，而不是声称它等同于 clean `8cc518b...` 源码构建。若另以干净源码 checkout 构建服务，应分别记录源码 revision、clean/modified 状态和该构建的 SHA，不能混用本资产证据。

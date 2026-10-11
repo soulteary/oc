@@ -62,22 +62,59 @@ func (c *Client) ServerDiagnostics(ctx context.Context) (consoleapi.ServerDiagno
 	// Decode only the whitelist. In particular no upstream arbitrary maps or
 	// SDK InfoMessage can cross the browser boundary.
 	var reply struct {
-		Servers []struct {
-			State    string                     `json:"state"`
-			Version  string                     `json:"version"`
-			Uptime   int64                      `json:"uptime"`
-			MemStats struct{ HeapAlloc uint64 } `json:"mem_stats"`
-			Drives   []json.RawMessage          `json:"drives"`
+		Servers []*struct {
+			State    *string                      `json:"state"`
+			Version  json.RawMessage              `json:"version"`
+			Uptime   json.RawMessage              `json:"uptime"`
+			MemStats *struct{ HeapAlloc *uint64 } `json:"mem_stats"`
+			Drives   json.RawMessage              `json:"drives"`
 		} `json:"servers"`
 	}
-	if json.Unmarshal(data, &reply) != nil || len(reply.Servers) > 256 {
+	if json.Unmarshal(data, &reply) != nil || len(reply.Servers) == 0 || len(reply.Servers) > 256 {
 		return result, diagnosticsUnavailable()
 	}
 	for _, node := range reply.Servers {
-		if len(node.State) > 128 || len(node.Version) > 256 || node.Uptime < 0 {
+		if node == nil || node.State == nil || node.MemStats == nil || node.MemStats.HeapAlloc == nil {
 			return consoleapi.ServerDiagnostics{}, diagnosticsUnavailable()
 		}
-		result.Nodes = append(result.Nodes, consoleapi.DiagnosticNode{State: node.State, Version: node.Version, UptimeSeconds: node.Uptime, HeapBytes: node.MemStats.HeapAlloc, Drives: len(node.Drives)})
+		if *node.State != "online" && *node.State != "offline" && *node.State != "initializing" {
+			return consoleapi.ServerDiagnostics{}, diagnosticsUnavailable()
+		}
+		// The SDK omits zero uptime and empty drives. Offline peers additionally
+		// omit version. MemStats and HeapAlloc are always serialized, even zero.
+		var version *string
+		if len(node.Version) != 0 && (json.Unmarshal(node.Version, &version) != nil || version == nil) {
+			return consoleapi.ServerDiagnostics{}, diagnosticsUnavailable()
+		}
+		if *node.State != "offline" && (version == nil || *version == "") {
+			return consoleapi.ServerDiagnostics{}, diagnosticsUnavailable()
+		}
+		var uptime *int64
+		if len(node.Uptime) != 0 && (json.Unmarshal(node.Uptime, &uptime) != nil || uptime == nil || *uptime < 0) {
+			return consoleapi.ServerDiagnostics{}, diagnosticsUnavailable()
+		}
+		var drives []*struct{}
+		if len(node.Drives) != 0 {
+			if json.Unmarshal(node.Drives, &drives) != nil || drives == nil {
+				return consoleapi.ServerDiagnostics{}, diagnosticsUnavailable()
+			}
+			for _, drive := range drives {
+				if drive == nil {
+					return consoleapi.ServerDiagnostics{}, diagnosticsUnavailable()
+				}
+			}
+		}
+		entry := consoleapi.DiagnosticNode{State: *node.State, HeapBytes: *node.MemStats.HeapAlloc, Drives: len(drives)}
+		if version != nil {
+			if len(*version) > 256 {
+				return consoleapi.ServerDiagnostics{}, diagnosticsUnavailable()
+			}
+			entry.Version = *version
+		}
+		if uptime != nil {
+			entry.UptimeSeconds = *uptime
+		}
+		result.Nodes = append(result.Nodes, entry)
 	}
 	return result, nil
 }

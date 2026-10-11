@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/soulteary/otterio/pkg/madmin"
 )
 
 func TestDiagnosticsWhitelist(t *testing.T) {
@@ -115,4 +117,69 @@ func TestDiagnosticsRealServer(t *testing.T) {
 	defer denied.Close()
 	_, err = denied.ServerDiagnostics(context.Background())
 	assertAPIError(t, err, 403, "diagnostics_denied")
+}
+
+func TestDiagnosticsRejectsIncompleteSuccessfulReplies(t *testing.T) {
+	cases := map[string]string{
+		"null": "null", "empty": "{}", "servers-null": `{"servers":null}`, "servers-empty": `{"servers":[]}`, "null-node": `{"servers":[null]}`, "empty-node": `{"servers":[{}]}`,
+		"missing-state":                `{"servers":[{"version":"release","mem_stats":{"HeapAlloc":0}}]}`,
+		"null-state":                   `{"servers":[{"state":null,"version":"release","mem_stats":{"HeapAlloc":0}}]}`,
+		"unknown-state":                `{"servers":[{"state":"secret-marker","version":"release","mem_stats":{"HeapAlloc":0}}]}`,
+		"missing-version":              `{"servers":[{"state":"online","mem_stats":{"HeapAlloc":0}}]}`,
+		"initializing-missing-version": `{"servers":[{"state":"initializing","mem_stats":{"HeapAlloc":0}}]}`,
+		"empty-version":                `{"servers":[{"state":"online","version":"","mem_stats":{"HeapAlloc":0}}]}`,
+		"null-version":                 `{"servers":[{"state":"offline","version":null,"mem_stats":{"HeapAlloc":0}}]}`,
+		"missing-memory":               `{"servers":[{"state":"online","version":"release"}]}`,
+		"null-memory":                  `{"servers":[{"state":"online","version":"release","mem_stats":null}]}`,
+		"missing-heap":                 `{"servers":[{"state":"online","version":"release","mem_stats":{}}]}`,
+		"null-heap":                    `{"servers":[{"state":"online","version":"release","mem_stats":{"HeapAlloc":null}}]}`,
+		"negative-heap":                `{"servers":[{"state":"online","version":"release","mem_stats":{"HeapAlloc":-1}}]}`,
+		"null-uptime":                  `{"servers":[{"state":"online","version":"release","uptime":null,"mem_stats":{"HeapAlloc":0}}]}`,
+		"negative-uptime":              `{"servers":[{"state":"online","version":"release","uptime":-1,"mem_stats":{"HeapAlloc":0}}]}`,
+		"null-drives":                  `{"servers":[{"state":"online","version":"release","mem_stats":{"HeapAlloc":0},"drives":null}]}`,
+		"null-drive-entry":             `{"servers":[{"state":"offline","mem_stats":{"HeapAlloc":0},"drives":[null]}]}`,
+	}
+	for name, payload := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, payload) }))
+			defer server.Close()
+			c := testClient(t, Config{S3URL: server.URL})
+			snapshot, err := c.ServerDiagnostics(context.Background())
+			assertAPIError(t, err, 502, "diagnostics_unavailable")
+			if len(snapshot.Nodes) != 0 || strings.Contains(err.Error(), "secret-marker") {
+				t.Fatal("incomplete snapshot or upstream details exposed")
+			}
+		})
+	}
+}
+
+func TestDiagnosticsPreservesActualZeroAndOfflineProtocolShapes(t *testing.T) {
+	for _, state := range []string{"online", "initializing", "offline"} {
+		t.Run(state, func(t *testing.T) {
+			node := madmin.ServerProperties{State: state}
+			if state != "offline" {
+				node.Version = "release"
+			}
+			payload, err := json.Marshal(madmin.InfoMessage{Servers: []madmin.ServerProperties{node}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// ServerProperties uses omitempty for uptime/drives, while zero MemStats is
+			// serialized. Offline peers have neither version nor uptime information.
+			if strings.Contains(string(payload), `"uptime"`) || strings.Contains(string(payload), `"drives"`) {
+				t.Fatal("fixture did not exercise actual omitted zero fields")
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(payload) }))
+			defer server.Close()
+			c := testClient(t, Config{S3URL: server.URL})
+			result, err := c.ServerDiagnostics(context.Background())
+			if err != nil || len(result.Nodes) != 1 {
+				t.Fatalf("valid zero/offline shape rejected: %v", err)
+			}
+			actual := result.Nodes[0]
+			if actual.State != state || actual.HeapBytes != 0 || actual.UptimeSeconds != 0 || actual.Drives != 0 || actual.Version != node.Version {
+				t.Fatal("zero/offline fields fabricated or lost")
+			}
+		})
+	}
 }
