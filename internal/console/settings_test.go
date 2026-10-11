@@ -77,6 +77,50 @@ func settingsBody(value any) string {
 	return string(b)
 }
 
+type settingsAcknowledgementWriter struct {
+	*httptest.ResponseRecorder
+	onFlush func()
+}
+
+func (w *settingsAcknowledgementWriter) Flush() {
+	w.ResponseRecorder.Flush()
+	w.onFlush()
+}
+
+func TestSettingAcknowledgementReleasesMutationBeforeNextRotation(t *testing.T) {
+	for _, status := range []int{200, 501} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			s, b, cookie, reply := settingsServer(t, true)
+			b.save = func(context.Context, string, string, string, string, bool) (consoleapi.BucketSetting, error) {
+				if len(s.writeSlots) != 1 {
+					t.Error("backend mutation has no reservation")
+				}
+				if status == 501 {
+					return consoleapi.BucketSetting{}, &consoleapi.Error{Status: 501, Code: "NotSupported"}
+				}
+				return consoleapi.BucketSetting{}, nil
+			}
+			b.rotate = func(context.Context, string) error {
+				return &consoleapi.Error{Status: 501, Code: "NotSupported"}
+			}
+			w := &settingsAcknowledgementWriter{ResponseRecorder: httptest.NewRecorder(), onFlush: func() {
+				next := jobRequest(s, http.MethodPost, "/api/self-secret", `{"newSecret":"never-committed-secret","confirm":true}`, cookie, reply.CSRFToken)
+				if next.Code != 501 || b.rotates.Load() != 1 {
+					t.Errorf("acknowledged setting still blocks rotation: %d %s", next.Code, next.Body.String())
+				}
+			}}
+			body := settingsBody(map[string]any{"bucket": "exact-bucket", "kind": "policy", "document": "{}", "revision": strings.Repeat("a", 64), "confirm": true})
+			r := testRequest(http.MethodPost, "/api/bucket-settings", body, cookie)
+			r.Header.Set("Origin", testOrigin)
+			r.Header.Set("X-CSRF-Token", reply.CSRFToken)
+			s.ServeHTTP(w, r)
+			if w.Code != status {
+				t.Fatalf("setting status: %d", w.Code)
+			}
+		})
+	}
+}
+
 func TestSettingsReadsAreIndependentOfBucketEnumerationAndWrites(t *testing.T) {
 	s, b, cookie, _ := settingsServer(t, false)
 	b.fakeBackend.list = func(context.Context) ([]consoleapi.Bucket, error) {

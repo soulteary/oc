@@ -177,8 +177,12 @@ func (s *Server) saveBucketSetting(w http.ResponseWriter, r *http.Request, sess 
 	if !s.startSettingsWrite(w, sess, false) {
 		return
 	}
-	defer s.finishSettingsWrite(false)
-	setting, err := sess.runtime.settings.SaveBucketSetting(r.Context(), args.Bucket, args.Kind, args.Document, args.Revision, args.Remove)
+	// The backend mutation is complete. Release its reservation before flushing
+	// the reply so a client that receives it can immediately rotate its secret.
+	setting, err := func() (consoleapi.BucketSetting, error) {
+		defer s.finishSettingsWrite(false)
+		return sess.runtime.settings.SaveBucketSetting(r.Context(), args.Bucket, args.Kind, args.Document, args.Revision, args.Remove)
+	}()
 	if err != nil {
 		writeBackendError(w, err)
 		return
