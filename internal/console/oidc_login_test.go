@@ -185,3 +185,35 @@ func TestOIDCReturnDoesNotExemptCrossSiteHomeOrAPI(t *testing.T) {
 		}
 	}
 }
+
+func TestOIDCPrincipalSessionBudgetIsolated(t *testing.T) {
+	s := oidcTestServer(t)
+	first, err := OIDCPrincipalIdentity("storage", "https://idp.example", "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := OIDCPrincipalIdentity("storage", "https://idp.example", "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := 0; i < 4; i++ {
+		if s.principalSessionLimitLocked(first) {
+			t.Fatal("session rejected before principal budget")
+		}
+		s.sessions[sha256.Sum256([]byte{byte(i)})] = &session{runtime: sessionRuntime{identity: first}}
+	}
+	if !s.principalSessionLimitLocked(first) {
+		t.Fatal("OIDC principal can exhaust global capacity")
+	}
+	if s.principalSessionLimitLocked(second) {
+		t.Fatal("different subject shares session budget")
+	}
+	delete(s.sessions, sha256.Sum256([]byte{0}))
+	if s.principalSessionLimitLocked(first) {
+		t.Fatal("logout did not release principal capacity")
+	}
+	// These entries represent budget occupancy, without owned clients/workers.
+	clear(s.sessions)
+}

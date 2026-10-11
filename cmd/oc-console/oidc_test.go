@@ -65,3 +65,25 @@ func TestOIDCCallbackRootURL(t *testing.T) {
 		}
 	}
 }
+
+func TestOIDCDataDirectoryDefault(t *testing.T) {
+	getenv := func(key string) string {
+		if key == "OC_CONFIG_DIR" {
+			return filepath.Join("profile", "oc")
+		}
+		return ""
+	}
+	for _, tc := range []struct {
+		opts options
+		want string
+	}{
+		{options{}, filepath.Join("profile", "oc", "console-data")},
+		{options{configDir: "custom"}, filepath.Join("custom", "console-data")},
+		{options{configDir: "custom", dataDir: "explicit"}, "explicit"},
+	} {
+		got, err := oidcDataDir(tc.opts, getenv)
+		if err != nil || got != tc.want {
+			t.Fatalf("preference directory %q, want %q: %v", got, tc.want, err)
+		}
+	}
+}

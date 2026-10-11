@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -71,7 +72,27 @@ func oidcCallbackURL(publicURL string) string {
 	return strings.TrimRight(publicURL, "/") + "/api/oidc/callback"
 }
 
+func oidcDataDir(opts options, getenv func(string) string) (string, error) {
+	if opts.dataDir != "" {
+		return opts.dataDir, nil
+	}
+	configDir := opts.configDir
+	if configDir == "" {
+		var err error
+		configDir, err = defaultConfigDir(getenv)
+		if err != nil {
+			return "", err
+		}
+	}
+	return filepath.Join(configDir, "console-data"), nil
+}
+
 func runOIDC(ctx context.Context, opts options, output io.Writer) error {
+	var err error
+	opts.dataDir, err = oidcDataDir(opts, os.Getenv)
+	if err != nil {
+		return err
+	}
 	if opts.sessionTTL < time.Minute || opts.sessionTTL > 24*time.Hour {
 		return errors.New("OIDC session lifetime must be between 1m and 24h")
 	}

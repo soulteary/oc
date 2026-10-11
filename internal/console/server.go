@@ -696,13 +696,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 409, "credential_change_pending", "This user's credentials changed during sign-in. Sign in again with the current secret.")
 			return
 		}
-		count := 0
-		for _, existing := range s.sessions {
-			if existing.runtime.identity == runtime.identity {
-				count++
-			}
-		}
-		if count >= 4 {
+		if s.principalSessionLimitLocked(runtime.identity) {
 			s.mu.Unlock()
 			cancel()
 			runtime.retire()
@@ -1055,4 +1049,16 @@ func setDownloadHeaders(w http.ResponseWriter, key string) {
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
+}
+
+// Caller holds s.mu through the subsequent insertion to prevent concurrent
+// native or OIDC sign-ins from exceeding the same per-principal budget.
+func (s *Server) principalSessionLimitLocked(identity string) bool {
+	count := 0
+	for _, existing := range s.sessions {
+		if existing.runtime.identity == identity {
+			count++
+		}
+	}
+	return count >= 4
 }

@@ -196,6 +196,12 @@ func (s *Server) serveOIDC(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 503, "login_unavailable", "Sign-in unavailable.")
 		return
 	}
+	if s.principalSessionLimitLocked(identity) {
+		s.mu.Unlock()
+		manager.close()
+		writeError(w, 429, "too_many_sessions", "This user has too many open sessions.")
+		return
+	}
 	entry := s.userPreferences[identity]
 	if entry == nil {
 		store, e := newPreferenceStore(s.dataDir, identity)
