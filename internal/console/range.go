@@ -15,10 +15,10 @@ import (
 // byteRange accepts one byte range only. Multiple ranges and malformed syntax
 // are rejected explicitly; no multipart response is synthesized.
 func byteRange(value string, size int64) (int64, int64, bool) {
-	if !strings.HasPrefix(value, "bytes=") || strings.Contains(value, ",") || size <= 0 {
+	if (len(value) < 6 || !strings.EqualFold(value[:6], "bytes=")) || strings.Contains(value, ",") || size <= 0 {
 		return 0, 0, false
 	}
-	parts := strings.Split(strings.TrimPrefix(value, "bytes="), "-")
+	parts := strings.Split(value[6:], "-")
 	if len(parts) != 2 {
 		return 0, 0, false
 	}
@@ -133,7 +133,7 @@ func (s *Server) downloadRange(w http.ResponseWriter, r *http.Request, ctx conte
 		w.Header().Set("Last-Modified", info.Modified.UTC().Format(http.TimeFormat))
 	}
 	w.Header().Set("Accept-Ranges", "bytes")
-	if value := r.Header.Get("If-Match"); value != "" {
+	if value := strings.Join(r.Header.Values("If-Match"), ","); value != "" {
 		matched, valid := matchEntityTags(value, tag, false)
 		if !valid {
 			writeError(w, 400, "invalid_input", "The entity-tag condition is malformed.")
@@ -143,10 +143,10 @@ func (s *Server) downloadRange(w http.ResponseWriter, r *http.Request, ctx conte
 			return rangeHeaders(w, ctx, 412)
 		}
 	}
-	if date, err := http.ParseTime(r.Header.Get("If-Unmodified-Since")); r.Header.Get("If-Match") == "" && err == nil && !info.Modified.IsZero() && info.Modified.Truncate(time.Second).After(date) {
+	if date, err := http.ParseTime(r.Header.Get("If-Unmodified-Since")); strings.Join(r.Header.Values("If-Match"), ",") == "" && err == nil && !info.Modified.IsZero() && info.Modified.Truncate(time.Second).After(date) {
 		return rangeHeaders(w, ctx, 412)
 	}
-	if value := r.Header.Get("If-None-Match"); value != "" {
+	if value := strings.Join(r.Header.Values("If-None-Match"), ","); value != "" {
 		matched, valid := matchEntityTags(value, tag, true)
 		if !valid {
 			writeError(w, 400, "invalid_input", "The entity-tag condition is malformed.")

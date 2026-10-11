@@ -19,7 +19,7 @@ func TestByteRanges(t *testing.T) {
 		size, start, end int64
 		ok               bool
 	}{
-		{"bytes=0-0", 10, 0, 0, true}, {"bytes=4-", 10, 4, 9, true}, {"bytes=-4", 10, 6, 9, true}, {"bytes=-99", 10, 0, 9, true}, {"bytes=3-99", 10, 3, 9, true},
+		{"Bytes=0-0", 10, 0, 0, true}, {"BYTES=4-", 10, 4, 9, true}, {"bytes=0-0", 10, 0, 0, true}, {"bytes=4-", 10, 4, 9, true}, {"bytes=-4", 10, 6, 9, true}, {"bytes=-99", 10, 0, 9, true}, {"bytes=3-99", 10, 3, 9, true},
 		{"bytes=10-", 10, 0, 0, false}, {"bytes=0-0", 0, 0, 0, false}, {"bytes=-0", 10, 0, 0, false}, {"bytes=3-2", 10, 0, 0, false}, {"bytes=0-1,3-4", 10, 0, 0, false}, {"bytes=+1-2", 10, 0, 0, false}, {"bytes=9223372036854775808-", 10, 0, 0, false},
 	} {
 		a, b, ok := byteRange(tc.value, tc.size)
@@ -191,6 +191,31 @@ func TestConditionalFullDownloadUsesObservedMetadata(t *testing.T) {
 		s.downloadRange(w, r, r.Context(), sess, consoleapi.ObjectRef{Bucket: "bucket", Key: "key"})
 		if !f.fullCalled || w.Code != 409 || f.opens != 0 {
 			t.Fatalf("%s: pin=%v status=%d oldopens=%d", header, f.fullCalled, w.Code, f.opens)
+		}
+	}
+}
+
+func TestRepeatedEntityTagFields(t *testing.T) {
+	for _, tc := range []struct {
+		header string
+		values []string
+		status int
+	}{
+		{"If-Match", []string{`"other"`, `"a,b"`}, 200},
+		{"If-None-Match", []string{`"other"`, `W/"a,b"`}, 304},
+		{"If-Match", []string{`"a,b"`, "malformed"}, 400},
+	} {
+		f := &rangeFake{size: 10, etag: "a,b"}
+		s := &Server{streamIdle: time.Second}
+		sess := &session{runtime: sessionRuntime{backend: f}}
+		r := httptest.NewRequest("GET", "/", nil)
+		for _, value := range tc.values {
+			r.Header.Add(tc.header, value)
+		}
+		w := httptest.NewRecorder()
+		s.downloadRange(w, r, r.Context(), sess, consoleapi.ObjectRef{Bucket: "bucket", Key: "key"})
+		if w.Code != tc.status {
+			t.Fatalf("%s %v: got %d want %d", tc.header, tc.values, w.Code, tc.status)
 		}
 	}
 }
