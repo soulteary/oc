@@ -3,6 +3,7 @@ package console
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -26,7 +27,14 @@ func byteRange(value string, size int64) (int64, int64, bool) {
 		if v == "" || strings.IndexFunc(v, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
 			return 0, fmt.Errorf("invalid range")
 		}
-		return strconv.ParseInt(v, 10, 64)
+		n, err := strconv.ParseInt(v, 10, 64)
+		// ParseInt saturates positive overflow at MaxInt64. This lets suffixes
+		// and last positions clamp to the object size; first positions remain
+		// unsatisfiable because they are at least as large as any object size.
+		if errors.Is(err, strconv.ErrRange) {
+			return n, nil
+		}
+		return n, err
 	}
 	if parts[0] == "" {
 		suffix, err := parse(parts[1])

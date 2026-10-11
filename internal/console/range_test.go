@@ -20,6 +20,18 @@ func TestByteRanges(t *testing.T) {
 		ok               bool
 	}{
 		{"Bytes=0-0", 10, 0, 0, true}, {"BYTES=4-", 10, 4, 9, true}, {"bytes=0-0", 10, 0, 0, true}, {"bytes=4-", 10, 4, 9, true}, {"bytes=-4", 10, 6, 9, true}, {"bytes=-99", 10, 0, 9, true}, {"bytes=3-99", 10, 3, 9, true},
+		{"bytes=-9223372036854775808", 10, 0, 9, true},
+		{"bytes=0-9223372036854775808", 10, 0, 9, true},
+		{"bytes=3-" + strings.Repeat("9", 100), 10, 3, 9, true},
+		{"bytes=-" + strings.Repeat("9", 100), 10, 0, 9, true},
+		{"bytes=" + strings.Repeat("9", 100) + "-", 10, 0, 0, false},
+		{"bytes=9223372036854775808-", 9223372036854775807, 0, 0, false},
+		{"bytes=-9223372036854775808", 9223372036854775807, 0, 9223372036854775806, true},
+		{"bytes=0-9223372036854775808", 9223372036854775807, 0, 9223372036854775806, true},
+		{"bytes=0-" + strings.Repeat("9", 100) + "x", 10, 0, 0, false},
+		{"bytes=-" + strings.Repeat("9", 100) + "x", 10, 0, 0, false},
+		{"bytes=-0000", 10, 0, 0, false},
+		{"bytes=-0004", 10, 6, 9, true},
 		{"bytes=10-", 10, 0, 0, false}, {"bytes=0-0", 0, 0, 0, false}, {"bytes=-0", 10, 0, 0, false}, {"bytes=3-2", 10, 0, 0, false}, {"bytes=0-1,3-4", 10, 0, 0, false}, {"bytes=+1-2", 10, 0, 0, false}, {"bytes=9223372036854775808-", 10, 0, 0, false},
 	} {
 		a, b, ok := byteRange(tc.value, tc.size)
@@ -65,6 +77,9 @@ func TestRangeHTTPConditions(t *testing.T) {
 		opens                 int
 	}{
 		{"GET", "Range", "bytes=2-4", 206, "234", 1}, {"GET", "Range", "bytes=-2", 206, "89", 1}, {"GET", "Range", "bytes=10-", 416, "", 0},
+		{"GET", "Range", "bytes=-9223372036854775808", 206, "0123456789", 1},
+		{"GET", "Range", "bytes=3-9223372036854775808", 206, "3456789", 1},
+		{"GET", "Range", "bytes=9223372036854775808-", 416, "", 0},
 		{"HEAD", "Range", "bytes=2-4", 200, "", 0}, {"GET", "If-None-Match", "W/\"etag\"", 304, "", 0}, {"GET", "If-Match", "W/\"etag\"", 412, "", 0},
 		{"GET", "If-Unmodified-Since", "Wed, 01 Jan 2025 00:00:00 GMT", 412, "", 0}, {"GET", "If-Modified-Since", "Thu, 01 Oct 2026 00:00:00 GMT", 304, "", 0},
 		{"GET", "If-Range", "Thu, 01 Oct 2026 00:00:00 GMT", 200, "0123456789", 1}, {"GET", "If-Range", "\"different\"", 200, "0123456789", 1}, {"GET", "If-Range", "\"etag\"", 206, "234", 1},
