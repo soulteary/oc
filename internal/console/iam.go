@@ -45,7 +45,7 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if !nativeIAMActionAllowed(nativeArgs.Action) || (nativeArgs.Action == "group.create" && len(nativeArgs.Members) != 0) {
-				writeError(w, 403, "identity_changes_disabled", "Native IAM supports creation and user status/deletion; other identity changes are unavailable.")
+				writeError(w, 403, "identity_changes_disabled", "This native IAM action is unavailable or requires a supported conditional protocol. Create groups empty before reviewing membership changes.")
 				return
 			}
 		}
