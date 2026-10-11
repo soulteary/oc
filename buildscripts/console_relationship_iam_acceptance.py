@@ -118,14 +118,15 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         candidate = secrets.token_hex(24)
         credentials.append(candidate)
         rotate(readonly_manager, 'target', candidate, 403)
-        rotate(unrelated, 'target', candidate, 403)
-        rotate(denied, 'target', candidate, 403)
+        unsupported = getattr(args, 'expect_relationship_unsupported', False)
+        rotate(unrelated, 'target', candidate, (403, 501) if unsupported else 403)
+        rotate(denied, 'target', candidate, (403, 501) if unsupported else 403)
         body = {'action': 'user.rotate', 'user': names['target'], 'secretKey': candidate, 'confirmTarget': names['target']}
         action(manager, body, 403, csrf=False)
         target('/api/session');target_second('/api/session');unrelated('/api/session')
-        checks.append('relationship user rotation rejects default-readonly, ordinary user, explicit deny and missing CSRF without retiring unaffected sessions')
+        checks.append('legacy relationship attempts reject readonly/CSRF; ordinary and denied actors reject permission or missing capability without session retirement' if unsupported else 'relationship user rotation rejects default-readonly, ordinary user, explicit deny and missing CSRF without retiring unaffected sessions')
 
-        if getattr(args, 'expect_relationship_unsupported', False):
+        if unsupported:
             error = rotate(manager, 'target', candidate, (403, 501))
             if error.get('code') not in ('identity_changes_disabled', 'identity_relationship_unknown', 'identity_relationships_unknown', 'iam_relationships_unsupported', 'identity_impact_unsupported'):
                 raise RuntimeError('missing capability rejection was not explicit')
