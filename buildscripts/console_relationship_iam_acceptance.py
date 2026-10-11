@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import urllib.parse
+import xml.etree.ElementTree as ET
 
 
 def binding_action(kind, target, snapshot, policies):
@@ -112,7 +113,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         denied_policy = add_policy('denied', [
             {'Effect': 'Allow', 'Action': ['admin:*'], 'Resource': ['arn:aws:s3:::*']},
             {'Effect': 'Allow', 'Action': ['s3:*'], 'Resource': ['arn:aws:s3:::*']},
-            {'Effect': 'Deny', 'Action': ['admin:CreateUser', 'admin:EnableGroup', 'admin:DisableGroup', 'admin:AddUserToGroup', 'admin:RemoveUserFromGroup', 'admin:UpdateServiceAccount', 'admin:RemoveServiceAccount'], 'Resource': ['arn:aws:s3:::*']}])
+            {'Effect': 'Deny', 'Action': ['admin:CreateUser', 'admin:EnableUser', 'admin:DisableUser', 'admin:DeleteUser', 'admin:EnableGroup', 'admin:DisableGroup', 'admin:AddUserToGroup', 'admin:RemoveUserFromGroup', 'admin:UpdateServiceAccount', 'admin:RemoveServiceAccount'], 'Resource': ['arn:aws:s3:::*']}])
         cli('admin', 'policy', 'set', 'store', denied_policy, 'user=' + names['denied'])
         start()
         manager, target, target_second, unrelated, denied = (login(role) for role in ('manager', 'target', 'target', 'unrelated', 'denied'))
@@ -138,10 +139,12 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
                 action(manager, binding_action('user', names['target'], snapshot, ['readonly']), (403, 501))
             else:
                 action(manager, {'action': 'user.policies', 'user': names['target'], 'policies': ['readonly'], 'revision': '0'*64, 'confirmTarget': names['target']}, (403, 501))
+            for lifecycle in ('disable', 'enable', 'delete'):
+                action(manager, {'action': 'user.' + lifecycle, 'user': names['target'], 'confirmTarget': names['target']}, (403, 501))
             login('target');target('/api/session');target_second('/api/session');unrelated('/api/session')
             browser(base, tls_context)('/api/login', 'POST', {'accessKey': names['target'], 'secretKey': candidate}, expected=401)
             checks.append('real legacy server missing coupled relationship capability rejects secret/binding mutations; original credentials and sessions remain valid')
-            return {'processCleanup': own_cleanup, 'capabilityMode': 'expected-unsupported', 'unsupportedActionsPassed': ['user.rotate', 'user.policies'], 'positiveMutationCoverage': []}
+            return {'processCleanup': own_cleanup, 'capabilityMode': 'expected-unsupported', 'unsupportedActionsPassed': ['user.rotate', 'user.policies', 'user.disable', 'user.enable', 'user.delete'], 'positiveMutationCoverage': []}
 
         # Real child credential exists, but native browser login intentionally accepts only IAM users.
         created = action(manager, {'action': 'service-account.create', 'user': names['target'], 'confirmTarget': names['target']})
@@ -283,6 +286,89 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         target('/api/session');target_second('/api/session');unrelated('/api/session');manager('/api/session')
         checks.append('real service child disable/enable, secret rotation, parent-intersected policy and deletion enforce signed S3 credentials while native parent/unrelated browser sessions continue')
 
+        # Bound login pacing respects the production 30-attempt/minute limit.
+        # Earlier phases deliberately include rejected credential attempts.
+        pacing_end = time.monotonic() + 61
+        while time.monotonic() < pacing_end:
+            time.sleep(min(.5, pacing_end - time.monotonic()))
+        checks.append('additional lifecycle phase respects native login rate-limit window with bounded 61-second pacing')
+        cli('admin', 'policy', 'set', 'store', 'consoleAdmin', 'user=' + names['target'])
+        target, target_second = login('target'), login('target')
+        created = action(manager, {'action': 'service-account.create', 'user': names['target'], 'confirmTarget': names['target']})
+        child = created['credentials']
+        credentials.extend([child['accessKey'], child['secretKey']])
+        lifecycle_group = prefix + '-lifecycle-group'
+        groups.append(lifecycle_group)
+        cli('admin', 'group', 'add', 'store', lifecycle_group, names['target'])
+        spec = importlib.util.spec_from_file_location('relationship_lifecycle_signer', Path(__file__).with_name('test-console-integration.py'))
+        signer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(signer)
+        storage_context = ssl.create_default_context(cafile=str(s3ca))
+        form = urllib.parse.urlencode({'Action': 'AssumeRole', 'Version': '2011-06-15', 'DurationSeconds': 900}).encode()
+        status, payload, _ = signer.signed_request(endpoint, 'POST', '/', form, names['target'], secrets_by_role['target'], storage_context,
+            extra_headers={'Content-Type': 'application/x-www-form-urlencoded'}, service='sts')
+        if status != 200:
+            raise RuntimeError('lifecycle STS fixture issuance failed')
+        issued = ET.fromstring(payload).find('.//{*}Credentials')
+        temporary = {field: issued.findtext('{*}' + tag) for field, tag in
+                     (('accessKey', 'AccessKeyId'), ('secretKey', 'SecretAccessKey'), ('sessionToken', 'SessionToken'))}
+        if not all(temporary.values()):
+            raise RuntimeError('lifecycle STS credentials incomplete')
+        credentials.extend(temporary.values())
+
+        def sts_read(expected=200):
+            status, _, _ = signer.signed_request(endpoint, 'GET', '/' + bucket + '/plain.txt', b'',
+                temporary['accessKey'], temporary['secretKey'], storage_context,
+                extra_headers={'X-Amz-Security-Token': temporary['sessionToken']})
+            if status != expected:
+                raise RuntimeError('real STS child lifecycle permission mismatch')
+
+        def lifecycle(client, operation, role='target', expected=200, csrf=True):
+            result = action(client, {'action': 'user.' + operation, 'user': names[role],
+                'confirmTarget': names[role]}, expected, csrf)
+            if expected == 200:
+                require_confirmed(result, role == 'manager')
+                wanted = {'disable': 'disabled', 'enable': 'enabled', 'delete': 'deleted'}[operation]
+                if result.get('user', {}).get('accessKey') != names[role] or result['user'].get('status') != wanted:
+                    raise RuntimeError('lifecycle acknowledgement target or status mismatch')
+            return result
+
+        child_request('GET', 'plain.txt');sts_read()
+        for operation in ('disable', 'enable', 'delete'):
+            for rejected_actor in (readonly_manager, unrelated, denied):
+                lifecycle(rejected_actor, operation, expected=403)
+            lifecycle(manager, operation, expected=403, csrf=False)
+        target('/api/session');target_second('/api/session');child_request('GET', 'plain.txt');sts_read()
+        checks.append('all user lifecycle mutations reject readonly, ordinary user, explicit deny and missing CSRF without changing parent or service/STS permissions')
+        lifecycle(manager, 'disable')
+        child_request('GET', 'plain.txt', expected=403);sts_read(403)
+        browser(base, tls_context)('/api/login', 'POST', {'accessKey': names['target'], 'secretKey': secrets_by_role['target']}, expected=401)
+        lifecycle(manager, 'enable')
+        child_request('GET', 'plain.txt');sts_read()
+        target('/api/session', expected=401);target_second('/api/session', expected=401)
+        manager('/api/session');unrelated('/api/session')
+        checks.append('coupled parent disable denies real service/STS children; enable restores authorization but cannot revive captured browser cookies')
+        target, target_second = login('target'), login('target')
+        lifecycle(manager, 'delete')
+        child_request('GET', 'plain.txt', expected=403);sts_read(403)
+        deleted_child = dict(child)
+        child = None  # Authoritative delete cascades the owned service account.
+        group_info = cli('admin', 'group', 'info', 'store', lifecycle_group)
+        if names['target'] in str(group_info):
+            raise RuntimeError('parent deletion left group membership')
+        groups.remove(lifecycle_group)
+        cli('admin', 'group', 'remove', 'store', lifecycle_group)
+        cli('admin', 'user', 'add', 'store', names['target'], secrets_by_role['target'])
+        cli('admin', 'policy', 'set', 'store', 'consoleAdmin', 'user=' + names['target'])
+        target('/api/session', expected=401);target_second('/api/session', expected=401)
+        sts_read(403)
+        status, _, _ = signer.signed_request(endpoint, 'GET', '/' + bucket + '/plain.txt', b'', deleted_child['accessKey'], deleted_child['secretKey'], storage_context)
+        if status != 403:
+            raise RuntimeError('deleted service credentials revived after parent recreation')
+        target = login('target')
+        manager('/api/session');unrelated('/api/session')
+        checks.append('coupled parent delete removes real service/STS children and group membership; identical parent recreation cannot revive captured browser cookies or STS credentials')
+
         # Regrant admin directly before testing admin self-targeted rotation.
         cli('admin', 'policy', 'set', 'store', 'consoleAdmin', 'user=' + names['manager'])
         manager_second = login('manager')
@@ -293,7 +379,19 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         manager('/api/session', expected=401);manager_second('/api/session', expected=401)
         unrelated('/api/session');target('/api/session')
         checks.append('administrator self rotation acknowledges loginRequired; new secret works, restoring original credentials cannot revive original cookies and unrelated users remain available')
-        return {'processCleanup': own_cleanup, 'capabilityMode': 'required-supported', 'positiveMutationCoverage': ['user.rotate-other', 'user.rotate-self', 'disabled-user.rotate', 'user.policies', 'group.policies', 'group.status-members-delete', 'service-account.status-secret-policy-delete'], 'serviceChildBrowserSessions': 'unsupported: native service login is rejected, not counted as retirement coverage', 'serviceChildSignedS3': 'parent secret rotation retains authorized read; policy narrowing retains read and denies write', 'tls': 'verified independent fixture browser and storage/Admin CA'}
+        self_client, self_second = login('manager'), login('manager')
+        lifecycle(self_client, 'disable', 'manager')
+        cli('admin', 'user', 'enable', 'store', names['manager'])
+        self_client('/api/session', expected=401);self_second('/api/session', expected=401)
+        unrelated('/api/session');target('/api/session')
+        self_client, self_second = login('manager'), login('manager')
+        lifecycle(self_client, 'delete', 'manager')
+        cli('admin', 'user', 'add', 'store', names['manager'], secrets_by_role['manager'])
+        cli('admin', 'policy', 'set', 'store', 'consoleAdmin', 'user=' + names['manager'])
+        self_client('/api/session', expected=401);self_second('/api/session', expected=401)
+        unrelated('/api/session');target('/api/session')
+        checks.append('administrator self disable/delete acknowledge loginRequired; enable or identical recreation cannot revive captured cookies and unrelated users stay available')
+        return {'processCleanup': own_cleanup, 'capabilityMode': 'required-supported', 'positiveMutationCoverage': ['user.lifecycle-parent-service-sts-cascade', 'user.lifecycle-self', 'user.rotate-other', 'user.rotate-self', 'disabled-user.rotate', 'user.policies', 'group.policies', 'group.status-members-delete', 'service-account.status-secret-policy-delete'], 'serviceChildBrowserSessions': 'unsupported: native service login is rejected, not counted as retirement coverage', 'serviceChildSignedS3': 'parent secret rotation retains authorized read; policy narrowing retains read and denies write', 'tls': 'verified independent fixture browser and storage/Admin CA'}
     finally:
         primary_error = sys.exc_info()[0] is not None
         for process, log, label in reversed(processes):
