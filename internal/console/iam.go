@@ -119,6 +119,34 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		writeError(w, 400, "invalid_input", "Choose a supported IAM action and confirm its exact target. Include only the fields required by that action.")
 		return
 	}
+	if s.nativeLogin != nil && args.Action == "user.rotate" {
+		plan, err := prepareNativeUserSecretPlan(r.Context(), sess, args.User)
+		if err != nil {
+			s.writeNativeRelationshipPlanError(w, err)
+			return
+		}
+		s.executeNativeUserSecretPlan(w, r, sess, plan, args.SecretKey)
+		args.SecretKey = ""
+		return
+	}
+	if s.nativeLogin != nil && (args.Action == "user.policies" || args.Action == "group.policies") {
+		plan, err := prepareNativeRelationshipBindingPlan(r.Context(), sess, args)
+		if err != nil {
+			s.writeNativeRelationshipPlanError(w, err)
+			return
+		}
+		s.executeNativeRelationshipBindingPlan(w, r, sess, plan)
+		return
+	}
+	if s.nativeLogin != nil && validPreparedGroupAction(args) {
+		plan, err := prepareIAMGroupMutation(r.Context(), sess, args)
+		if err != nil {
+			s.writeNativeRelationshipPlanError(w, err)
+			return
+		}
+		s.executeIAMGroupMutation(w, r, sess, plan)
+		return
+	}
 	if s.nativeLogin != nil && (args.Action == "user.disable" || args.Action == "user.delete") {
 		s.retireNativeUser(w, r, sess, backend, args)
 		return
@@ -181,5 +209,13 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 }
 
 func nativeIAMActionAllowed(action string) bool {
-	return action == "user.delete" || action == "user.disable" || action == "user.enable" || action == "user.create" || action == "group.create" || action == "service-account.create"
+	return action == "group.add-members" || action == "group.remove-members" || action == "group.enable" || action == "group.disable" || action == "group.delete" || action == "user.rotate" || action == "user.policies" || action == "group.policies" || action == "user.delete" || action == "user.disable" || action == "user.enable" || action == "user.create" || action == "group.create" || action == "service-account.create"
+}
+
+func (s *Server) writeNativeRelationshipPlanError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errUnknownIdentityScope) {
+		writeError(w, 403, "identity_changes_disabled", "This server cannot safely establish the identity relationships for this change.")
+		return
+	}
+	writeBackendError(w, err)
 }

@@ -2,6 +2,7 @@
 package storageclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -63,14 +64,20 @@ func decodeIAMRelationships(data []byte, header http.Header, kind, target string
 			return result, iamRelationshipsUnknown()
 		}
 	}
-	if capability, ok := fields["coupledUserSecret"]; ok {
-		if json.Unmarshal(capability, &result.CoupledUserSecret) != nil {
-			return result, iamRelationshipsUnknown()
-		}
-	}
-	if capability, ok := fields["coupledBindings"]; ok {
-		if json.Unmarshal(capability, &result.CoupledBindings) != nil {
-			return result, iamRelationshipsUnknown()
+	for _, capability := range []struct {
+		name        string
+		destination *bool
+	}{
+		{"coupledBindings", &result.CoupledBindings}, {"coupledUserSecret", &result.CoupledUserSecret}, {"coupledGroups", &result.CoupledGroups}, {"coupledServiceAccounts", &result.CoupledServiceAccounts},
+	} {
+		if raw, ok := fields[capability.name]; ok {
+			raw = bytes.TrimSpace(raw)
+			if !bytes.Equal(raw, []byte("true")) && !bytes.Equal(raw, []byte("false")) {
+				return result, iamRelationshipsUnknown()
+			}
+			if json.Unmarshal(raw, capability.destination) != nil {
+				return result, iamRelationshipsUnknown()
+			}
 		}
 	}
 	if parent, ok := fields["nativeParent"]; ok {

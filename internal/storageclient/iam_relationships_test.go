@@ -53,3 +53,24 @@ func TestIAMRelationshipsKnownEmptyAndMalformed(t *testing.T) {
 		t.Fatal("ambiguous revision header accepted")
 	}
 }
+
+func TestIAMRelationshipCapabilitiesRequireExplicitBooleans(t *testing.T) {
+	revision := strings.Repeat("a", 64)
+	header := http.Header{"X-Otterio-Iam-Relationships": []string{"v1"}, "X-Otterio-Iam-Impact-Revision": []string{revision}}
+	base := map[string]any{"kind": "group", "target": "empty-group", "state": "known", "revision": revision, "expiresAt": time.Now().UTC().Add(30 * time.Second), "affectedAccessKeys": []string{}}
+	for _, name := range []string{"coupledBindings", "coupledUserSecret", "coupledGroups", "coupledServiceAccounts"} {
+		for _, value := range []any{nil, "true", 1, []bool{true}} {
+			base[name] = value
+			data, _ := json.Marshal(base)
+			if _, err := decodeIAMRelationships(data, header, "group", "empty-group", time.Now()); err == nil {
+				t.Fatal("malformed protocol capability accepted")
+			}
+		}
+		base[name] = true
+		data, _ := json.Marshal(base)
+		if _, err := decodeIAMRelationships(data, header, "group", "empty-group", time.Now()); err != nil {
+			t.Fatal("explicit protocol capability rejected")
+		}
+		delete(base, name)
+	}
+}

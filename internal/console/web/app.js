@@ -2334,8 +2334,8 @@
   };
   if (oidcLogin) { for (const kind of Object.keys(iamActions)) iamActions[kind] = []; }
   if (nativeLogin) {
-    iamActions.users = ["user.create", "user.enable", "user.disable", "user.delete"];
-    iamActions.groups = ["group.create"];
+    iamActions.users = ["user.create", "user.enable", "user.disable", "user.rotate", "user.policies", "user.delete"];
+    iamActions.groups = ["group.create", "group.add-members", "group.remove-members", "group.enable", "group.disable", "group.policies", "group.delete"];
     iamActions["service-accounts"] = ["service-account.create"];
   }
   const iamLabels = {
@@ -2515,7 +2515,7 @@
           policy.setAttribute("data-no-i18n", ""); policy.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
           card.append(policy);
         }
-        if (!oidcLogin && !state.readOnly && kind !== "policies" && (!nativeLogin || kind === "users")) card.append(actionButton("Choose for change", () => {
+        if (!oidcLogin && !state.readOnly && kind !== "policies" && (!nativeLogin || kind === "users" || kind === "groups")) card.append(actionButton("Choose for change", () => {
           iamRecord = record;
           elements["iam-action"].value = iamActions[kind][1] || iamActions[kind][0];
           configureIAMAction();
@@ -2535,7 +2535,7 @@
     if (!featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
     const action = elements["iam-action"].value;
     if (oidcLogin) return;
-    if (nativeLogin && !["user.create", "user.enable", "user.disable", "user.delete", "group.create", "service-account.create"].includes(action)) return;
+    if (nativeLogin && !["user.create", "user.enable", "user.disable", "user.rotate", "user.policies", "user.delete", "group.create", "group.add-members", "group.remove-members", "group.enable", "group.disable", "group.policies", "group.delete", "service-account.create"].includes(action)) return;
     const body = { action, confirmTarget: elements["iam-confirm"].value };
     for (const [name, input] of Object.entries(iamInputs)) {
       if (name === "policies") body.policies = [...new Set(input.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];
@@ -2564,7 +2564,7 @@
       if (!currentRequest("iam-action", request)) return;
       if (result?.outcome !== "confirmed") throw new APIError(0, "UnknownIAMOutcome", "The change was not confirmed. Verify storage before retrying.");
       if (nativeLogin && result?.loginRequired) {
-        showLogin(action === "user.delete" ? "Your account was deleted. Contact an administrator before signing in again." : "Your account was disabled. An administrator must enable it before you can sign in again.");
+        showLogin(action === "user.delete" ? "Your account was deleted. Contact an administrator before signing in again." : action === "user.disable" ? "Your account was disabled. An administrator must enable it before you can sign in again." : "Your identity permissions or credentials changed. Sign in again after verifying the current credentials.");
         return;
       }
       if (nativeLogin && result?.restartRequired) throw new APIError(0, "UnknownIAMOutcome", "The creation was not safely confirmed.");
