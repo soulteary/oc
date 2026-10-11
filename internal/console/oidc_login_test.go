@@ -170,3 +170,18 @@ func TestOIDCReturnEstablishesDocument(t *testing.T) {
 		t.Fatal("return document must use fixed local navigation")
 	}
 }
+
+func TestOIDCReturnDoesNotExemptCrossSiteHomeOrAPI(t *testing.T) {
+	s := oidcTestServer(t)
+	for _, path := range []string{"/", "/api/session", "/api/oidc/login"} {
+		r := oidcRequest(path)
+		r.Header.Set("Sec-Fetch-Site", "cross-site")
+		r.Header.Set("Sec-Fetch-Mode", "navigate")
+		r.Header.Set("Sec-Fetch-Dest", "document")
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("return must not bypass cross-site guard at %s: %d", path, w.Code)
+		}
+	}
+}
