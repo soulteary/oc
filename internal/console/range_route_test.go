@@ -3,6 +3,7 @@ package console
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -104,5 +105,42 @@ func TestRegisteredDownloadIgnoresUnsupportedRangeUnit(t *testing.T) {
 	s.ServeHTTP(w, r)
 	if w.Code != 200 || w.Body.String() != "object" {
 		t.Fatalf("status=%d body=%q", w.Code, w.Body.String())
+	}
+}
+
+func TestRegisteredDownloadEvaluatesConditionsAfterEmptyField(t *testing.T) {
+	for _, tc := range []struct {
+		header string
+		values []string
+		status int
+	}{
+		{"If-Match", []string{"", `"stale"`}, 412},
+		{"If-Match", []string{"", `"etag"`, ""}, 200},
+		{"If-None-Match", []string{"", `W/"etag"`, ""}, 304},
+		{"If-None-Match", []string{"", `"other"`, ""}, 200},
+		{"If-Match", []string{"", `"etag"`, "malformed"}, 400},
+	} {
+		t.Run(tc.header+strings.Join(tc.values, ","), func(t *testing.T) {
+			b := &rangeFake{size: 10, etag: "etag"}
+			s, err := New(Config{Backend: b, Alias: "local", BaseURL: testOrigin, LoginCode: "test-login-code"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { drainOwnedClients(t, s) })
+			cookie, _ := signIn(t, s)
+			r := httptest.NewRequest("GET", testOrigin+"/api/download?bucket=bucket&key=key", nil)
+			r.AddCookie(cookie)
+			for _, value := range tc.values {
+				r.Header.Add(tc.header, value)
+			}
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			if w.Code != tc.status {
+				t.Fatalf("got %d want %d: %s", w.Code, tc.status, w.Body.String())
+			}
+			if tc.status != 200 && b.opens != 0 {
+				t.Fatal("conditional response opened the object body")
+			}
+		})
 	}
 }

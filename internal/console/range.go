@@ -72,6 +72,11 @@ func matchEntityTags(list, tag string, weak bool) (bool, bool) {
 	}
 	matched := false
 	for list != "" {
+		// Empty list members are permitted, including repeated empty field lines.
+		if list[0] == ',' {
+			list = strings.TrimLeft(list[1:], " \t")
+			continue
+		}
 		itemWeak := strings.HasPrefix(list, "W/")
 		if itemWeak {
 			list = list[2:]
@@ -101,11 +106,8 @@ func matchEntityTags(list, tag string, weak bool) (bool, bool) {
 			return false, false
 		}
 		list = strings.TrimLeft(list[1:], " \t")
-		if list == "" {
-			return false, false
-		}
 	}
-	return false, false
+	return matched, true
 }
 func notModifiedSince(value string, modified time.Time) bool {
 	date, err := http.ParseTime(value)
