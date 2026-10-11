@@ -10,8 +10,7 @@ import (
 	"github.com/soulteary/mc/internal/consoleapi"
 )
 
-// serveDiagnostics is intentionally not registered yet. Integration must put
-// its route behind the normal request runtime lease and native verification.
+// serveDiagnostics runs after the standard runtime lease and native verification.
 func (s *Server) serveDiagnostics(w http.ResponseWriter, r *http.Request) {
 	if !s.requireMethod(w, r, http.MethodGet) {
 		return

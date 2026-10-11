@@ -22,7 +22,7 @@
 
 ## 接入要求
 
-新 `serveDiagnostics` 暂未注册。协调者在 `Server.ServeHTTP` 正常 native revalidation 和 runtime retain/release 之后注册 `/api/diagnostics/server`，路由调用 `s.serveDiagnostics(w,r)`。不得注册成绕过标准会话链的裸 handler。
+`/api/diagnostics/server` 已在 `Server.ServeHTTP` 的正常 native revalidation 和 runtime retain/release 之后注册，路由调用 `s.serveDiagnostics(w,r)`。实际登录路由测试确保未登录拒绝、每次请求校验当前身份、被撤销身份不能到达诊断后端；退出/到期/关闭测试通过完整路由执行。不得注册成绕过标准会话链的裸 handler。
 
 handler 仅 GET、无 query，使用现有 apiSlots 并发上限与 sess.ctx 取消，响应 no-store。退出、到期、关闭由 session cancel 结束 HTTP 读取；请求取消也结束读取并关闭响应体。它是一次快照，无长订阅、持久 cursor、重连或事件回放语义，也无需引入慢消费者缓冲。
 
@@ -33,3 +33,5 @@ UI 应显示“服务器诊断（需管理员权限）”，不得把本机 runt
 本包测试包括 signed request、白名单、权限拒绝、redirect/超限/非法 JSON、取消后上游连接结束，以及现有账户容量隔离测试。真实服务验收单独记录在交付消息，不以 mock 通过冒充正式发行组合认证。
 
 实际验收：本切片已对独立临时数据服务器 `6f6d0835ddff68020f1491c403b958fade22841f` 原始构建执行管理员快照读取和临时 readwrite IAM 用户 403 负例；账户创建/绑定/清理由测试管理员完成，待测普通用户的读取使用其自身凭据。该证据仅覆盖单 HTTP 隔离服务，不代表 TLS、分离 admin listener 或正式发行矩阵认证。独立重跑：`python3 buildscripts/test-console-diagnostics.py --server /path/to/otterio`。
+
+正式服务器复核：对 `/private/tmp/oc-parallel-release-server/otterio-darwin-arm64`（源码 `8cc518b31ac8b69c8f855e19b4bd027f44275c47`）运行同一隔离脚本，管理员快照成功、临时 readwrite IAM 用户诊断 403，清理完成。仍仅是单 HTTP 诊断后端证据，不是完整控制台或 TLS 发行组合认证。

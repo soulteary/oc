@@ -4,7 +4,9 @@ package console
 import (
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,7 +40,7 @@ func TestDiagnosticsSessionCancellationAndExpiry(t *testing.T) {
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				s.serveDiagnostics(httptest.NewRecorder(), testRequest("GET", "/api/diagnostics/server", "", cookie))
+				s.ServeHTTP(httptest.NewRecorder(), testRequest("GET", "/api/diagnostics/server", "", cookie))
 			}()
 			<-started
 			switch action {
@@ -55,5 +57,40 @@ func TestDiagnosticsSessionCancellationAndExpiry(t *testing.T) {
 				t.Fatal("diagnostic handler retained canceled session")
 			}
 		})
+	}
+}
+
+func TestDiagnosticsNativeRouteVerifiesCurrentIdentity(t *testing.T) {
+	var denied atomic.Bool
+	var verified, reads atomic.Int32
+	s := nativeFixture(t, func(_ context.Context, c NativeCredentials) (NativeConnection, error) {
+		b := &diagnosticBackend{read: func(context.Context) (consoleapi.ServerDiagnostics, error) {
+			reads.Add(1)
+			return consoleapi.ServerDiagnostics{Nodes: []consoleapi.DiagnosticNode{{Version: "release"}}}, nil
+		}}
+		return NativeConnection{Backend: b, Cleanup: func() {}, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(c.AccessKey))), Verify: func(context.Context) error {
+			verified.Add(1)
+			if denied.Load() {
+				return &consoleapi.Error{Status: 403, Code: "AccessDenied"}
+			}
+			return nil
+		}}, nil
+	})
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, nativeRequest("GET", "/api/diagnostics/server", "", nil))
+	if w.Code != 401 || reads.Load() != 0 || verified.Load() != 0 {
+		t.Fatal("unauthenticated diagnostic dispatch")
+	}
+	cookie, _ := nativeSignIn(t, s, "alice")
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, nativeRequest("GET", "/api/diagnostics/server", "", cookie))
+	if w.Code != 200 || reads.Load() != 1 || verified.Load() != 1 || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("native diagnostics skipped verification: %d", w.Code)
+	}
+	denied.Store(true)
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, nativeRequest("GET", "/api/diagnostics/server", "", cookie))
+	if w.Code != 401 || reads.Load() != 1 || verified.Load() != 2 {
+		t.Fatal("revoked identity reached diagnostics")
 	}
 }
