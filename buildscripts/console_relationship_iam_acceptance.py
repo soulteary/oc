@@ -151,14 +151,17 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         checks.append('real service child native browser login is rejected; child browser retirement is outside the supported native login scope')
         replacement = secrets.token_hex(24)
         require_confirmed(rotate(manager, 'target', replacement))
+        login('target', replacement)
+        browser(base, tls_context)('/api/login', 'POST', {'accessKey': names['target'], 'secretKey': secrets_by_role['target']}, expected=401)
+        # Restore identical credentials before either original browser requests again:
+        # upstream secret mismatch must not impersonate explicit Console retirement.
+        cli('admin', 'user', 'add', 'store', names['target'], secrets_by_role['target'])
         target('/api/session', expected=401);target_second('/api/session', expected=401)
         unrelated('/api/session');manager('/api/session')
-        browser(base, tls_context)('/api/login', 'POST', {'accessKey': names['target'], 'secretKey': secrets_by_role['target']}, expected=401)
         child_request('GET', 'plain.txt')
         checks.append('parent secret rotation does not claim upstream service credential revocation; real child retains authorized signed S3 read')
-        secrets_by_role['target'] = replacement
         target, target_second = login('target'), login('target')
-        checks.append('administrator rotates another user with a real service child; all parent sessions retire, new credentials work and unrelated sessions continue')
+        checks.append('administrator rotates another user with a real service child; new secret works, restoring original credentials cannot revive old browser cookies and unrelated sessions continue')
 
         cli('admin', 'user', 'disable', 'store', names['target'])
         target('/api/session', expected=401)
@@ -283,11 +286,12 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         manager_second = login('manager')
         self_secret = secrets.token_hex(24)
         require_confirmed(rotate(manager, 'manager', self_secret), True)
+        login('manager', self_secret)
+        cli('admin', 'user', 'add', 'store', names['manager'], secrets_by_role['manager'])
         manager('/api/session', expected=401);manager_second('/api/session', expected=401)
         unrelated('/api/session');target('/api/session')
-        secrets_by_role['manager'] = self_secret
         login('manager')
-        checks.append('administrator self rotation acknowledges loginRequired before retiring own sessions; new login and unrelated users remain available')
+        checks.append('administrator self rotation acknowledges loginRequired; new secret works, restoring original credentials cannot revive original cookies and unrelated users remain available')
         return {'capabilityMode': 'required-supported', 'positiveMutationCoverage': ['user.rotate-other', 'user.rotate-self', 'disabled-user.rotate', 'user.policies', 'group.policies', 'group.status-members-delete', 'service-account.status-secret-policy-delete'], 'serviceChildBrowserSessions': 'unsupported: native service login is rejected, not counted as retirement coverage', 'serviceChildSignedS3': 'parent secret rotation retains authorized read; policy narrowing retains read and denies write', 'tls': 'verified independent fixture browser and storage/Admin CA'}
     finally:
         for process, log in reversed(processes):
