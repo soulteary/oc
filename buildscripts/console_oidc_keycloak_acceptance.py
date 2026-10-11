@@ -278,7 +278,9 @@ def main(args):
                 candidate = free_port()
                 if candidate not in ports:
                     ports.append(candidate)
-            issuer = f'https://127.0.0.1:{ports[0]}/realms/oc-acceptance'
+            issuer_host = 'localhost' if args.cross_site_idp else '127.0.0.1'
+            issuer = f'https://{issuer_host}:{ports[0]}/realms/oc-acceptance'
+            report['browserSiteTopology'] = 'localhost IdP and 127.0.0.1 Console (different sites)' if args.cross_site_idp else '127.0.0.1 IdP/Console (same site, different origins)'
             endpoint = f'https://127.0.0.1:{ports[1]}'
             public = f'https://127.0.0.1:{ports[2]}'
             admin = f'https://127.0.0.1:{ports[3]}' if args.dual_admin else endpoint
@@ -470,6 +472,24 @@ def main(args):
                        '--tls-key', str(certs/'private.key'), '--data-dir', str(root/'console-data')], 'console',
                       {key: value for key, value in env.items() if not key.startswith(('MC_', 'OC_', 'OTTERIO_'))})
                 wait_ready(opener, public+'/')
+                if args.browser_hook:
+                    spec = importlib.util.spec_from_file_location('isolated_console_browser_hook', args.browser_hook)
+                    hook = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(hook)
+                    ttl = int(args.console_session_ttl[:-1]) if args.console_session_ttl.endswith('s') else 0
+                    try:
+                        result = hook.run_browser({'public': public, 'issuer': issuer, 'passwords': dict(passwords),
+                                      'session_ttl_seconds': ttl, 'refresh_wait_seconds': args.console_refresh_wait,
+                                      'refresh_events': lambda: keycloak_refresh_events(container),
+                                      'ca_file': str(root/'ca.pem')})
+                    except Exception:
+                        raise RuntimeError('isolated browser acceptance hook failed') from None
+                    encoded = json.dumps(result)
+                    if any(value and value in encoded for value in [access, secret, client_secret, *passwords.values()]):
+                        raise RuntimeError('browser acceptance report disclosed fixture credentials')
+                    report['browserAcceptance'] = result
+                    report['browserHook'] = {'name': Path(args.browser_hook).name,
+                                            'sha256': hashlib.sha256(Path(args.browser_hook).read_bytes()).hexdigest()}
                 users = {}
                 for user, password in passwords.items():
                     user_browser = browser(context, callback)
@@ -623,6 +643,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', required=True, type=lambda x: str(Path(x).resolve()))
     parser.add_argument('--server-source', required=True)
+    parser.add_argument('--browser-hook', default='', type=lambda x: str(Path(x).resolve()), help='isolated trusted local module exposing run_browser(config); credentials passed in memory only')
+    parser.add_argument('--cross-site-idp', action='store_true', help='localhost issuer vs 127.0.0.1 Console for real browser SameSite checks')
     parser.add_argument('--dual-admin', action='store_true', help='separate Admin HTTPS listener with independent temporary CA')
     parser.add_argument('--server-container-image', default='', help='fixed-digest image base for clean Linux arm64 server; shares Keycloak Docker clock')
     parser.add_argument('--oc', required=True, type=lambda x: str(Path(x).resolve()))
