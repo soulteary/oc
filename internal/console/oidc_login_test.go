@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,4 +103,48 @@ func TestOIDCRequestPinsRuntimeAndLogoutCancelsAllGenerations(t *testing.T) {
 	if _, err := m.acquire(); err == nil {
 		t.Fatal("logout resurrected")
 	}
+}
+
+func TestOIDCRefreshAndLogoutKeepOtherUserIsolated(t *testing.T) {
+	s := oidcTestServer(t)
+	add := func(token, name string) (*session, [32]byte) {
+		runtime := sessionRuntime{backend: &fakeBackend{list: func(context.Context) ([]consoleapi.Bucket, error) { return []consoleapi.Bucket{{Name: name}}, nil }}, lifetime: &backendLifetime{cleanup: func() {}}}
+		m := newOIDCGenerations(s.life, runtime, time.Now().Add(time.Minute), time.Now().Add(time.Minute))
+		root := &session{runtime: runtime, ctx: m.ctx, cancel: m.cancel, expires: m.deadline, csrf: "csrf", oidc: &oidcSession{generations: m, grant: &oidc.Grant{}}}
+		hash := sha256.Sum256([]byte(token))
+		s.sessions[hash] = root
+		return root, hash
+	}
+	aToken, bToken := "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG", "abcdefghijklmnopqrstuvwxyz0123456789HIJKLMN"
+	first, firstHash := add(aToken, "first-old")
+	second, _ := add(bToken, "second")
+	if sameSession(first, second) {
+		t.Fatal("two users shared task owner")
+	}
+	next := sessionRuntime{backend: &fakeBackend{list: func(context.Context) ([]consoleapi.Bucket, error) {
+		return []consoleapi.Bucket{{Name: "first-new"}}, nil
+	}}, lifetime: &backendLifetime{cleanup: func() {}}}
+	if err := first.oidc.generations.refresh(context.Background(), func(context.Context) (sessionRuntime, time.Time, error) {
+		return next, time.Now().Add(time.Minute), nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	probe := func(token, expect string) {
+		r := oidcRequest("/api/buckets")
+		r.AddCookie(&http.Cookie{Name: nativeCookieName, Value: token})
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), expect) {
+			t.Fatal("wrong per-user connection", w.Code, w.Body.String())
+		}
+	}
+	probe(aToken, "first-new")
+	probe(bToken, "second")
+	s.mu.Lock()
+	s.removeSessionLocked(firstHash, first)
+	s.mu.Unlock()
+	if second.ctx.Err() != nil {
+		t.Fatal("other user's session cancelled")
+	}
+	probe(bToken, "second")
 }
