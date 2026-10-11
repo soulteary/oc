@@ -108,7 +108,8 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
             cli('admin', 'user', 'add', 'store', name, secrets_by_role[role])
             cli('admin', 'policy', 'set', 'store', 'consoleAdmin' if role in ('manager', 'target') else 'readonly', 'user=' + name)
         denied_policy = add_policy('denied', [
-            {'Effect': 'Allow', 'Action': ['admin:*', 's3:*'], 'Resource': ['arn:aws:s3:::*']},
+            {'Effect': 'Allow', 'Action': ['admin:*'], 'Resource': ['arn:aws:s3:::*']},
+            {'Effect': 'Allow', 'Action': ['s3:*'], 'Resource': ['arn:aws:s3:::*']},
             {'Effect': 'Deny', 'Action': ['admin:CreateUser', 'admin:EnableGroup', 'admin:DisableGroup', 'admin:AddUserToGroup', 'admin:RemoveUserFromGroup', 'admin:UpdateServiceAccount', 'admin:RemoveServiceAccount'], 'Resource': ['arn:aws:s3:::*']}])
         cli('admin', 'policy', 'set', 'store', denied_policy, 'user=' + names['denied'])
         start()
@@ -230,8 +231,8 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         manager('/api/session');target('/api/session');unrelated('/api/session')
         checks.append('group disable/enable and member add/remove retire captured affected user sessions; empty group deletion keeps unrelated sessions available')
 
-        def service_action(name, **extra):
-            result = action(manager, {'action': 'service-account.' + name,
+        def service_action(name, actor=None, **extra):
+            result = action(actor or manager, {'action': 'service-account.' + name,
                             'accessKey': child['accessKey'], 'confirmTarget': child['accessKey'], **extra})
             require_confirmed(result)
             if result['serviceAccount']['accessKey'] != child['accessKey'] or result['serviceAccount']['parentUser'] != names['target']:
@@ -260,7 +261,13 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         child_request('GET', 'plain.txt')
         narrow_policy = json.dumps({'Version': '2012-10-17', 'Statement': [
             {'Effect': 'Allow', 'Action': ['s3:GetObject'], 'Resource': ['arn:aws:s3:::' + bucket + '/stream.bin']}]})
-        service_action('policy', policy=narrow_policy)
+        action(manager, {'action': 'service-account.policy', 'accessKey': child['accessKey'], 'confirmTarget': child['accessKey'], 'policy': narrow_policy}, 403)
+        parent_policy = add_policy('parent-service-admin', [
+            {'Effect': 'Allow', 'Action': ['admin:UpdateServiceAccount', 'admin:GetUser', 'admin:ListUsers', 'admin:ListServiceAccounts'], 'Resource': ['arn:aws:s3:::*']},
+            {'Effect': 'Allow', 'Action': ['s3:GetObject', 's3:ListBucket', 's3:GetBucketLocation'], 'Resource': ['arn:aws:s3:::' + bucket, 'arn:aws:s3:::' + bucket + '/*']}])
+        cli('admin', 'policy', 'set', 'store', parent_policy, 'user=' + names['target'])
+        target = login('target')
+        service_action('policy', actor=target, policy=narrow_policy)
         child_request('GET', 'plain.txt', expected=403)
         child_request('GET', 'stream.bin')
         child_request('PUT', prefix + '-child.txt', b'denied', 403)
