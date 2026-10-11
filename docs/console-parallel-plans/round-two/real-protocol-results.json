@@ -23,7 +23,7 @@
     {
       "name": "range",
       "exitCode": 0,
-      "elapsedSeconds": 5.776,
+      "elapsedSeconds": 3.815,
       "status": "passed",
       "reason": "all-profiles-and-version-denial",
       "profiles": [
@@ -71,7 +71,7 @@
     {
       "name": "diagnostics",
       "exitCode": 0,
-      "elapsedSeconds": 1.957,
+      "elapsedSeconds": 2.649,
       "status": "passed",
       "reason": "named-test-ran-and-passed",
       "test": "TestDiagnosticsRealServer"
@@ -79,7 +79,7 @@
     {
       "name": "oidc-sts",
       "exitCode": 0,
-      "elapsedSeconds": 1.327,
+      "elapsedSeconds": 1.387,
       "status": "passed",
       "reason": "named-test-ran-and-passed",
       "test": "TestOtterIOSTSIntegration"
