@@ -14,7 +14,7 @@ import (
 
 // identityScope has separate namespaces for a native connection principal and
 // its authenticated IAM user. Untrusted strings never become another kind.
-// OIDC issuer/subject and IAM parent mapping are deliberately not represented.
+// OIDC principals use a separate target/issuer/subject namespace; IAM parent mappings require authoritative evidence.
 type identityScope struct {
 	kind uint8
 	key  string

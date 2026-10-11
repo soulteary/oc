@@ -9,8 +9,9 @@ scope decision. No CLI exemption or reduction is approved by this matrix.
 
 Run the structural gate with `python3 buildscripts/console_parity_gate.py
 --matrix docs/console-capability-matrix.json --report REPORT.json
---server-source EXACT_RELEASE_SOURCE --server-sha256 EXACT_RELEASE_BINARY_HASH`.
-Arguments refer to the independently selected server release; mismatched evidence
+--server-source EXACT_RELEASE_SOURCE --server-sha256 EXACT_RELEASE_BINARY_HASH
+--cli-sha256 EXACT_CLI_BINARY_HASH --console-sha256 EXACT_CONSOLE_BINARY_HASH`.
+Arguments refer to the independently selected server and client releases; mismatched evidence
 fails. Output is machine-readable and exit 1 means retirement is blocked.
 
 The supported existing producer is `test-real-protocol-ci.py`, schemaVersion 1.
@@ -25,7 +26,7 @@ check, missing digest, dirty source, wrong version, or non-release fixture block
 retirement. Tests exercise these negative cases.
 
 This is a necessary evidence check, not release authorization. Hashes supplied
-by a report are declarations, not signatures. Independent client/harness version
+by a report are declarations, not signatures. Client binary hashes are bound to the selected pair; independent source/manifest and harness version
 binding, real IdP runs, migration notices and a completed rollback window remain
 coordinator/release requirements. Until those are verified, leave old Web enabled.
 Do not infer success from previous reports, retry a Range failure to conceal it,

@@ -9,7 +9,7 @@ HEX40 = re.compile(r'[0-9a-f]{40}')
 HEX64 = re.compile(r'[0-9a-f]{64}')
 
 
-def normalize(report, source, binary):
+def normalize(report, source, binary, client_hashes):
     """Supported: test-real-protocol-ci.py schemaVersion=1 only.
 
     Legacy integration reports with natural-language checks remain historical
@@ -37,6 +37,11 @@ def normalize(report, source, binary):
         errors.append('missing-harness-digests')
     if report.get('passed') is not True:
         errors.append('report-not-passed')
+    actual_clients = report.get('clientBinarySHA256')
+    if not isinstance(client_hashes, dict) or set(client_hashes) != {'cli', 'console'} or any(not isinstance(v, str) or not HEX64.fullmatch(v) for v in client_hashes.values()):
+        errors.append('missing-selected-client-hashes')
+    elif actual_clients != client_hashes:
+        errors.append('client-binary-mismatch')
     checks = report.get('checks', [])
     if not isinstance(checks, list):
         return {}, errors + ['invalid-checks']
@@ -51,14 +56,21 @@ def normalize(report, source, binary):
         indexed[name] = check
         if check.get('status') != 'passed' or check.get('exitCode') != 0 or check.get('failedTests') or check.get('skippedTests') or check.get('skip'):
             errors.append('check-not-passed:' + name)
-        for profile in check.get('profiles', []):
+        profiles = check.get('profiles', [])
+        if not isinstance(profiles, list):
+            errors.append('invalid-profiles:' + name)
+            continue
+        names = [p.get('profile') for p in profiles if isinstance(p, dict)]
+        if any(not isinstance(n, str) or not n for n in names) or len(set(names)) != len(names):
+            errors.append('invalid-or-duplicate-profile:' + name)
+        for profile in profiles:
             if not isinstance(profile, dict) or profile.get('status', 'passed') != 'passed' or profile.get('skip'):
                 errors.append('profile-not-passed:' + name)
     return indexed, errors
 
 
-def evaluate(matrix, report, source, binary):
-    checks, errors = normalize(report, source, binary)
+def evaluate(matrix, report, source, binary, client_hashes=None):
+    checks, errors = normalize(report, source, binary, client_hashes)
     if matrix.get('schemaVersion') != 1 or not isinstance(matrix.get('capabilities'), list) or not matrix['capabilities']:
         return {'ready': False, 'errors': errors + ['invalid-matrix']}
     seen = set()
@@ -79,7 +91,8 @@ def evaluate(matrix, report, source, binary):
             missing.extend('missing-check:' + check for check in required if check not in checks)
         for check in required or []:
             item = checks.get(check, {})
-            actual = {p.get('profile') for p in item.get('profiles', []) if isinstance(p, dict)}
+            profiles = item.get('profiles', [])
+            actual = {p.get('profile') for p in profiles if isinstance(p, dict)} if isinstance(profiles, list) else set()
             missing.extend('missing-profile:' + p for p in row.get('requiredProfiles', []) if p not in actual)
         if missing:
             gaps.append({'id': name, 'gaps': missing})
@@ -88,11 +101,11 @@ def evaluate(matrix, report, source, binary):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for arg in ('matrix', 'report', 'server-source', 'server-sha256'):
+    for arg in ('matrix', 'report', 'server-source', 'server-sha256', 'cli-sha256', 'console-sha256'):
         parser.add_argument('--' + arg, required=True)
     args = parser.parse_args()
     try:
-        result = evaluate(json.loads(Path(args.matrix).read_text()), json.loads(Path(args.report).read_text()), args.server_source, args.server_sha256)
+        result = evaluate(json.loads(Path(args.matrix).read_text()), json.loads(Path(args.report).read_text()), args.server_source, args.server_sha256, {'cli': args.cli_sha256, 'console': args.console_sha256})
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         result = {'ready': False, 'errors': ['invalid-input:' + type(exc).__name__]}
     print(json.dumps(result, indent=2))

@@ -3,15 +3,16 @@ import unittest
 from console_parity_gate import evaluate
 
 SOURCE, BINARY = 'a' * 40, 'b' * 64
+CLIENTS = {'cli': 'd' * 64, 'console': 'e' * 64}
 
 
 class GateTest(unittest.TestCase):
     def setUp(self):
         self.matrix = {'schemaVersion': 1, 'capabilities': [{'id': 'range', 'status': 'verified-replacement', 'requiredChecks': ['range'], 'requiredProfiles': ['dual-tls']}]}
-        self.report = {'schemaVersion': 1, 'platform': 'Darwin/arm64', 'server': {'source': SOURCE, 'binarySHA256': BINARY, 'sourceState': 'clean', 'kind': 'release-asset'}, 'harnesses': {'range.py': 'c' * 64}, 'passed': True, 'checks': [{'name': 'range', 'status': 'passed', 'exitCode': 0, 'profiles': [{'profile': 'dual-tls'}]}]}
+        self.report = {'clientBinarySHA256': CLIENTS.copy(), 'schemaVersion': 1, 'platform': 'Darwin/arm64', 'server': {'source': SOURCE, 'binarySHA256': BINARY, 'sourceState': 'clean', 'kind': 'release-asset'}, 'harnesses': {'range.py': 'c' * 64}, 'passed': True, 'checks': [{'name': 'range', 'status': 'passed', 'exitCode': 0, 'profiles': [{'profile': 'dual-tls'}]}]}
 
     def ready(self, report=None):
-        return evaluate(self.matrix, report or self.report, SOURCE, BINARY)['ready']
+        return evaluate(self.matrix, report or self.report, SOURCE, BINARY, CLIENTS)['ready']
 
     def test_valid_structural_evidence(self):
         self.assertTrue(self.ready())
@@ -23,6 +24,15 @@ class GateTest(unittest.TestCase):
             mutation(report)
             with self.subTest(report=report):
                 self.assertFalse(self.ready(report))
+
+    def test_client_pair_and_profile_shape_are_bound(self):
+        mutations = [lambda r: r.pop('clientBinarySHA256'), lambda r: r['clientBinarySHA256'].update(console='f' * 64), lambda r: r['checks'][0].update(profiles={}), lambda r: r['checks'][0]['profiles'].append({'profile': 'dual-tls'})]
+        for mutation in mutations:
+            report = copy.deepcopy(self.report)
+            mutation(report)
+            with self.subTest(mutation=mutation):
+                self.assertFalse(self.ready(report))
+        self.assertFalse(evaluate(self.matrix, self.report, SOURCE, BINARY)['ready'])
 
     def test_pending_matrix_never_inherits_history(self):
         self.matrix['capabilities'][0]['status'] = 'pending-verification'
