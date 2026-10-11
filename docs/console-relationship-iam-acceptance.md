@@ -43,3 +43,9 @@ python3 buildscripts/test-console-integration.py --relationship-iam --cli /absol
 For the negative legacy capability profile, add `--expect-relationship-unsupported` and supply the older server. The report binds program hashes, server build metadata, wrapper/helper digests and the executed architecture. Dedicated helper contract tests: `python3 -m unittest discover -s buildscripts -p test_console_relationship_iam.py` (three tests).
 
 Long-running resource trends, amd64 execution, graphical native UI and published release assets remain outside this fixture. Deleting OtterIO Console or changing deployment defaults requires the broader plan gates.
+
+## Coupled user lifecycle preflight failures
+
+The initial b8404f29 Console / 4b2ac9ce server preflight failed because the fixture created two unnecessary target sessions and reached the production eight-active-session limit. The correction reuses existing live target cookies; it does not change either the active-session or login-rate limit. The second preflight reached a confirmed disable response, but the fixture secret scanner mistakenly classified the STS access-key identifier in the impact acknowledgement as a secret. The correction permits that public identifier only; STS secret keys and session tokens remain forbidden. Both unmodified failed reports are retained. Neither is evidence of lifecycle acceptance or of the later service-create freshness fix.
+
+The failed reports record shared process cleanup as passed. Since the helper raised before returning its metrics, they do not include helper process/resource cleanup metrics; no such field has been retroactively added. Final supported and legacy acceptance still requires the final clean server and both HTTPS topologies.
