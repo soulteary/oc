@@ -4,6 +4,7 @@ package console
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -43,7 +44,7 @@ func nativeSessionStatus(s *Server, cookie *http.Cookie) int {
 func TestNativeUserRetirementRetiresExactTargetOnConfirmedOrUncertainOutcome(t *testing.T) {
 	for _, action := range []string{"user.disable", "user.delete"} {
 		t.Run(action, func(t *testing.T) {
-			for _, outcome := range []string{"confirmed", "unknown", "raw-error", "inconsistent", "denied", "conflict", "self", "self-unknown"} {
+			for _, outcome := range []string{"confirmed", "unknown", "raw-error", "inconsistent", "denied", "conflict", "service-conflict", "missing", "self", "self-unknown", "self-missing"} {
 				t.Run(outcome, func(t *testing.T) {
 					s := nativeDisableFixture(t, func(context.Context, consoleapi.IAMActionRequest) (consoleapi.IAMActionResult, error) {
 						switch outcome {
@@ -55,6 +56,10 @@ func TestNativeUserRetirementRetiresExactTargetOnConfirmedOrUncertainOutcome(t *
 							return consoleapi.IAMActionResult{Outcome: "unknown"}, nil
 						case "conflict":
 							return consoleapi.IAMActionResult{}, &consoleapi.Error{Status: 409, Code: "user_has_groups"}
+						case "service-conflict":
+							return consoleapi.IAMActionResult{}, &consoleapi.Error{Status: 409, Code: "user_has_service_accounts"}
+						case "missing", "self-missing":
+							return consoleapi.IAMActionResult{}, &consoleapi.Error{Status: 404, Code: "iam_not_found"}
 						case "denied":
 							return consoleapi.IAMActionResult{}, &consoleapi.Error{Status: 403, Code: "AccessDenied"}
 						}
@@ -64,13 +69,15 @@ func TestNativeUserRetirementRetiresExactTargetOnConfirmedOrUncertainOutcome(t *
 					other, _ := nativeSignIn(t, s, "alice")
 					bob, br := nativeSignIn(t, s, "bob")
 					operator, reply := bob, br
-					if outcome == "self" || outcome == "self-unknown" {
+					if outcome == "self" || outcome == "self-unknown" || outcome == "self-missing" {
 						operator, reply = alice, ar
 					}
 					w := nativeUserChange(s, operator, reply, action, "alice")
 					want := 200
-					if outcome == "conflict" {
+					if outcome == "conflict" || outcome == "service-conflict" {
 						want = 409
+					} else if outcome == "missing" || outcome == "self-missing" {
+						want = 404
 					} else if outcome == "denied" {
 						want = 403
 					} else if outcome == "unknown" || outcome == "self-unknown" || outcome == "raw-error" || outcome == "inconsistent" {
@@ -79,8 +86,23 @@ func TestNativeUserRetirementRetiresExactTargetOnConfirmedOrUncertainOutcome(t *
 					if w.Code != want {
 						t.Fatalf("status %d: %s", w.Code, w.Body.String())
 					}
+					if action == "user.delete" && (outcome == "missing" || outcome == "self-missing") {
+						var body struct {
+							Code          string `json:"code"`
+							LoginRequired bool   `json:"loginRequired"`
+						}
+						if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Code != "iam_not_found" || body.LoginRequired != (outcome == "self-missing") {
+							t.Fatalf("unexpected absent-target response: %s", w.Body.String())
+						}
+						// The fixture accepts the identical credentials again, as if
+						// the account were recreated before an old cookie is used.
+						fresh, _ := nativeSignIn(t, s, "alice")
+						if nativeSessionStatus(s, fresh) != 200 {
+							t.Fatal("fresh login rejected after recreation")
+						}
+					}
 					targetStatus := 401
-					if outcome == "denied" || outcome == "conflict" {
+					if outcome == "denied" || outcome == "conflict" || outcome == "service-conflict" || (action == "user.disable" && (outcome == "missing" || outcome == "self-missing")) {
 						targetStatus = 200
 					}
 					for _, cookie := range []*http.Cookie{alice, other} {
@@ -140,11 +162,18 @@ func TestNativeUserRetirementQuiescesWritesAndGatesOnlyTarget(t *testing.T) {
 	}
 }
 func TestNativeUserRetirementRejectsPendingLoginEvenAfterAccountIsEnabledAgain(t *testing.T) {
-	for _, action := range []string{"user.disable", "user.delete"} {
+	for _, action := range []string{"user.disable", "user.delete", "missing-delete"} {
 		t.Run(action, func(t *testing.T) {
+			missing := action == "missing-delete"
+			if missing {
+				action = "user.delete"
+			}
 			entered, release := make(chan struct{}), make(chan struct{})
 			pending := false
 			s := nativeDisableFixture(t, func(context.Context, consoleapi.IAMActionRequest) (consoleapi.IAMActionResult, error) {
+				if missing {
+					return consoleapi.IAMActionResult{}, &consoleapi.Error{Status: 404, Code: "iam_not_found"}
+				}
 				return consoleapi.IAMActionResult{Outcome: "confirmed"}, nil
 			}, func(user string) {
 				if user == "alice" && pending {
@@ -161,7 +190,11 @@ func TestNativeUserRetirementRejectsPendingLoginEvenAfterAccountIsEnabledAgain(t
 				done <- w.Code
 			}()
 			<-entered
-			if nativeUserChange(s, bob, br, action, "alice").Code != 200 {
+			want := 200
+			if missing {
+				want = 404
+			}
+			if nativeUserChange(s, bob, br, action, "alice").Code != want {
 				t.Fatal("disable failed")
 			}
 			close(release)
@@ -176,11 +209,18 @@ func TestNativeUserRetirementRejectsPendingLoginEvenAfterAccountIsEnabledAgain(t
 }
 
 func TestNativeSelfRetirementRetiresAfterAcknowledgementEvenWhenFlushFails(t *testing.T) {
-	for _, action := range []string{"user.disable", "user.delete"} {
+	for _, action := range []string{"user.disable", "user.delete", "missing-delete"} {
 		t.Run(action, func(t *testing.T) {
+			missing := action == "missing-delete"
+			if missing {
+				action = "user.delete"
+			}
 			for _, broken := range []bool{false, true} {
 				t.Run(fmt.Sprint(broken), func(t *testing.T) {
 					s := nativeDisableFixture(t, func(context.Context, consoleapi.IAMActionRequest) (consoleapi.IAMActionResult, error) {
+						if missing {
+							return consoleapi.IAMActionResult{}, &consoleapi.Error{Status: 404, Code: "iam_not_found"}
+						}
 						return consoleapi.IAMActionResult{Outcome: "confirmed", RestartRequired: true}, nil
 					}, nil)
 					alice, ar := nativeSignIn(t, s, "alice")

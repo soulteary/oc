@@ -46,6 +46,21 @@ func (s *Server) retireNativeUser(w http.ResponseWriter, r *http.Request, sess *
 	if err != nil {
 		var failure *consoleapi.Error
 		if errors.As(err, &failure) && failure != nil && failure.Code != "outcome_unknown" {
+			// An absent delete target must not regain its old cookies if the
+			// same credentials are recreated before the next request.
+			if args.Action == "user.delete" && failure.Code == "iam_not_found" {
+				revoke = true
+				loginRequired := sess.nativeUser == args.User
+				if !loginRequired {
+					finish()
+				}
+				writeJSON(w, http.StatusNotFound, struct {
+					Code          string `json:"code"`
+					Message       string `json:"message"`
+					LoginRequired bool   `json:"loginRequired"`
+				}{failure.Code, failure.Message, loginRequired})
+				return
+			}
 			finish()
 			writeBackendError(w, failure)
 			return

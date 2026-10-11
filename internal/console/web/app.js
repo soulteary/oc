@@ -2549,6 +2549,10 @@
     } catch (error) {
       if (iamInputs.secretKey) iamInputs.secretKey.value = "";
       if (!currentRequest("iam-action", request) || error.name === "AbortError") return;
+      if (nativeLogin && error.code === "iam_not_found" && error.loginRequired) {
+        showLogin("Your account has been deleted. Sign in with an existing account. This request was not repeated.");
+        return;
+      }
       if (error.restartRequired || error.status === 0 || error.code === "outcome_unknown") {
         if (nativeLogin) {
           if (error.loginRequired) {
