@@ -13,7 +13,7 @@ import (
 // logins remain available; competing writes receive the ordinary busy response.
 func (s *Server) rotateNativeSecret(w http.ResponseWriter, r *http.Request, sess *session, secret string) {
 	s.mu.Lock()
-	if s.closed || sess.ctx.Err() != nil || s.nativeRotating[sess.runtime.identity] {
+	if s.closed || sess.ctx.Err() != nil || s.nativeRotating[sess.runtime.identity] || s.nativeUserChanging[sess.nativeUser] {
 		s.mu.Unlock()
 		writeError(w, 409, "credential_change_pending", "This session is ending or its secret is being changed.")
 		return

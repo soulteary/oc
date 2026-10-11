@@ -1,5 +1,5 @@
 {
-  "dateUTC": "2026-10-10T20:09:00.735156+00:00",
+  "dateUTC": "2026-10-11T08:35:58.440211+00:00",
   "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
   "serverSource": "6f6d0835ddff68020f1491c403b958fade22841f",
   "sdkPin": "v0.0.0-20261009091443-bcc238bc4c2c",
@@ -409,13 +409,13 @@
       }
     },
     "oc-console": {
-      "sha256": "a5d4ce5b62a9d45d326e06c5c587ea05135f4b57ad35f88bc19006bd16bfbc59",
+      "sha256": "93383bcd6c58a5646e5ba7eccc0f6260d47eb512630032889242b2503dd1f9d0",
       "buildInfo": {
         "GoVersion": "go1.27.2",
         "Path": "github.com/soulteary/mc/cmd/oc-console",
         "Main": {
           "Path": "github.com/soulteary/mc",
-          "Version": "v0.0.0-20261010195330-b2996f6c6afd+dirty"
+          "Version": "v0.0.0-20261011082943-f71de60f9ae1+dirty"
         },
         "Deps": [
           {
@@ -584,12 +584,20 @@
             "Value": "gc"
           },
           {
-            "Key": "-trimpath",
-            "Value": "true"
+            "Key": "CGO_ENABLED",
+            "Value": "1"
           },
           {
-            "Key": "CGO_ENABLED",
-            "Value": "0"
+            "Key": "CGO_CFLAGS"
+          },
+          {
+            "Key": "CGO_CPPFLAGS"
+          },
+          {
+            "Key": "CGO_CXXFLAGS"
+          },
+          {
+            "Key": "CGO_LDFLAGS"
           },
           {
             "Key": "GOARCH",
@@ -609,11 +617,11 @@
           },
           {
             "Key": "vcs.revision",
-            "Value": "b2996f6c6afd68b1d80576c26c753683f1ed9659"
+            "Value": "f71de60f9ae1a47a950edc6c3686c731c3b49534"
           },
           {
             "Key": "vcs.time",
-            "Value": "2026-10-10T19:53:30Z"
+            "Value": "2026-10-11T08:29:43Z"
           },
           {
             "Key": "vcs.modified",
@@ -1256,17 +1264,27 @@
         "restricted identity: permitted read succeeds, different object denied",
         "native HTTPS login requires signed enabled IAM identity; root, bad secret and local code rejected; host-only Secure HttpOnly cookie",
         "two native users retain independent object permissions; exact-object user logs in without bucket-list permission",
-        "native preferences persist per target/user; same-user sessions share them, other users do not; logout is browser-specific and writes are blocked",
+        "native write opt-in preserves upstream permissions: authorized user creates/deletes its exact bucket and uploads exact bytes; other user denied object and upload task access",
+        "native self-secret rotation revokes all sessions of that user only; old secret fails, new secret logs in, other users remain available",
+        "external IAM disable revokes the next native request; enable cannot revive old session; fresh login and unrelated users remain available",
+        "external secret replacement revokes the old native browser credentials; only the new secret can log in",
+        "native account activation enforces manager permission, never revives revoked sessions and does not stop self-targeted manager sessions",
+        "native user disable requires manager permission, revokes all target sessions before any follow-up request, and later enable permits only a fresh login",
+        "native self-disable acknowledges before retiring own session, keeps shared console available and requires fresh login after administrative activation",
+        "native manager creates new IAM user/group/service credential with own permissions; unauthorized create, existing-user replacement rejected; other identity edits remain gated; other sessions continue",
+        "native preferences persist per target/user; same-user sessions share them, other users do not; logout is browser-specific; unsupported IAM mutations stay blocked without stopping other sessions",
+        "external user deletion revokes that browser on its next request without ending another user session",
         "native process shutdown drains clients and startup/preferences disclose no credentials",
         "CSRF logout, revocation and unchanged CLI config",
         "bounded graceful console process shutdown"
       ],
       "nativeMetrics": {
-        "users": 2,
+        "users": 3,
+        "iamCreation": "native user/group/service-account; permission and duplicate-target checks verified",
         "browserTLS": "verified",
         "storageTLS": "verified",
         "rootLogin": "denied",
-        "writes": "disabled"
+        "writes": "explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; user disable and exact-target session retirement verified; unsupported IAM mutations disabled"
       }
     },
     {
@@ -1283,17 +1301,27 @@
         "restricted identity: permitted read succeeds, different object denied",
         "native HTTPS login requires signed enabled IAM identity; root, bad secret and local code rejected; host-only Secure HttpOnly cookie",
         "two native users retain independent object permissions; exact-object user logs in without bucket-list permission",
-        "native preferences persist per target/user; same-user sessions share them, other users do not; logout is browser-specific and writes are blocked",
+        "native write opt-in preserves upstream permissions: authorized user creates/deletes its exact bucket and uploads exact bytes; other user denied object and upload task access",
+        "native self-secret rotation revokes all sessions of that user only; old secret fails, new secret logs in, other users remain available",
+        "external IAM disable revokes the next native request; enable cannot revive old session; fresh login and unrelated users remain available",
+        "external secret replacement revokes the old native browser credentials; only the new secret can log in",
+        "native account activation enforces manager permission, never revives revoked sessions and does not stop self-targeted manager sessions",
+        "native user disable requires manager permission, revokes all target sessions before any follow-up request, and later enable permits only a fresh login",
+        "native self-disable acknowledges before retiring own session, keeps shared console available and requires fresh login after administrative activation",
+        "native manager creates new IAM user/group/service credential with own permissions; unauthorized create, existing-user replacement rejected; other identity edits remain gated; other sessions continue",
+        "native preferences persist per target/user; same-user sessions share them, other users do not; logout is browser-specific; unsupported IAM mutations stay blocked without stopping other sessions",
+        "external user deletion revokes that browser on its next request without ending another user session",
         "native process shutdown drains clients and startup/preferences disclose no credentials",
         "CSRF logout, revocation and unchanged CLI config",
         "bounded graceful console process shutdown"
       ],
       "nativeMetrics": {
-        "users": 2,
+        "users": 3,
+        "iamCreation": "native user/group/service-account; permission and duplicate-target checks verified",
         "browserTLS": "verified",
         "storageTLS": "verified",
         "rootLogin": "denied",
-        "writes": "disabled"
+        "writes": "explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; user disable and exact-target session retirement verified; unsupported IAM mutations disabled"
       }
     }
   ],
@@ -1307,7 +1335,7 @@
     },
     {
       "name": "console_write_acceptance.py",
-      "sha256": "914b6fdac02727d5126c67424056ffa3e89af200e16fbc313f2507002c7a6e43"
+      "sha256": "91653f98178e63a344bb4d364c9d43bd698fc3d3d04c5d733b98104178f4fd6c"
     },
     {
       "name": "local_http.py",
@@ -1315,7 +1343,7 @@
     },
     {
       "name": "console_native_acceptance.py",
-      "sha256": "c7b1c4abf62bab8071eecc01b9c6f88efdeac4d94bdc3645cce78cb36e02eeda"
+      "sha256": "6cbf40c5d3629f184ec623e54992837ddeacbe0f7ab336c20bc2c9bfb70601c7"
     }
   ],
   "serverPatches": [

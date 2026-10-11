@@ -112,7 +112,7 @@ func validSettingRevision(revision string) bool {
 // the identity while an object write or its multipart cleanup is in progress.
 func (s *Server) startSettingsWrite(w http.ResponseWriter, sess *session, rotate bool) bool {
 	s.mu.Lock()
-	if s.closed || s.rotating || s.nativeRotating[sess.runtime.identity] || sess.ctx.Err() != nil {
+	if s.closed || s.rotating || s.nativeRotating[sess.runtime.identity] || s.nativeUserChanging[sess.nativeUser] || sess.ctx.Err() != nil {
 		s.mu.Unlock()
 		writeError(w, 409, "credential_change_pending", "This connection is ending. Restart OC before writing again.")
 		return false
@@ -135,7 +135,7 @@ func (s *Server) startSettingsWrite(w http.ResponseWriter, sess *session, rotate
 			return false
 		}
 	}
-	s.rotating = rotate
+	s.rotating = rotate && s.nativeLogin == nil
 	s.workers.Add(1)
 	s.mu.Unlock()
 	return true
