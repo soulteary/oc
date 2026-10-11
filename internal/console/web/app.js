@@ -371,10 +371,11 @@
   function focusLogin() { elements[nativeLogin ? "login-access-key" : "login-code"].focus(); }
 
   class APIError extends Error {
-    constructor(status, code, message, restartRequired) {
+    constructor(status, code, message, restartRequired, loginRequired) {
       super(message);
       this.status = status;
       this.code = code;
+      this.loginRequired = loginRequired === true;
       if (typeof restartRequired === "boolean") this.restartRequired = restartRequired;
     }
   }
@@ -479,7 +480,7 @@
       throw new APIError(response.status, "InvalidResponse", "The local console returned an unexpected response. Try refreshing.");
     }
     if (!response.ok) {
-      throw new APIError(response.status, data?.code || "RequestFailed", data?.message || "The request could not be completed.", data?.restartRequired);
+      throw new APIError(response.status, data?.code || "RequestFailed", data?.message || "The request could not be completed.", data?.restartRequired, data?.loginRequired);
     }
     return data;
   }
@@ -2289,7 +2290,7 @@
     policies: [],
   };
   if (nativeLogin) {
-    iamActions.users = ["user.create", "user.enable"];
+    iamActions.users = ["user.create", "user.enable", "user.disable"];
     iamActions.groups = ["group.create"];
     iamActions["service-accounts"] = ["service-account.create"];
   }
@@ -2489,7 +2490,7 @@
     event.preventDefault();
     if (!featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
     const action = elements["iam-action"].value;
-    if (nativeLogin && !["user.create", "user.enable", "group.create", "service-account.create"].includes(action)) return;
+    if (nativeLogin && !["user.create", "user.enable", "user.disable", "group.create", "service-account.create"].includes(action)) return;
     const body = { action, confirmTarget: elements["iam-confirm"].value };
     for (const [name, input] of Object.entries(iamInputs)) {
       if (name === "policies") body.policies = [...new Set(input.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];
@@ -2517,6 +2518,10 @@
       const result = await api("/api/iam/actions", mutationOptions(body), request);
       if (!currentRequest("iam-action", request)) return;
       if (result?.outcome !== "confirmed") throw new APIError(0, "UnknownIAMOutcome", "The change was not confirmed. Verify storage before retrying.");
+      if (nativeLogin && result?.loginRequired) {
+        showLogin("Your account was disabled. An administrator must enable it before you can sign in again.");
+        return;
+      }
       if (nativeLogin && result?.restartRequired) throw new APIError(0, "UnknownIAMOutcome", "The creation was not safely confirmed.");
       if (result?.restartRequired) {
         consoleStopped = true;
@@ -2546,6 +2551,10 @@
       if (!currentRequest("iam-action", request) || error.name === "AbortError") return;
       if (error.restartRequired || error.status === 0 || error.code === "outcome_unknown") {
         if (nativeLogin) {
+          if (error.loginRequired) {
+            showLogin("Your account may have been disabled. Verify its status with an administrator before signing in again. This request was not repeated.");
+            return;
+          }
           elements["iam-confirm"].value = "";
           clearIAMSecret();
           setText("iam-action-status", "The IAM operation outcome is unknown. Verify the exact target before making another request. This request was not repeated.");

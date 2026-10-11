@@ -1806,13 +1806,13 @@ test("native page suspension clears unsubmitted identity credentials", async () 
  assert.equal(h.calls.filter(c=>c.url==="/api/login").length,0);
 });
 
-test("native writable sessions expose creation and activation but reject other identity edits", async () => {
+test("native writable sessions expose creation and account status changes but reject other identity edits", async () => {
   const h = createHarness({ native: true, readOnly: false, capabilities: fullCapabilities });
   await h.ready();
   await h.fire("open-iam");
   assert.equal(h.element("iam-action-form").hidden, false);
-  assert.deepEqual(h.element("iam-action").children.map(o=>o.value),["user.create", "user.enable"]);
-  h.element("iam-action").value="user.disable";
+  assert.deepEqual(h.element("iam-action").children.map(o=>o.value),["user.create", "user.enable", "user.disable"]);
+  h.element("iam-action").value="user.delete";
   await h.fire("iam-action-form", "submit", { force: true });
   assert.equal(h.calls.filter(call => call.url === "/api/iam/actions").length, 0);
   assert.equal(h.element("workspace").hidden, false);
@@ -1859,6 +1859,20 @@ test("native IAM account activation keeps the console available after confirmati
  await h.fire("iam-action-form","submit");
  assert.equal(JSON.parse(h.calls.find(c=>c.url==="/api/iam/actions").body).action,"user.enable");
  assert.equal(h.element("workspace").hidden,false);assert.equal(h.element("iam-confirm").value,"");
+});
+
+test("native account disable returns self to login and keeps other-user changes available", async () => {
+ for (const self of [false,true]) for (const uncertain of [false,true]) {
+  const h=createHarness({native:true,readOnly:false,capabilities:fullCapabilities});
+  h.route("POST","/api/iam/actions",()=>uncertain ? response({code:"outcome_unknown",loginRequired:self},502) : response({outcome:"confirmed",restartRequired:false,loginRequired:self}));
+  await h.ready();await h.fire("open-iam");
+  h.element("iam-action").value="user.disable";await h.fire("iam-action","change");
+  iamField(h,"user").value="disabled-user";h.element("iam-confirm").value="disabled-user";
+  await h.fire("iam-action-form","submit");
+  assert.equal(h.element("workspace").hidden,self);
+  assert.equal(h.element("login-submit").disabled,false);
+  assert.equal(h.calls.filter(c=>c.url==="/api/iam/actions").length,1);
+ }
 });
 
 (async () => {

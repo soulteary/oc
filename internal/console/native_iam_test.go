@@ -60,7 +60,7 @@ func TestNativeIAMActionsUseOwnPermissionsAndDoNotStopSessions(t *testing.T) {
 					}
 				}
 			}
-			r := nativeRequest("POST", "/api/iam/actions", `{"action":"user.disable","user":"bob","confirmTarget":"bob"}`, alice)
+			r := nativeRequest("POST", "/api/iam/actions", `{"action":"user.delete","user":"bob","confirmTarget":"bob"}`, alice)
 			r.Header.Set("X-CSRF-Token", ar.CSRFToken)
 			w := httptest.NewRecorder()
 			s.ServeHTTP(w, r)

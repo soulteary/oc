@@ -41,7 +41,7 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if !nativeIAMActionAllowed(nativeArgs.Action) || (nativeArgs.Action == "group.create" && len(nativeArgs.Members) != 0) {
-				writeError(w, 403, "identity_changes_disabled", "Native IAM supports creation and user activation; other identity changes are unavailable.")
+				writeError(w, 403, "identity_changes_disabled", "Native IAM supports creation and user activation/deactivation; other identity changes are unavailable.")
 				return
 			}
 		}
@@ -115,6 +115,10 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		writeError(w, 400, "invalid_input", "Choose a supported IAM action and confirm its exact target. Include only the fields required by that action.")
 		return
 	}
+	if s.nativeLogin != nil && args.Action == "user.disable" {
+		s.disableNativeUser(w, r, sess, backend, args)
+		return
+	}
 	// Local IAM edits can invalidate the shared identity and reserve every
 	// write slot. Native creation and account activation use one ordinary slot;
 	// conditional creation must not replace existing identities.
@@ -173,5 +177,5 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 }
 
 func nativeIAMActionAllowed(action string) bool {
-	return action == "user.enable" || action == "user.create" || action == "group.create" || action == "service-account.create"
+	return action == "user.disable" || action == "user.enable" || action == "user.create" || action == "group.create" || action == "service-account.create"
 }

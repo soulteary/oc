@@ -85,12 +85,13 @@ type sessionRuntime struct {
 }
 
 type session struct {
-	runtime sessionRuntime
-	csrf    string
-	expires time.Time
-	ctx     context.Context
-	cancel  context.CancelFunc
-	timer   *time.Timer
+	runtime    sessionRuntime
+	nativeUser string
+	csrf       string
+	expires    time.Time
+	ctx        context.Context
+	cancel     context.CancelFunc
+	timer      *time.Timer
 }
 
 type sessionReply struct {
@@ -119,36 +120,38 @@ type Server struct {
 	ttl             time.Duration
 	assets          fs.FS
 
-	mu                sync.Mutex
-	closed            bool
-	rotating          bool
-	nativeRotating    map[string]bool
-	nativeEpoch       uint64
-	nativeRevoked     map[string]uint64
-	nativeLogins      int
-	sessions          map[[32]byte]*session
-	loginWindow       time.Time
-	loginCount        int
-	apiSlots          chan struct{}
-	downloads         chan struct{}
-	writer            consoleapi.MutationBackend
-	settings          consoleapi.SettingsBackend
-	maxUploadSize     int64
-	jobs              map[string]*job
-	writeSlots        chan struct{}
-	planSlots         chan struct{}
-	workers           sync.WaitGroup
-	clients           sync.WaitGroup
-	loginSlots        chan struct{}
-	verificationSlots chan struct{}
-	life              context.Context
-	stopLife          context.CancelFunc
-	streamIdle        time.Duration
-	allowSharing      bool
-	maxArchiveSize    int64
-	archiveDir        string
-	archives          map[string]*archiveTask
-	archiveSlots      chan struct{}
+	mu                 sync.Mutex
+	closed             bool
+	rotating           bool
+	nativeRotating     map[string]bool
+	nativeEpoch        uint64
+	nativeRevoked      map[string]uint64
+	nativeLogins       int
+	nativeUserChanging map[string]bool
+	nativeUserRevoked  map[string]uint64
+	sessions           map[[32]byte]*session
+	loginWindow        time.Time
+	loginCount         int
+	apiSlots           chan struct{}
+	downloads          chan struct{}
+	writer             consoleapi.MutationBackend
+	settings           consoleapi.SettingsBackend
+	maxUploadSize      int64
+	jobs               map[string]*job
+	writeSlots         chan struct{}
+	planSlots          chan struct{}
+	workers            sync.WaitGroup
+	clients            sync.WaitGroup
+	loginSlots         chan struct{}
+	verificationSlots  chan struct{}
+	life               context.Context
+	stopLife           context.CancelFunc
+	streamIdle         time.Duration
+	allowSharing       bool
+	maxArchiveSize     int64
+	archiveDir         string
+	archives           map[string]*archiveTask
+	archiveSlots       chan struct{}
 }
 
 func New(cfg Config) (*Server, error) {
@@ -215,7 +218,7 @@ func New(cfg Config) (*Server, error) {
 	life, stopLife := context.WithCancel(context.Background())
 	settings, _ := cfg.Backend.(consoleapi.SettingsBackend)
 	return &Server{
-		nativeRotating: make(map[string]bool), nativeRevoked: make(map[string]uint64), nativeLogin: cfg.NativeLogin, dataDir: cfg.DataDir, userPreferences: make(map[string]*principalPreferences), preferences: preferences, backend: cfg.Backend, backendFactory: cfg.BackendFactory, allowWrites: cfg.AllowWrites, alias: cfg.Alias, origin: u.Scheme + "://" + u.Host,
+		nativeUserChanging: make(map[string]bool), nativeUserRevoked: make(map[string]uint64), nativeRotating: make(map[string]bool), nativeRevoked: make(map[string]uint64), nativeLogin: cfg.NativeLogin, dataDir: cfg.DataDir, userPreferences: make(map[string]*principalPreferences), preferences: preferences, backend: cfg.Backend, backendFactory: cfg.BackendFactory, allowWrites: cfg.AllowWrites, alias: cfg.Alias, origin: u.Scheme + "://" + u.Host,
 		host: u.Host, code: sha256.Sum256([]byte(cfg.LoginCode)), ttl: cfg.SessionTTL,
 		assets: web.FS(), sessions: make(map[[32]byte]*session),
 		apiSlots: make(chan struct{}, 8), downloads: make(chan struct{}, 2),
@@ -311,10 +314,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// the response stream. Reauthentication in route handlers still checks expiry.
 	if sess, _ := s.authenticate(r); sess != nil {
 		s.mu.Lock()
-		changing := s.nativeRotating[sess.runtime.identity]
+		changing := s.nativeRotating[sess.runtime.identity] || s.nativeUserChanging[sess.nativeUser]
 		s.mu.Unlock()
 		if changing && r.URL.Path != "/api/logout" {
-			writeError(w, 409, "credential_change_pending", "This user's secret is being changed. Wait for the result before signing in again.")
+			writeError(w, 409, "credential_change_pending", "This user's account is being changed. Wait for the result before signing in again.")
 			return
 		}
 		if !sess.runtime.retain() {
@@ -607,6 +610,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var epoch uint64
 	if s.nativeLogin != nil {
 		s.mu.Lock()
+		if s.nativeUserChanging[args.AccessKey] {
+			s.mu.Unlock()
+			writeError(w, 409, "credential_change_pending", "This account is being changed. Wait for the result before signing in again.")
+			return
+		}
 		epoch = s.nativeEpoch
 		s.nativeLogins++
 		s.mu.Unlock()
@@ -615,6 +623,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			s.nativeLogins--
 			if s.nativeLogins == 0 {
 				clear(s.nativeRevoked)
+				clear(s.nativeUserRevoked)
 			}
 			s.mu.Unlock()
 		}()
@@ -631,7 +640,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithCancel(s.life)
-	sess := &session{runtime: runtime, csrf: csrf, expires: time.Now().Add(s.ttl), ctx: ctx, cancel: cancel}
+	sess := &session{nativeUser: args.AccessKey, runtime: runtime, csrf: csrf, expires: time.Now().Add(s.ttl), ctx: ctx, cancel: cancel}
 	s.mu.Lock()
 	// A login can finish reading its body after another request starts
 	// rotating credentials. Recheck the pause at the session commit point.
@@ -653,7 +662,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if native {
-		if s.nativeRotating[runtime.identity] || s.nativeRevoked[runtime.identity] > epoch {
+		if s.nativeRotating[runtime.identity] || s.nativeRevoked[runtime.identity] > epoch || s.nativeUserChanging[args.AccessKey] || s.nativeUserRevoked[args.AccessKey] > epoch {
 			s.mu.Unlock()
 			cancel()
 			runtime.retire()
