@@ -54,3 +54,19 @@ Reproduce with `buildscripts/test-console-range-real.py --cli ... --console ...
 --server ... --server-source ... --output ...` from the repository root. All
 configuration, aliases, identities, storage and processes are disposable.
 The source argument is a declared source identifier, not binary authentication.
+
+## Observed-version review regression
+
+After commit `4f05142f`, the same published server binary passed all 45
+checks again. Explicit null and historical reads still returned 206; a
+current-only account still received 206 for current bytes and 403 for
+historical bytes. `review36-server-results.json` preserves this separate run
+with console, server and fixture CLI binary digests; the original report is
+unchanged. The same local browser/independent upstream TLS scope applies.
+
+Additional wire-level regression tests force a current HEAD v1 followed by
+GET v2 with the same ETag, requiring `object_changed` and closure of the actual
+SDK response body. Empty and `null` observed versions normalize to each other
+only; neither can match a non-null observed version. These injected race cases
+are protocol tests, not a claim that the real-service matrix forced an update
+exactly between HEAD and GET.

@@ -1,0 +1,44 @@
+{
+  "serverSource": "8cc518b31ac8b69c8f855e19b4bd027f44275c47",
+  "profiles": [
+    {
+      "profile": "single-http",
+      "checks": 9,
+      "fixtureBytes": 1048576,
+      "sha256": "aca1cd027e979588d14b877b7b0cb8585ad9fec599eb45801992ee5382b3760f",
+      "emptyObjectChecks": 2,
+      "nullVersionStatus": 206,
+      "historicalVersionStatus": 206,
+      "restrictedCurrentStatus": 206,
+      "restrictedHistoricalStatus": 403
+    },
+    {
+      "profile": "dual-http",
+      "checks": 9,
+      "fixtureBytes": 1048576,
+      "sha256": "aca1cd027e979588d14b877b7b0cb8585ad9fec599eb45801992ee5382b3760f",
+      "emptyObjectChecks": 2,
+      "nullVersionStatus": 206,
+      "historicalVersionStatus": 206,
+      "restrictedCurrentStatus": 206,
+      "restrictedHistoricalStatus": 403
+    },
+    {
+      "profile": "dual-tls",
+      "checks": 9,
+      "fixtureBytes": 1048576,
+      "sha256": "aca1cd027e979588d14b877b7b0cb8585ad9fec599eb45801992ee5382b3760f",
+      "emptyObjectChecks": 2,
+      "nullVersionStatus": 206,
+      "historicalVersionStatus": 206,
+      "restrictedCurrentStatus": 206,
+      "restrictedHistoricalStatus": 403
+    }
+  ],
+  "consoleCommit": "4f05142f9b5b",
+  "serverRelease": "RELEASE.2026-10-10T16-38-05Z",
+  "serverSourceInterpretation": "embedded base revision; release binary reports vcs.modified=true; not a complete release source identifier",
+  "serverSHA256": "48b673ad0e03723eeeedb2ab5773569093b426d8fa04e132d17183ac7afb6f9c",
+  "consoleSHA256": "c4558d9fa427a4f1af63fcec6cf33fd27f0eb7f2b407c3f64eb31615a7a93504",
+  "fixtureCLISHA256": "7b4b9605729839239f2cb332bf96c20f0929fa87e4ac0173d9eb02932555f87a"
+}
