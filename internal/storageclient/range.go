@@ -62,3 +62,37 @@ func sameRangeVersion(expected, actual string) bool {
 	}
 	return expected == actual
 }
+
+// OpenRangeFull uses the original selector: a current-object request must not
+// become a historical-version request merely because HEAD observed a version.
+// Both full conditional GET and If-Range fallback therefore retain GetObject
+// authorization while rejecting races in the returned metadata.
+func (c *Client) OpenRangeFull(ctx context.Context, ref consoleapi.ObjectRef, expected consoleapi.ObjectInfo) (consoleapi.Object, error) {
+	if err := c.ready(ctx); err != nil {
+		return consoleapi.Object{}, err
+	}
+	if !validReference(ref) || !validETag(expected.ETag) || expected.Size < 0 {
+		return consoleapi.Object{}, invalidRequest()
+	}
+	opts := minio.GetObjectOptions{VersionID: ref.VersionID}
+	if err := opts.SetMatchETag(expected.ETag); err != nil {
+		return consoleapi.Object{}, invalidRequest()
+	}
+	body, info, headers, err := (minio.Core{Client: c.s3}).GetObject(ctx, ref.Bucket, ref.Key, opts)
+	reject := func(err error) (consoleapi.Object, error) {
+		if body != nil {
+			_ = body.Close()
+		}
+		return consoleapi.Object{}, err
+	}
+	if err != nil {
+		return reject(featureReadError(err))
+	}
+	if ref.VersionID != "" && headers.Get("X-Otterio-Version-Authorization") != "v1" {
+		return reject(versionAuthorizationUnsupported())
+	}
+	if body == nil || info.ETag != expected.ETag || info.Size != expected.Size || !versionMatches(ref.VersionID, info.VersionID) || !sameRangeVersion(expected.VersionID, info.VersionID) || headers.Get("X-Amz-Delete-Marker") == "true" || headers.Get("Content-Range") != "" {
+		return reject(referenceChanged())
+	}
+	return consoleapi.Object{Body: body, Size: info.Size, ETag: info.ETag, ContentType: info.ContentType, Modified: info.LastModified}, nil
+}

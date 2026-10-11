@@ -34,15 +34,23 @@ type rangeFake struct {
 	opens int
 	ref   consoleapi.ObjectRef
 	size  int64
+	etag  string
 }
 
 func (f *rangeFake) StatReference(context.Context, consoleapi.ObjectRef) (consoleapi.ObjectInfo, error) {
-	return consoleapi.ObjectInfo{Size: f.size, ETag: "etag", Modified: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)}, nil
+	etag := f.etag
+	if etag == "" {
+		etag = "etag"
+	}
+	return consoleapi.ObjectInfo{Size: f.size, ETag: etag, Modified: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)}, nil
 }
 func (f *rangeFake) OpenReference(_ context.Context, ref consoleapi.ObjectRef, etag string) (consoleapi.Object, error) {
 	f.opens++
 	f.ref = ref
 	return consoleapi.Object{Body: io.NopCloser(strings.NewReader("0123456789")), Size: f.size}, nil
+}
+func (f *rangeFake) OpenRangeFull(ctx context.Context, ref consoleapi.ObjectRef, info consoleapi.ObjectInfo) (consoleapi.Object, error) {
+	return f.OpenReference(ctx, ref, info.ETag)
 }
 func (f *rangeFake) OpenRange(_ context.Context, ref consoleapi.ObjectRef, _ consoleapi.ObjectInfo, a, b int64) (consoleapi.Object, error) {
 	f.opens++
@@ -102,5 +110,87 @@ func TestRangeResponsePreservesControllerAndLength(t *testing.T) {
 	})
 	if complete || recorder.Code != 206 || recorder.Header().Get("Content-Length") != "3" || recorder.Body.String() != "x" {
 		t.Fatal("truncated range reported complete")
+	}
+}
+
+func TestEntityTagGrammar(t *testing.T) {
+	for _, tc := range []struct {
+		list, tag            string
+		weak, matched, valid bool
+	}{
+		{`"a,b"`, `"a,b"`, false, true, true},
+		{`"other", W/"a,b"`, `"a,b"`, true, true, true},
+		{`W/"a,b"`, `"a,b"`, false, false, true},
+		{`"a\b"`, `"a\b"`, false, true, true},
+		{`*`, `"tag"`, false, true, true},
+		{`"tag", invalid`, `"tag"`, false, false, false},
+		{`"tag",`, `"tag"`, false, false, false},
+		{`*, "tag"`, `"tag"`, true, false, false},
+		{`"a b"`, `"tag"`, true, false, false},
+		{"\"a\x7fb\"", `"tag"`, true, false, false},
+		{`"tag" junk`, `"tag"`, true, false, false},
+		{`"unclosed`, `"tag"`, false, false, false},
+	} {
+		matched, valid := matchEntityTags(tc.list, tc.tag, tc.weak)
+		if matched != tc.matched || valid != tc.valid {
+			t.Fatalf("%q matched=%v valid=%v", tc.list, matched, valid)
+		}
+	}
+}
+
+func TestHTTPConditionsPreserveOpaqueETags(t *testing.T) {
+	for _, opaque := range []string{"a,b", `a\b`} {
+		for _, tc := range []struct {
+			header, value string
+			status        int
+		}{
+			{"If-None-Match", `W/"` + opaque + `"`, 304},
+			{"If-Match", `"other", "` + opaque + `"`, 200},
+			{"If-Range", `"` + opaque + `"`, 206},
+			{"If-None-Match", `"` + opaque + `", malformed`, 400},
+		} {
+			f := &rangeFake{size: 10, etag: opaque}
+			s := &Server{streamIdle: time.Second}
+			sess := &session{runtime: sessionRuntime{backend: f}}
+			r := httptest.NewRequest("GET", "/", nil)
+			r.Header.Set(tc.header, tc.value)
+			if tc.header == "If-Range" {
+				r.Header.Set("Range", "bytes=2-4")
+			}
+			w := httptest.NewRecorder()
+			s.downloadRange(w, r, r.Context(), sess, consoleapi.ObjectRef{Bucket: "bucket", Key: "key"})
+			if w.Code != tc.status || w.Header().Get("ETag") != `"`+opaque+`"` {
+				t.Fatalf("%q %s: status=%d etag=%q", opaque, tc.header, w.Code, w.Header().Get("ETag"))
+			}
+		}
+	}
+}
+
+type changedFullRangeFake struct {
+	rangeFake
+	fullCalled bool
+}
+
+func (f *changedFullRangeFake) OpenRangeFull(context.Context, consoleapi.ObjectRef, consoleapi.ObjectInfo) (consoleapi.Object, error) {
+	f.fullCalled = true
+	return consoleapi.Object{}, &consoleapi.Error{Status: 409, Code: "object_changed", Message: "Object changed."}
+}
+func TestConditionalFullDownloadUsesObservedMetadata(t *testing.T) {
+	for _, header := range []string{"If-Match", "If-Range"} {
+		f := &changedFullRangeFake{rangeFake: rangeFake{size: 10}}
+		s := &Server{streamIdle: time.Second}
+		sess := &session{runtime: sessionRuntime{backend: f}}
+		r := httptest.NewRequest("GET", "/", nil)
+		if header == "If-Match" {
+			r.Header.Set(header, `"etag"`)
+		} else {
+			r.Header.Set("Range", "bytes=2-4")
+			r.Header.Set(header, `"other"`)
+		}
+		w := httptest.NewRecorder()
+		s.downloadRange(w, r, r.Context(), sess, consoleapi.ObjectRef{Bucket: "bucket", Key: "key"})
+		if !f.fullCalled || w.Code != 409 || f.opens != 0 {
+			t.Fatalf("%s: pin=%v status=%d oldopens=%d", header, f.fullCalled, w.Code, f.opens)
+		}
 	}
 }

@@ -131,7 +131,11 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
                 assert status == 206 and body == b'NEW', (status, body)
                 status, headers, body = probe({'bucket': 'range-fixture', 'key': 'history', 'versionId': old_version}, headers={'Range': 'bytes=0-2'})
                 assert status == 403, (status, body)
-                results.append({'profile': profile, **json.loads(out.stdout), 'emptyObjectChecks': 2, 'nullVersionStatus': null_status, 'historicalVersionStatus': 206, 'restrictedCurrentStatus': 206, 'restrictedHistoricalStatus': 403})
+                status, headers, body = probe({'bucket': 'range-fixture', 'key': 'history'}, headers={'If-Match': '*'})
+                assert status == 200 and body == b'NEW-BYTES', (status, body)
+                status, headers, body = probe({'bucket': 'range-fixture', 'key': 'history'}, headers={'Range': 'bytes=0-2', 'If-Range': '"different"'})
+                assert status == 200 and body == b'NEW-BYTES', (status, body)
+                results.append({'profile': profile, **json.loads(out.stdout), 'emptyObjectChecks': 2, 'nullVersionStatus': null_status, 'historicalVersionStatus': 206, 'restrictedCurrentStatus': 206, 'restrictedHistoricalStatus': 403, 'restrictedConditionalFullStatus': 200, 'restrictedIfRangeFallbackStatus': 200})
             finally:
                 h.stop(console)
                 h.stop(server)

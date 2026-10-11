@@ -55,20 +55,49 @@ func byteRange(value string, size int64) (int64, int64, bool) {
 	return start, end, true
 }
 
-func etagMatches(list, tag string, weak bool) bool {
-	for _, item := range strings.Split(list, ",") {
-		item = strings.TrimSpace(item)
-		if item == "*" {
-			return true
+// matchEntityTags parses a complete HTTP entity-tag list before comparing. A
+// comma inside the quoted opaque tag is data; backslash is not an escape.
+func matchEntityTags(list, tag string, weak bool) (bool, bool) {
+	list = strings.Trim(list, " \t")
+	if list == "*" {
+		return true, true
+	}
+	matched := false
+	for list != "" {
+		itemWeak := strings.HasPrefix(list, "W/")
+		if itemWeak {
+			list = list[2:]
 		}
-		if weak {
-			item = strings.TrimPrefix(item, "W/")
+		if len(list) == 0 || list[0] != '"' {
+			return false, false
 		}
-		if item == tag {
-			return true
+		end := 1
+		for end < len(list) && list[end] != '"' {
+			c := list[end]
+			if c < 0x21 || c == 0x7f {
+				return false, false
+			}
+			end++
+		}
+		if end == len(list) {
+			return false, false
+		}
+		if (weak || !itemWeak) && list[:end+1] == tag {
+			matched = true
+		}
+		list = strings.TrimLeft(list[end+1:], " \t")
+		if list == "" {
+			return matched, true
+		}
+		if list[0] != ',' {
+			return false, false
+		}
+		list = strings.TrimLeft(list[1:], " \t")
+		if list == "" {
+			return false, false
 		}
 	}
-	return false
+	return false, false
 }
 func notModifiedSince(value string, modified time.Time) bool {
 	date, err := http.ParseTime(value)
@@ -94,20 +123,36 @@ func (s *Server) downloadRange(w http.ResponseWriter, r *http.Request, ctx conte
 		writeBackendError(w, err)
 		return false
 	}
-	tag := strconv.Quote(info.ETag)
+	tag, validTag := consoleapi.FormatEntityTag(info.ETag)
+	if !validTag {
+		writeError(w, 502, "upstream_error", "The storage server returned an invalid object validator.")
+		return false
+	}
 	w.Header().Set("ETag", tag)
 	if !info.Modified.IsZero() {
 		w.Header().Set("Last-Modified", info.Modified.UTC().Format(http.TimeFormat))
 	}
 	w.Header().Set("Accept-Ranges", "bytes")
-	if value := r.Header.Get("If-Match"); value != "" && !etagMatches(value, tag, false) {
-		return rangeHeaders(w, ctx, 412)
+	if value := r.Header.Get("If-Match"); value != "" {
+		matched, valid := matchEntityTags(value, tag, false)
+		if !valid {
+			writeError(w, 400, "invalid_input", "The entity-tag condition is malformed.")
+			return false
+		}
+		if !matched {
+			return rangeHeaders(w, ctx, 412)
+		}
 	}
 	if date, err := http.ParseTime(r.Header.Get("If-Unmodified-Since")); r.Header.Get("If-Match") == "" && err == nil && !info.Modified.IsZero() && info.Modified.Truncate(time.Second).After(date) {
 		return rangeHeaders(w, ctx, 412)
 	}
 	if value := r.Header.Get("If-None-Match"); value != "" {
-		if etagMatches(value, tag, true) {
+		matched, valid := matchEntityTags(value, tag, true)
+		if !valid {
+			writeError(w, 400, "invalid_input", "The entity-tag condition is malformed.")
+			return false
+		}
+		if matched {
 			return rangeHeaders(w, ctx, 304)
 		}
 	} else if notModifiedSince(r.Header.Get("If-Modified-Since"), info.Modified) {
@@ -123,7 +168,7 @@ func (s *Server) downloadRange(w http.ResponseWriter, r *http.Request, ctx conte
 	}
 	if value == "" {
 		return s.downloadUsing(w, ctx, ref.Key, func(ctx context.Context) (consoleapi.Object, error) {
-			return backend.OpenReference(ctx, ref, info.ETag)
+			return backend.OpenRangeFull(ctx, ref, info)
 		})
 	}
 	start, end, ok := byteRange(value, info.Size)
