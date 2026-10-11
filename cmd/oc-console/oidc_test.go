@@ -6,11 +6,24 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestOIDCSecretFile(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "secret")
+	if runtime.GOOS == "windows" {
+		if err := os.WriteFile(p, []byte("example-secret"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readOIDCSecret(p); err == nil {
+			t.Fatal("secret file accepted without private permission verification")
+		}
+		if secret, err := readOIDCSecret(""); err != nil || secret != "" {
+			t.Fatal("public client rejected")
+		}
+		return
+	}
 	for _, tc := range []struct {
 		data string
 		mode os.FileMode

@@ -64,7 +64,7 @@ def finalize_report(report, output, cleanup):
         if report['status'] == 'passed':
             report['status'] = 'failed'
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, indent=2) + '\n')
+    output.write_text(json.dumps(report, indent=2) + '\n', encoding="utf-8")
     print(json.dumps(report))
     if report['cleanup'] == 'failed' and not primary_failed:
         raise RuntimeError('temporary Compose project cleanup failed; report saved') from None
@@ -73,7 +73,7 @@ def finalize_report(report, output, cleanup):
 def main(output):
     urllib.request.install_opener(urllib.request.build_opener(urllib.request.ProxyHandler({})))
     checks=[]
-    original=(ROOT/'deploy/compose.console.yaml').read_text()
+    original=(ROOT/'deploy/compose.console.yaml').read_text(encoding="utf-8")
     report={'dateUTC':datetime.datetime.now(datetime.timezone.utc).isoformat(),'hostPlatform':platform.platform(),'status':'running','checks':checks,'images':images_from_recipe(original),'composeSha256':hashlib.sha256(original.encode()).hexdigest(),'harnessSha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
     with tempfile.TemporaryDirectory(prefix='oc-compose-release-') as temporary:
         root=Path(temporary);project='oc-release-'+secrets.token_hex(4)
@@ -81,7 +81,7 @@ def main(output):
         while web==s3:web=port()
         base=f'http://127.0.0.1:{web}'
         recipe=original.replace('127.0.0.1:9000:9000',f'127.0.0.1:{s3}:9000').replace('127.0.0.1:9090',f'127.0.0.1:{web}')
-        file=root/'compose.yaml';file.write_text(recipe)
+        file=root/'compose.yaml';file.write_text(recipe, encoding="utf-8")
         access='smoke-'+secrets.token_hex(5);secret=secrets.token_hex(24)
         env={k:v for k,v in os.environ.items() if not k.startswith(('OC_', 'MC_', 'OTTERIO_', 'COMPOSE_'))}
         env.update(OTTERIO_ROOT_USER=access,OTTERIO_ROOT_PASSWORD=secret)
@@ -157,13 +157,13 @@ def main(output):
                 probe_legacy_route(container,method,path)
             checks.append('legacy page RPC upload download ZIP unavailable on internal Admin listener')
             # Rollback toggles UI on the same image and volume, never downgrades storage.
-            file.write_text(recipe.replace("OTTERIO_BROWSER: 'off'","OTTERIO_BROWSER: 'on'"));compose('up','-d','otterio');ready()
+            file.write_text(recipe.replace("OTTERIO_BROWSER: 'off'","OTTERIO_BROWSER: 'on'"), encoding="utf-8");compose('up','-d','otterio');ready()
             container=compose('ps','-q','otterio').strip()
             r=subprocess.run(['docker','exec',container,'curl','-s','-o','/dev/null','-w','%{http_code}','-A','Mozilla/5.0','http://127.0.0.1:9001/otterio/'],capture_output=True,text=True,timeout=15)
             assert r.returncode==0 and r.stdout=='200',r.stdout
             verify_object()
             checks.append('same-server same-volume rollback restores embedded page and object bytes')
-            file.write_text(recipe);compose('up','-d','otterio');ready();req('/api/buckets')
+            file.write_text(recipe, encoding="utf-8");compose('up','-d','otterio');ready();req('/api/buckets')
             verify_object()
             checks.append('return to browser-off retains OC access and object bytes')
             report['status']='passed'

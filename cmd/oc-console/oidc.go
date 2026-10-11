@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -41,6 +42,10 @@ func (t *oidcTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 func readOIDCSecret(path string) (string, error) {
 	if path == "" {
 		return "", nil
+	}
+	// Windows mode bits cannot establish private ACLs; keep file secrets closed.
+	if runtime.GOOS == "windows" {
+		return "", errors.New("OIDC client secret files require POSIX permission checks; use a public client on Windows")
 	}
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 4096 {
