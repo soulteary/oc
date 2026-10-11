@@ -38,39 +38,42 @@
       "id": "02",
       "file": "02-identity-protocols.md",
       "owner": "identity",
-      "status": "active",
-      "dependencies": []
+      "status": "integrated",
+      "dependencies": [],
+      "scope": "锁内重新授权、全关系CAS和条件IAM协议已实现；服务端ff6e66f，最终运行组合复验中"
     },
     {
       "id": "03-user",
       "file": "03-iam.md",
-      "owner": "identity",
-      "status": "active",
+      "owner": "root",
+      "status": "integrated",
       "dependencies": [
         "00: shared types",
         "02: required protocols and impact scope"
       ],
-      "scope": "关系耦合用户改密协议、计划和撤销边界；其他用户写路径未全开"
+      "scope": "原生IAM条件计划、单次派发、权威范围撤销与UI已集成；最终资产真实单/双TLS复验中"
     },
     {
       "id": "03-group",
       "file": "03-iam.md",
-      "owner": null,
-      "status": "unclaimed",
+      "owner": "parity",
+      "status": "integrated",
       "dependencies": [
         "00: shared types",
         "02: required protocols and impact scope"
-      ]
+      ],
+      "scope": "原生IAM条件计划、单次派发、权威范围撤销与UI已集成；最终资产真实单/双TLS复验中"
     },
     {
       "id": "03-service-account",
       "file": "03-iam.md",
-      "owner": null,
-      "status": "unclaimed",
+      "owner": "parity",
+      "status": "integrated",
       "dependencies": [
         "00: shared types",
         "02: required protocols and impact scope"
-      ]
+      ],
+      "scope": "原生IAM条件计划、单次派发、权威范围撤销与UI已集成；最终资产真实单/双TLS复验中"
     },
     {
       "id": "04",
@@ -101,20 +104,21 @@
         "03-service-account",
         "04"
       ],
-      "scope": "Compose首批已集成；继续临时Keycloak真实验收"
+      "scope": "Compose、Keycloak协议和真实IAM验收已集成；最终浏览器及同资产回归中，正式发行与跨架构门禁未满足"
     },
     {
       "id": "06",
       "file": "06-removal.md",
-      "owner": null,
-      "status": "unclaimed",
+      "owner": "identity",
+      "status": "active",
       "dependencies": [],
       "executionGates": [
         "05: actual release pair certified",
         "OIDC replacement verified",
         "notified release cycles complete",
         "bounded fallback window complete before physical deletion"
-      ]
+      ],
+      "scope": "只读依赖清单与删除准备；不先于发行通知周期及回退窗口修改旧Web"
     }
   ],
   "sharedFileWindows": [
@@ -133,7 +137,7 @@
       "files": [
         "internal/console/identity_revocations.go"
       ],
-      "status": "active"
+      "status": "integrated"
     },
     {
       "owner": "deployment",
@@ -149,7 +153,7 @@
       "files": [
         "cmd/fiber_admin_router.go"
       ],
-      "status": "active",
+      "status": "integrated",
       "purpose": "接入条件IAM协议并修复锁内授权"
     },
     {
@@ -237,6 +241,24 @@
       "path": "docs/console-next-oidc-native-results.json",
       "result": "52 acceptance groups passed",
       "scope": "OIDC集成ddcc66bb后的native single/dual HTTPS回归；server19560364"
+    },
+    {
+      "task": "01",
+      "path": "docs/console-keycloak-console-dual-results.json",
+      "result": "14 acceptance groups passed",
+      "scope": "隔离Keycloak 26.8.0 双CA，51ee9152 Console协议cookiejar；非真实浏览器证据"
+    },
+    {
+      "task": "03/05",
+      "path": "docs/console-relationship-supported-results.json",
+      "result": "single/dual TLS each 22 acceptance groups passed",
+      "scope": "52310833 Console与ff6e66f OtterIO；后续回调修复及凭据回滚强化将用最终资产另行复验"
+    },
+    {
+      "task": "03/05",
+      "path": "docs/console-relationship-legacy-fixed-results.json",
+      "result": "single/dual TLS each 12 acceptance groups passed",
+      "scope": "同52310833 Console与旧cbbffbd服务端；未知协议拒绝，未以此证明权限认证"
     }
   ],
   "openDecisions": [
