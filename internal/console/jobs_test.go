@@ -4,6 +4,7 @@ package console
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -597,5 +598,58 @@ func TestPrefixPlanningConcurrencyLeavesReadSlotsAvailable(t *testing.T) {
 	waitSignal(t, done)
 	if len(s.planSlots) != 0 || b.writes.Load() != 0 {
 		t.Fatal("planning leaked a slot or deleted objects")
+	}
+}
+
+func TestOIDCDeletionPlanUsesRefreshedGenerationContext(t *testing.T) {
+	for _, expireBefore := range []bool{false, true} {
+		t.Run(fmt.Sprint(expireBefore), func(t *testing.T) {
+			oldctx, oldcancel := context.WithCancel(context.Background())
+			defer oldcancel()
+			currentctx, currentcancel := context.WithCancel(context.Background())
+			defer currentcancel()
+			backend := &fakeMutationBackend{fakeBackend: &fakeBackend{}}
+			backend.delete = func(ctx context.Context, _, _ string) error {
+				oldcancel()
+				return ctx.Err()
+			}
+			s := mutationServer(t, backend)
+			stable := &oidcSession{}
+			old := &session{ctx: oldctx, expires: time.Now().Add(time.Minute), oidc: stable}
+			current := &session{ctx: currentctx, expires: time.Now().Add(time.Minute), oidc: stable, runtime: sessionRuntime{writer: backend}}
+			w := httptest.NewRecorder()
+			j := s.createJob(w, old, consoleapi.Job{Kind: "delete", Status: "ready", Bucket: "bucket", Count: 2, Items: []consoleapi.JobItem{{Key: "one"}, {Key: "two"}}}, time.Minute)
+			if j == nil {
+				t.Fatal("plan unavailable")
+			}
+			confirmation := "confirmed-token"
+			j.confirm = sha256.Sum256([]byte(confirmation))
+			if expireBefore {
+				oldcancel()
+			}
+			r := httptest.NewRequest(http.MethodPost, "/api/deletions/"+j.info.ID+"/execute", strings.NewReader(`{"confirmToken":"`+confirmation+`"}`))
+			r.Header.Set("Content-Type", "application/json")
+			w = httptest.NewRecorder()
+			s.executeDeletion(w, r, current, j.info.ID)
+			if w.Code != 202 {
+				t.Fatalf("refreshed execution rejected: %d %s", w.Code, w.Body.String())
+			}
+			deadline := time.Now().Add(time.Second)
+			for {
+				s.mu.Lock()
+				info := snapshot(j)
+				s.mu.Unlock()
+				if terminal(info.Status) {
+					if info.Status != "succeeded" || info.Completed != 2 {
+						t.Fatalf("old generation interrupted deletion: %+v", info)
+					}
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("deletion did not finish")
+				}
+				time.Sleep(time.Millisecond)
+			}
+		})
 	}
 }

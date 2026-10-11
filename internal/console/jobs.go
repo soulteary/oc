@@ -554,7 +554,13 @@ func (s *Server) executeDeletion(w http.ResponseWriter, r *http.Request, sess *s
 		writeError(w, 404, "not_found", "This task does not exist.")
 		return
 	}
-	if j.info.Kind != "delete" || j.info.Status != "ready" || j.ctx.Err() != nil || !time.Now().Before(j.info.Expires) {
+	executionContext := j.ctx
+	if sess.oidc != nil {
+		// A ready plan belongs to the stable login, not the credential
+		// generation that scanned it. Execution uses the acquired generation.
+		executionContext = sess.ctx
+	}
+	if j.info.Kind != "delete" || j.info.Status != "ready" || executionContext.Err() != nil || !time.Now().Before(j.info.Expires) {
 		s.mu.Unlock()
 		writeError(w, 409, "task_state", "This deletion plan is no longer ready.")
 		return
@@ -576,7 +582,7 @@ func (s *Server) executeDeletion(w http.ResponseWriter, r *http.Request, sess *s
 		writeJSON(w, 200, info)
 		return
 	}
-	if err := tryAcquire(j.ctx, s.writeSlots); err != nil {
+	if err := tryAcquire(executionContext, s.writeSlots); err != nil {
 		s.mu.Unlock()
 		writeSlotError(w, err)
 		return
@@ -587,7 +593,11 @@ func (s *Server) executeDeletion(w http.ResponseWriter, r *http.Request, sess *s
 		writeError(w, 409, "connection_ending", "This connection is ending.")
 		return
 	}
-	// Use the same runtime retained above, including after OIDC refresh.
+	// Use the same runtime and context retained above, including after refresh.
+	if sess.oidc != nil {
+		j.cancel()
+		j.ctx, j.cancel = context.WithCancel(sess.ctx)
+	}
 	j.owner = sess
 	j.confirm = [32]byte{}
 	j.info.Status = "running"

@@ -49,7 +49,7 @@ func TestOIDCSecretFile(t *testing.T) {
 	}
 }
 func TestOIDCTransportRejectsOtherOrigins(t *testing.T) {
-	transport := &oidcTransport{issuer: "https://idp.example", storage: "https://storage.example"}
+	transport := &oidcTransport{issuer: "https://idp.example:443", storage: "https://storage.example:443"}
 	for _, raw := range []string{"https://attacker.example/", "http://idp.example/", "https://idp.example.attacker/"} {
 		u, _ := url.Parse(raw)
 		if _, err := transport.RoundTrip(&http.Request{URL: u}); err == nil {
@@ -100,5 +100,26 @@ func TestOIDCFixedEndpointsAcceptPreferenceConfigDirectory(t *testing.T) {
 	opts.alias = "startup-root"
 	if _, err := oidcClientConfig(opts); err == nil {
 		t.Fatal("OIDC inherited alias credentials")
+	}
+}
+
+func TestOIDCOriginEquivalentSpellings(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"https://idp.example", "https://idp.example:443"},
+		{"https://idp.example:0443", "https://idp.example"},
+		{"https://bücher.example", "https://xn--bcher-kva.example"},
+		{"https://IDP.example", "https://idp.example."},
+		{"https://[::1]", "https://[0:0:0:0:0:0:0:1]:443"},
+	} {
+		a, _ := url.Parse(pair[0])
+		b, _ := url.Parse(pair[1])
+		if oidcOrigin(a) != oidcOrigin(b) {
+			t.Fatalf("equivalent origins differ: %v", pair)
+		}
+	}
+	a, _ := url.Parse("https://idp.example:444")
+	b, _ := url.Parse("https://idp.example")
+	if oidcOrigin(a) == oidcOrigin(b) {
+		t.Fatal("different ports share trust")
 	}
 }

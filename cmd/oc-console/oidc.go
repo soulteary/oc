@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/soulteary/mc/internal/consoleapi"
 	"github.com/soulteary/mc/internal/oidc"
 	"github.com/soulteary/mc/internal/storageclient"
+	"golang.org/x/net/idna"
 )
 
 // Keep identity provider trust independent from storage trust. Fixed-origin
@@ -30,8 +32,30 @@ type oidcTransport struct {
 	idp, sts        *http.Transport
 }
 
+func oidcOrigin(u *url.URL) string {
+	scheme := strings.ToLower(u.Scheme)
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if ip := net.ParseIP(host); ip != nil {
+		host = ip.String()
+	} else if ascii, err := idna.Lookup.ToASCII(host); err == nil {
+		host = strings.ToLower(ascii)
+	}
+	port := u.Port()
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else if scheme == "http" {
+			port = "80"
+		}
+	}
+	if number, err := strconv.Atoi(port); err == nil {
+		port = strconv.Itoa(number)
+	}
+	return scheme + "://" + net.JoinHostPort(host, port)
+}
+
 func (t *oidcTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	origin := r.URL.Scheme + "://" + r.URL.Host
+	origin := oidcOrigin(r.URL)
 	if origin == t.issuer {
 		return t.idp.RoundTrip(r)
 	}
@@ -112,8 +136,8 @@ func runOIDC(ctx context.Context, opts options, output io.Writer) error {
 		return errors.New("OIDC requires a fixed HTTPS issuer")
 	}
 	storage, _ := url.Parse(cfg.S3URL)
-	issuerOrigin := issuer.Scheme + "://" + issuer.Host
-	storageOrigin := storage.Scheme + "://" + storage.Host
+	issuerOrigin := oidcOrigin(issuer)
+	storageOrigin := oidcOrigin(storage)
 	if issuerOrigin == storageOrigin {
 		return errors.New("identity provider and storage must use separate origins")
 	}
