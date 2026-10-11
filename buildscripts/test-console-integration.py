@@ -17,6 +17,7 @@ import secrets
 import signal
 import socket
 import ssl
+import sys
 import subprocess
 import tempfile
 import time
@@ -433,13 +434,25 @@ def scenario(args, name, preview=False, record=None):
             record['status'] = 'passed'
             return record
         finally:
-            stop(restricted_writer)
-            stop(write_console)
-            stop(restricted_console)
-            stop(console)
-            stop(server)
+            cleanup = {'status': 'running', 'processes': [], 'errors': []}
+            record['processCleanup'] = cleanup
+            for label, process in [('restricted-writer', restricted_writer), ('write-console', write_console),
+                                   ('restricted-console', restricted_console), ('console', console), ('server', server)]:
+                try:
+                    stop(process)
+                    if process is not None and process.poll() is None:
+                        raise RuntimeError('temporary process remains active')
+                    cleanup['processes'].append({'component': label, 'stopped': True})
+                except Exception as error:
+                    cleanup['errors'].append({'component': label, 'errorClass': type(error).__name__})
             for log in log_files:
-                log.close()
+                try:
+                    log.close()
+                except Exception as error:
+                    cleanup['errors'].append({'component': 'fixture-log', 'errorClass': type(error).__name__})
+            cleanup['status'] = 'failed' if cleanup['errors'] else 'passed'
+            if cleanup['errors'] and sys.exc_info()[0] is None:
+                raise RuntimeError('temporary fixture process cleanup failed')
 
 
 def main():
