@@ -484,12 +484,17 @@ def main(args):
                                       'ca_file': str(root/'ca.pem')})
                     except Exception:
                         raise RuntimeError('isolated browser acceptance hook failed') from None
+                    if not isinstance(result, dict) or result.get('status') != 'passed':
+                        raise RuntimeError('isolated browser acceptance did not report success')
                     encoded = json.dumps(result)
                     if any(value and value in encoded for value in [access, secret, client_secret, *passwords.values()]):
                         raise RuntimeError('browser acceptance report disclosed fixture credentials')
                     report['browserAcceptance'] = result
                     report['browserHook'] = {'name': Path(args.browser_hook).name,
                                             'sha256': hashlib.sha256(Path(args.browser_hook).read_bytes()).hexdigest()}
+                    browser_runner = Path(args.browser_hook).with_suffix('.cjs')
+                    if browser_runner.is_file():
+                        report['browserHook']['runnerSha256'] = hashlib.sha256(browser_runner.read_bytes()).hexdigest()
                 users = {}
                 for user, password in passwords.items():
                     user_browser = browser(context, callback)
