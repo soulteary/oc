@@ -70,3 +70,27 @@ SDK response body. Empty and `null` observed versions normalize to each other
 only; neither can match a non-null observed version. These injected race cases
 are protocol tests, not a claim that the real-service matrix forced an update
 exactly between HEAD and GET.
+
+## Conditional full reads and entity-tag review regression
+
+Commit `0cad8a24` adds `RangeBackend.OpenRangeFull`, which preserves the original
+current selector and validates observed version, ETag and full size before
+streaming. It serves no-range conditional downloads and If-Range fallback; it
+does not convert current reads into historical reads. Protocol tests force
+same-ETag HEAD v1/GET v2 and assert rejection plus actual upstream body closure.
+Unversioned/null observations normalize only to each other.
+
+The clean implementation build passed the original 45 real checks again and
+six additional checks: in each profile, the current-only account could obtain
+full current bytes with If-Match or an If-Range mismatch (200), while historical
+Range still returned 403. `review36-full-server-results.json` preserves this
+51-check run and binary digests separately from prior reports. Browser and
+upstream TLS scope remains the same as the original matrix.
+
+HTTP entity tags now retain commas and backslashes inside the quoted opaque
+value. Strong/weak comparisons parse the full list before returning a match;
+malformed lists return 400 and invalid upstream validators return 502. Header
+generation uses HTTP quoting without Go string escapes. Protocol tests cover
+comma/backslash HEAD and GET headers, weak conditions, wildcard handling and
+malformed trailing data. These synthetic validator cases are wire/handler
+fixtures; the real server emits its ordinary object ETags.
