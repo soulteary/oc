@@ -19,7 +19,7 @@ func nativeRotationFixture(t *testing.T, rotate func(context.Context, string) er
 			loginGate(c)
 		}
 		b := &fakeSettingsBackend{fakeMutationBackend: &fakeMutationBackend{fakeBackend: &fakeBackend{}}, rotate: rotate}
-		return NativeConnection{Backend: b, Cleanup: func() {}, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(c.AccessKey)))}, nil
+		return NativeConnection{Verify: func(context.Context) error { return nil }, Backend: b, Cleanup: func() {}, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(c.AccessKey)))}, nil
 	}})
 	if err != nil {
 		t.Fatal(err)

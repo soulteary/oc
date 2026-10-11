@@ -38,7 +38,7 @@ Older published archives and images are not retroactively updated.
 - All local browser sessions share the startup alias identity. The source now
   offers opt-in native IAM login (read-only by default, explicit storage write opt-in) over direct HTTPS with independent
   session clients (see the console guides). Previously published artifacts do
-  not acquire that feature. Native self-secret rotation now revokes only that user's sessions, including uncertain outcomes; other users can read and sign in while rotation reserves the global write budget. OIDC, targeted IAM administration/external credential revocation, multi-instance
+  not acquire that feature. Native self-secret rotation now revokes only that user's sessions, including uncertain outcomes; other users can read and sign in while rotation reserves the global write budget. Each authenticated native API request revalidates its own credentials before dispatch (logout remains available independently). Explicit identity denial ends that browser session; transient failures block dispatch without destroying sessions. This is request-time validation, not proactive idle-session or in-flight-operation polling. OIDC, targeted IAM administration/proactive external-change notification, multi-instance
   deployment and Range downloads remain outside the completed migration scope. Existing historical console reports apply
   only to the binaries and server profiles they name.
 

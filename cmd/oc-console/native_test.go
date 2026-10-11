@@ -60,7 +60,13 @@ func TestNativeAuthenticatorUsesSubmittedCredentialsAndStableTargetIdentity(t *t
 		t.Fatal(err)
 	}
 	defer second.Cleanup()
-	if first.Backend == second.Backend || first.Identity != second.Identity || len(first.Identity) != 64 || calls != 2 {
+	if first.Verify == nil || second.Verify == nil {
+		t.Fatal("native connections missing revalidation")
+	}
+	if err := first.Verify(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if first.Backend == second.Backend || first.Identity != second.Identity || len(first.Identity) != 64 || calls != 3 {
 		t.Fatal("native connections or preference identity were not independent/stable")
 	}
 }
