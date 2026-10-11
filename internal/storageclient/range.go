@@ -40,7 +40,7 @@ func (c *Client) OpenRange(ctx context.Context, ref consoleapi.ObjectRef, expect
 	if ref.VersionID != "" && headers.Get("X-Otterio-Version-Authorization") != "v1" {
 		return reject(versionAuthorizationUnsupported())
 	}
-	if body == nil || info.ETag != expected.ETag || !versionMatches(ref.VersionID, info.VersionID) || headers.Get("X-Amz-Delete-Marker") == "true" {
+	if body == nil || info.ETag != expected.ETag || !versionMatches(ref.VersionID, info.VersionID) || !sameRangeVersion(expected.VersionID, info.VersionID) || headers.Get("X-Amz-Delete-Marker") == "true" {
 		return reject(referenceChanged())
 	}
 	length := end - start + 1
@@ -48,4 +48,17 @@ func (c *Client) OpenRange(ctx context.Context, ref consoleapi.ObjectRef, expect
 		return reject(&consoleapi.Error{Status: http.StatusBadGateway, Code: "range_unsupported", Message: "The storage server did not honor the requested byte range."})
 	}
 	return consoleapi.Object{Body: body, Size: length, ContentType: info.ContentType, Modified: info.LastModified, ETag: info.ETag}, nil
+}
+
+// Unlike a requested empty VersionID (which selects the current object), an
+// empty version observed by HEAD identifies the unversioned/null object. It
+// must never act as a wildcard when validating the subsequent GET response.
+func sameRangeVersion(expected, actual string) bool {
+	if expected == "null" {
+		expected = ""
+	}
+	if actual == "null" {
+		actual = ""
+	}
+	return expected == actual
 }
