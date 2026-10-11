@@ -123,8 +123,9 @@ oc admin policy set store archive-reader group=readers
 
 `policy set` 替换该用户或组的策略绑定，`policy update` 在已有绑定中追加策略，`policy unset` 移除指定绑定，`policy remove` 删除策略定义。当前版本使用 `add`、`set`、`update`、`unset`；其他客户端的 `create` / `attach` / `detach` 示例不能直接套用，应以本版本 `--help` 为准。
 
-**当前限制：** `policy update` 遇到已绑定的策略或空策略参数时，没有停止请求，可能提交空的替换值，
-清空用户或组已有的策略绑定。可重复执行的初始化脚本应避免使用它。先用 `user info` 或 `group info`
+`policy update` 遇到已绑定的策略或空策略参数时，会在提交替换请求前报错，保留已有绑定。
+早期发布版本在这些情况下可能清空绑定；当前源码已修复，但必须等包含修复的版本发布后，
+才能依赖发布二进制中的这一行为。可重复执行的初始化脚本可先用 `user info` 或 `group info`
 读取当前绑定，再用 `policy set` 提交期望保留的完整策略列表，多个策略以逗号分隔，并核对结果。
 列表必须包含所有需要保留的绑定。
 

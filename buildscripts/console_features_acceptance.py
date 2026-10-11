@@ -36,10 +36,12 @@ def wait_archive_download(request, task):
 
 def verify_features(root, bucket, cli, readonly, session, viewer, start_console, browser, stop,
                     credentials, endpoint, access, secret, context, signed_request, put_object,
-                    checks, legacy=False):
+                    checks, legacy=False, iam_create_unsupported=False):
     processes = []
     known_access = [access, credentials[2]]
     metrics = {'profile': 'legacy-protected-fallback' if legacy else 'protected-features-v1'}
+    if iam_create_unsupported:
+        metrics['profile'] = 'protected-storage-features-and-iam-create-refusal'
 
     def console(alias='store', writes=False, sharing=False, config_dir=None):
         options = {'writes': writes, 'sharing': sharing}
@@ -310,6 +312,25 @@ def verify_features(root, bucket, cli, readonly, session, viewer, start_console,
         status, capability_body, capability_headers = signed_request(
             config['aliases']['store']['adminURL'], 'GET', '/otterio/admin/v3/iam-create', b'',
             manager, manager_secret, admin_context, query(kind='user', target=user))
+        if iam_create_unsupported:
+            # The current server lacks conditional creation. Verify that exact
+            # boundary after exercising its native history/sharing/ZIP paths;
+            # never turn arbitrary feature failures into an accepted skip.
+            assert status in (400, 404, 501) and not capability_headers.get('X-Otterio-IAM-Create'), {'status': status}
+            refused = action(writer, headers, 'user.create', user, expected=501, user=user)
+            assert refused['code'] == 'iam_create_unsupported'
+            group = 'features-group-' + secrets.token_hex(4)
+            refused = action(writer, headers, 'group.create', group, expected=501, group=group)
+            assert refused['code'] == 'iam_create_unsupported'
+            assert all(item['accessKey'] != user for item in response(writer, '/api/iam/users', allow_keys=known_access)['users'])
+            assert all(item['name'] != group for item in response(writer, '/api/iam/groups', allow_keys=known_access)['groups'])
+            response(writer, '/api/iam/service-accounts?' + query(user=manager), allow_keys=known_access)
+            bindings(writer, 'user', credentials[2])
+            viewer('/api/iam/users', expected=403)
+            metrics['unsupported'] = ['conditional-iam-user-and-group-creation']
+            metrics['notExercised'] = ['full-iam-mutation-and-conditional-binding-acceptance']
+            checks.append('current server IAM reads enforce permissions; missing create-only protocol refuses user/group creation without creating targets')
+            return metrics
         assert status == 200, {'status': status, 'reply': capability_body[:300]}
         assert capability_headers.get('X-Otterio-IAM-Create') == 'v1'
         assert json.loads(capability_body) == {'kind': 'user', 'target': user, 'createOnly': True}

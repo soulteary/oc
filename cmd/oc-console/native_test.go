@@ -22,12 +22,20 @@ func TestNativeConfigurationRejectsStartupCredentialsAndInsecureEndpoints(t *tes
 		func(o *options) { o.s3URL = "http://s3.example" }, func(o *options) { o.adminURL = "http://admin.example" },
 		func(o *options) { o.s3URL = "https://root:secret@s3.example" }, func(o *options) { o.adminURL = "https://admin.example/prefix" },
 		func(o *options) { o.tlsKey = "" }, func(o *options) { o.address = "console.example:9090" },
+		func(o *options) { o.address = "0.0.0.0:0" }, func(o *options) { o.address = "[::]:0" },
+		func(o *options) { o.address = "127.0.0.1:-1" }, func(o *options) { o.address = "127.0.0.1:65536" },
 		func(o *options) { o.allowSharing = true },
 	} {
 		opts := base
 		change(&opts)
 		if _, err := nativeClientConfig(opts); err == nil {
 			t.Fatal("unsafe native options accepted")
+		}
+	}
+	for _, address := range []string{"127.0.0.1:1", "[::]:65535"} {
+		base.address = address
+		if _, err := nativeClientConfig(base); err != nil {
+			t.Fatalf("valid native listen address %s rejected: %v", address, err)
 		}
 	}
 	base.allowWrites = true

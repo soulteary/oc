@@ -129,10 +129,11 @@ oc admin policy set store archive-reader group=readers
 
 `policy set` replaces the entity's assigned policies. `policy update` adds a policy to an existing assignment; `policy unset` removes a named assignment. `policy remove` deletes the policy definition. This version uses `add`, `set`, `update` and `unset`; use its own `--help` rather than assuming another client's `create`/`attach`/`detach` syntax.
 
-**Current limitation:** `policy update` does not stop when its requested policy
-is already assigned or its policy argument is empty. It can submit an empty
-replacement and clear the user's or group's assigned policies. Avoid it in
-repeatable setup scripts. Read the current assignment with `user info` or
+`policy update` rejects an already assigned policy or an empty policy argument
+before submitting a replacement, preserving the existing assignments. Earlier
+releases could clear assignments in these cases; that defect is fixed in the
+current source, which must be released before relying on this behavior in a
+published binary. For repeatable setup, read the assignment with `user info` or
 `group info`, then use `policy set` with the complete desired comma-separated
 policy list and verify the result. Include every assignment you intend to keep.
 
