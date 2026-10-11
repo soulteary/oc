@@ -220,7 +220,10 @@ func (s *Server) serveOIDC(w http.ResponseWriter, r *http.Request) {
 	accepted = true
 	go s.watchOIDC(hash, sess)
 	http.SetCookie(w, s.sessionCookie(token, 0))
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	// Establish a Console-origin document before navigating home. A cross-site
+	// 303 redirect chain retains Sec-Fetch-Site=cross-site at the final URL.
+	// The fixed document contains no callback parameters or credentials.
+	writeOIDCReturn(w)
 }
 
 func (s *Server) watchOIDC(hash [32]byte, sess *session) {
@@ -290,4 +293,10 @@ func (s *Server) watchOIDC(hash [32]byte, sess *session) {
 			return
 		}
 	}
+}
+
+func writeOIDCReturn(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/"><title>Returning to Console</title></head><body><a href="/">Continue to Console</a></body></html>`))
 }

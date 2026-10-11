@@ -159,3 +159,14 @@ func TestOIDCPinnedRequestRejectsAbsoluteExpiryBeforeTimerRuns(t *testing.T) {
 		t.Fatal("pinned request bypassed absolute credential expiry")
 	}
 }
+
+func TestOIDCReturnEstablishesDocument(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeOIDCReturn(w)
+	if w.Code != http.StatusOK || w.Header().Get("Location") != "" || w.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Fatalf("return must establish a local document: %d %v", w.Code, w.Header())
+	}
+	if !strings.Contains(w.Body.String(), `content="0;url=/"`) || !strings.Contains(w.Body.String(), `href="/"`) {
+		t.Fatal("return document must use fixed local navigation")
+	}
+}
