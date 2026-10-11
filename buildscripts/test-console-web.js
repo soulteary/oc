@@ -656,7 +656,7 @@ test("an interrupted save requires reading storage before another write and igno
 });
 
 test("secret rotation is available only for writable enabled IAM identity", async () => {
-  for (const options of [{ native: true, readOnly: false }, { readOnly: true }, { selfAccount: { kind: "root" } }, { selfAccount: { kind: "sts" } }, { selfAccount: { kind: "service" } }, { selfAccount: { kind: "directory" } }, { selfAccount: { kind: "unknown", status: "unknown", canRotateSecret: false } }, { selfAccount: { status: "disabled" } }, { selfAccount: { canRotateSecret: false } }]) {
+  for (const options of [{ readOnly: true }, { selfAccount: { kind: "root" } }, { selfAccount: { kind: "sts" } }, { selfAccount: { kind: "service" } }, { selfAccount: { kind: "directory" } }, { selfAccount: { kind: "unknown", status: "unknown", canRotateSecret: false } }, { selfAccount: { status: "disabled" } }, { selfAccount: { canRotateSecret: false } }]) {
     const h = createHarness(options);
     await h.ready();
     await h.fire("open-account");
@@ -1814,6 +1814,21 @@ test("native writable sessions keep IAM actions hidden and cannot submit identit
   await h.fire("iam-action-form", "submit", { force: true });
   assert.equal(h.calls.filter(call => call.url === "/api/iam/actions").length, 0);
   assert.equal(h.element("workspace").hidden, false);
+});
+
+test("native secret rotation ends own browser session and permits fresh login without stopping console", async () => {
+ for (const uncertain of [false, true]) {
+  const h=createHarness({native:true,readOnly:false});
+  h.route("POST","/api/self-secret",()=> uncertain ? response({code:"outcome_unknown",loginRequired:true},502) : response({outcome:"confirmed",loginRequired:true}));
+  await h.ready();await h.fire("open-account");
+  h.element("new-secret").value="changed-secret";await h.fire("review-secret");
+  await h.fire("self-secret-form","submit");
+  assert.equal(h.element("new-secret").value,"");assert.equal(h.element("workspace").hidden,true);
+  assert.equal(h.element("login-submit").disabled,false);
+  assert.ok(!h.element("login-status").textContent.includes("restart OC"));
+  h.element("login-access-key").value="alice";h.element("login-secret").value="changed-secret";
+  await h.fire("login-form","submit");assert.equal(h.calls.filter(c=>c.url==="/api/login").length,1);
+ }
 });
 
 (async () => {

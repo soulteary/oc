@@ -41,10 +41,6 @@ func (s *Server) serveSettings(w http.ResponseWriter, r *http.Request) {
 		if !s.requireOrigin(w, r) || !s.requireCSRF(w, r, sess) {
 			return
 		}
-		if s.nativeLogin != nil && r.URL.Path == "/api/self-secret" {
-			writeError(w, 403, "identity_changes_disabled", "Native secret rotation requires identity-scoped session revocation and is not enabled yet.")
-			return
-		}
 		if sess.runtime.writer == nil {
 			writeError(w, 403, "writes_disabled", "Restart OC with writes explicitly enabled to change settings.")
 			return
@@ -116,7 +112,7 @@ func validSettingRevision(revision string) bool {
 // the identity while an object write or its multipart cleanup is in progress.
 func (s *Server) startSettingsWrite(w http.ResponseWriter, sess *session, rotate bool) bool {
 	s.mu.Lock()
-	if s.closed || s.rotating || sess.ctx.Err() != nil {
+	if s.closed || s.rotating || s.nativeRotating[sess.runtime.identity] || sess.ctx.Err() != nil {
 		s.mu.Unlock()
 		writeError(w, 409, "credential_change_pending", "This connection is ending. Restart OC before writing again.")
 		return false
@@ -200,6 +196,11 @@ func (s *Server) rotateOwnSecret(w http.ResponseWriter, r *http.Request, sess *s
 	}
 	if !args.Confirm || !utf8.ValidString(args.NewSecret) || len(args.NewSecret) < 8 || len(args.NewSecret) > 128 || strings.ContainsAny(args.NewSecret, "\x00\r\n") {
 		writeError(w, 400, "invalid_input", "Confirm an account secret between 8 and 128 UTF-8 bytes.")
+		return
+	}
+	if s.nativeLogin != nil {
+		s.rotateNativeSecret(w, r, sess, args.NewSecret)
+		args.NewSecret = ""
 		return
 	}
 	if !s.startSettingsWrite(w, sess, true) {

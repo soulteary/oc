@@ -119,6 +119,10 @@ type Server struct {
 	mu             sync.Mutex
 	closed         bool
 	rotating       bool
+	nativeRotating map[string]bool
+	nativeEpoch    uint64
+	nativeRevoked  map[string]uint64
+	nativeLogins   int
 	sessions       map[[32]byte]*session
 	loginWindow    time.Time
 	loginCount     int
@@ -207,7 +211,7 @@ func New(cfg Config) (*Server, error) {
 	life, stopLife := context.WithCancel(context.Background())
 	settings, _ := cfg.Backend.(consoleapi.SettingsBackend)
 	return &Server{
-		nativeLogin: cfg.NativeLogin, dataDir: cfg.DataDir, userPreferences: make(map[string]*principalPreferences), preferences: preferences, backend: cfg.Backend, backendFactory: cfg.BackendFactory, allowWrites: cfg.AllowWrites, alias: cfg.Alias, origin: u.Scheme + "://" + u.Host,
+		nativeRotating: make(map[string]bool), nativeRevoked: make(map[string]uint64), nativeLogin: cfg.NativeLogin, dataDir: cfg.DataDir, userPreferences: make(map[string]*principalPreferences), preferences: preferences, backend: cfg.Backend, backendFactory: cfg.BackendFactory, allowWrites: cfg.AllowWrites, alias: cfg.Alias, origin: u.Scheme + "://" + u.Host,
 		host: u.Host, code: sha256.Sum256([]byte(cfg.LoginCode)), ttl: cfg.SessionTTL,
 		assets: web.FS(), sessions: make(map[[32]byte]*session),
 		apiSlots: make(chan struct{}, 8), downloads: make(chan struct{}, 2),
@@ -302,6 +306,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Hold the selected client's transport through this entire request, including
 	// the response stream. Reauthentication in route handlers still checks expiry.
 	if sess, _ := s.authenticate(r); sess != nil {
+		s.mu.Lock()
+		changing := s.nativeRotating[sess.runtime.identity]
+		s.mu.Unlock()
+		if changing && r.URL.Path != "/api/logout" {
+			writeError(w, 409, "credential_change_pending", "This user's secret is being changed. Wait for the result before signing in again.")
+			return
+		}
 		if !sess.runtime.retain() {
 			writeError(w, http.StatusUnauthorized, "login_required", s.loginPrompt())
 			return
@@ -581,6 +592,24 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hash := sha256.Sum256([]byte(token))
+	// Track authentications through session commit. A rotation tombstone rejects
+	// an old verification even after the rotating user has signed in again.
+	// Clear tombstones once no pending login can still reference an old epoch.
+	var epoch uint64
+	if s.nativeLogin != nil {
+		s.mu.Lock()
+		epoch = s.nativeEpoch
+		s.nativeLogins++
+		s.mu.Unlock()
+		defer func() {
+			s.mu.Lock()
+			s.nativeLogins--
+			if s.nativeLogins == 0 {
+				clear(s.nativeRevoked)
+			}
+			s.mu.Unlock()
+		}()
+	}
 	runtime, err := s.newSessionRuntime(r.Context(), NativeCredentials{AccessKey: args.AccessKey, SecretKey: args.SecretKey})
 	args.SecretKey = ""
 	if err != nil {
@@ -615,6 +644,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if native {
+		if s.nativeRotating[runtime.identity] || s.nativeRevoked[runtime.identity] > epoch {
+			s.mu.Unlock()
+			cancel()
+			runtime.retire()
+			writeError(w, 409, "credential_change_pending", "This user's credentials changed during sign-in. Sign in again with the current secret.")
+			return
+		}
 		count := 0
 		for _, existing := range s.sessions {
 			if existing.runtime.identity == runtime.identity {

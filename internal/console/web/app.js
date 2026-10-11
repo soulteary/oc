@@ -27,7 +27,7 @@
     "settings-review-document", "settings-review-status", "confirm-setting",
     "settings-read-dialog", "back-setting-read", "settings-read-current", "settings-read-next", "confirm-setting-read",
     "open-account", "account-dialog", "close-account", "self-account-status", "self-account-summary", "account-buckets",
-    "self-secret-help", "self-secret-form", "new-secret", "self-secret-status", "review-secret", "secret-confirmation", "cancel-secret", "confirm-secret",
+    "self-secret-help", "self-secret-form", "new-secret", "self-secret-status", "review-secret", "secret-confirmation", "secret-confirmation-help", "cancel-secret", "confirm-secret",
     "open-create-bucket", "open-delete-bucket", "bucket-dialog", "bucket-action-form", "bucket-action-title", "bucket-action-help", "close-bucket-action", "bucket-action-name", "bucket-confirm-field", "bucket-action-confirm", "bucket-action-status", "submit-bucket-action",
     "open-versions", "versions-dialog", "close-versions", "versions-form", "versions-bucket", "versions-key", "load-versions", "versions-status", "versions-list", "more-versions",
     "share-dialog", "share-form", "close-share", "share-scope", "share-expiry", "share-name", "share-status", "share-result", "share-url", "share-expires", "copy-share", "create-share",
@@ -1521,7 +1521,7 @@
   }
 
   function canRotateSecret() {
-    return !nativeLogin && state.authenticated && !state.readOnly && selfAccount?.kind === "iam" && selfAccount.status === "enabled" && selfAccount.canRotateSecret === true;
+    return state.authenticated && !state.readOnly && selfAccount?.kind === "iam" && selfAccount.status === "enabled" && selfAccount.canRotateSecret === true;
   }
 
   function renderAccountBuckets() {
@@ -1761,7 +1761,7 @@
       setText("self-account-summary", `${labels[account.kind]} · ${account.status === "unknown" ? "status unavailable" : account.status}`);
       setText("self-account-status", "");
       elements["self-secret-form"].hidden = !canRotateSecret();
-      const message = nativeLogin ? "Secret rotation is unavailable in native login mode. Use an administrative client to change credentials." : state.readOnly ? "This local console is read-only. Secret rotation is disabled." : account.kind === "unknown" || account.status === "unknown" ? "This server does not provide safe current-identity discovery. Secret rotation is unavailable; bucket browsing remains independent." : account.kind !== "iam" ? "This identity cannot rotate its secret here. Manage root, temporary, service, and directory credentials through their respective owner or identity provider." : !canRotateSecret() ? "The storage server does not permit secret rotation for this identity." : "Secret rotation changes only this IAM user's secret and preserves its account status. OC does not write the new secret to your alias file.";
+      const message = state.readOnly ? "This local console is read-only. Secret rotation is disabled." : account.kind === "unknown" || account.status === "unknown" ? "This server does not provide safe current-identity discovery. Secret rotation is unavailable; bucket browsing remains independent." : account.kind !== "iam" ? "This identity cannot rotate its secret here. Manage root, temporary, service, and directory credentials through their respective owner or identity provider." : !canRotateSecret() ? "The storage server does not permit secret rotation for this identity." : nativeLogin ? "Changing your secret ends all your sessions on this console. Other users remain signed in." : "Secret rotation changes only this IAM user's secret and preserves its account status. OC does not write the new secret to your alias file.";
       setText("self-secret-help", message);
     } catch (error) {
       if (!currentRequest("self-account", request) || error.name === "AbortError") return;
@@ -1778,6 +1778,12 @@
   }
 
   function stopAfterRotation(confirmed) {
+    if (nativeLogin) {
+      rotationInFlight = false;
+      showLogin(confirmed ? "Your secret was changed. Your sessions have ended. Sign in with the new secret." : "The secret change could not be confirmed. Your sessions have ended. Verify the current secret before signing in; do not repeat the change automatically.");
+      updateBusy();
+      return;
+    }
     consoleStopped = true;
     rotationInFlight = false;
     showLogin(confirmed ? "The storage server confirmed secret rotation. All local sessions have ended. Update this alias's secret in your terminal and restart OC console." : "The secret rotation outcome is unknown. This console has stopped using the old identity. Verify which secret works in your terminal, update the alias, and restart OC console. Do not repeat this request automatically.");
@@ -1801,12 +1807,12 @@
     clearSecret();
     const request = beginRequest("secret-write");
     rotationInFlight = true;
-    setText("self-secret-status", "Rotating the secret and stopping this console…");
+    setText("self-secret-status", nativeLogin ? "Changing your secret and ending your sessions…" : "Rotating the secret and stopping this console…");
     elements["self-secret-status"].focus();
     try {
       const result = await api("/api/self-secret", options, request);
       if (!currentRequest("secret-write", request)) return;
-      if (!result || result.restartRequired !== true || result.outcome !== "confirmed") {
+      if (!result || (nativeLogin ? result.loginRequired !== true : result.restartRequired !== true) || result.outcome !== "confirmed") {
         stopAfterRotation(false);
       } else {
         stopAfterRotation(true);
@@ -2700,6 +2706,10 @@
   elements["review-secret"].addEventListener("click", () => {
     if (!canRotateSecret() || !validNewSecret()) return;
     setText("self-secret-status", "");
+    if (nativeLogin) {
+      setText("secret-confirmation-help", "Change your IAM secret? All your sessions on this console will end. Other users remain signed in. Complete active writes before continuing.");
+      setText("confirm-secret", "Change secret and sign out");
+    }
     elements["secret-confirmation"].hidden = false;
     elements["new-secret"].disabled = true;
     elements["review-secret"].hidden = true;
