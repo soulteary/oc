@@ -19,15 +19,20 @@ import (
 )
 
 func TestServiceAccountMutationEncryptedSingleDispatchAndExactParentScope(t *testing.T) {
-	for _, scenario := range []string{"confirmed", "rotate", "conflict", "unknown", "changed-parent", "expanded-impact", "missing-capability", "wrong-state"} {
+	for _, scenario := range []string{"confirmed", "rotate", "conflict", "unknown", "changed-parent", "expanded-impact", "missing-capability", "wrong-state", "policy-confirmed", "policy-wrong"} {
 		t.Run(scenario, func(t *testing.T) {
 			var writes atomic.Int32
 			relation := consoleapi.IAMRelationships{Kind: "service-account", Target: "service-key", NativeParent: "native-parent", State: "known", CoupledServiceAccounts: true, Revision: strings.Repeat("a", 64), ExpiresAt: time.Now().Add(20 * time.Second), AffectedAccessKeys: []string{"service-key"}}
 			action := "service-account.disable"
+			policy := ""
 			secret := ""
 			if scenario == "rotate" {
 				action = "service-account.rotate"
 				secret = "new-service-secret"
+			}
+			if strings.HasPrefix(scenario, "policy-") {
+				action = "service-account.policy"
+				policy = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::fixture/*"]}]}`
 			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				writes.Add(1)
@@ -74,6 +79,13 @@ func TestServiceAccountMutationEncryptedSingleDispatchAndExactParentScope(t *tes
 				impact := relation
 				impact.Revision = strings.Repeat("b", 64)
 				account := consoleapi.IAMServiceAccount{AccessKey: "service-key", ParentUser: "native-parent", Status: "off", ImpliedPolicy: true}
+				if policy != "" {
+					account.ImpliedPolicy = false
+					account.Policy = policy
+					if scenario == "policy-wrong" {
+						account.Policy = strings.ReplaceAll(policy, "s3:GetObject", "s3:*")
+					}
+				}
 				switch scenario {
 				case "changed-parent":
 					impact.NativeParent = "different-parent"
@@ -96,11 +108,11 @@ func TestServiceAccountMutationEncryptedSingleDispatchAndExactParentScope(t *tes
 			}
 			defer client.Close()
 			relation.StorageTarget = client.IAMStorageTarget()
-			result, err := client.IAMMutateRelationshipServiceAccount(context.Background(), consoleapi.IAMActionRequest{Action: action, AccessKey: "service-key", ConfirmTarget: "service-key", SecretKey: secret}, relation)
+			result, err := client.IAMMutateRelationshipServiceAccount(context.Background(), consoleapi.IAMActionRequest{Action: action, AccessKey: "service-key", ConfirmTarget: "service-key", SecretKey: secret, Policy: policy}, relation)
 			if writes.Load() != 1 {
 				t.Fatal("service mutation retried", writes.Load())
 			}
-			if scenario == "confirmed" || scenario == "rotate" {
+			if scenario == "confirmed" || scenario == "rotate" || scenario == "policy-confirmed" {
 				if err != nil || result.Outcome != "confirmed" {
 					t.Fatal(err)
 				}
