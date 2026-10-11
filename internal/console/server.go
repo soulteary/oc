@@ -328,6 +328,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if r.URL.Path == "/api/diagnostics/server" {
+		s.serveDiagnostics(w, r)
+		return
+	}
 	if s.isJobRoute(r.URL.Path) {
 		s.serveJobs(w, r)
 		return
