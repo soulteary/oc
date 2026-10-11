@@ -13,11 +13,11 @@
 - [OIDC 控制台登录与临时会话](04-oidc-console-sessions.md)：OIDC 会话 agent，5–9 人日。
 - [集中部署 审计与稳定性](05-deployment-audit-and-stability.md)：部署保障 agent，8–14 人日。
 - [Range 和条件下载](06-range-downloads.md)：下载协议 agent，3–5 人日。
-- [诊断流与旧功能差异](07-diagnostics-and-feature-differences.md)：诊断 agent，3–5 人日。
+- [诊断快照与旧功能差异](07-diagnostics-and-feature-differences.md)：诊断 agent，3–5 人日。
 - [正式发行与真实版本验收](08-release-and-compatibility.md)：发行验收 agent，6–10 人日。
 - [默认关闭与旧 Web 移除](09-deprecation-and-removal.md)：服务端移除 agent，2–4 人日，不含日历等待。
 
-[首批冻结契约](contracts-v1.md)给出实际基线、文件委派和协议边界。诊断范围已根据实际旧 Web 路由收窄为快照：日志/trace/profile/heal 是 CLI 功能，不再计为必需浏览器迁移缺口。原 40–70 人日为范围核实前的粗估，后续据验证结果重新估算。
+[首批执行记录](execution.md)记录已交付 PR 与剩余接入；[首批冻结契约](contracts-v1.md)给出实际基线、文件委派和协议边界。诊断范围已根据实际旧 Web 路由收窄为快照：日志/trace/profile/heal 是 CLI 功能，不再计为必需浏览器迁移缺口。原 40–70 人日为范围核实前的粗估，后续据验证结果重新估算。
 
 ## 首批并行分配
 
