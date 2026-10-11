@@ -356,20 +356,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.servePreferences(w, r)
 		return
 	}
-	method := http.MethodGet
+	methods := []string{http.MethodGet}
 	switch r.URL.Path {
 	case "/api/logout":
-		method = http.MethodPost
+		methods = []string{http.MethodPost}
 	case "/api/download":
-		if r.Method == http.MethodHead {
-			method = http.MethodHead
-		}
+		methods = []string{http.MethodGet, http.MethodHead}
 	case "/api/session", "/api/buckets", "/api/objects", "/api/account", "/api/capabilities", "/api/object-info":
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "This console endpoint does not exist.")
 		return
 	}
-	if !s.requireMethod(w, r, method) {
+	if !s.requireMethod(w, r, methods...) {
 		return
 	}
 	sess, token := s.authenticate(r)
@@ -504,7 +502,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		defer func() { <-s.downloads }()
 		// Unsupported range units are ignored, including their If-Range condition.
-		if unit, _, ok := strings.Cut(strings.Join(r.Header.Values("Range"), ","), "="); ok && !strings.EqualFold(unit, "bytes") {
+		if unit, _, ok := strings.Cut(strings.Trim(strings.Join(r.Header.Values("Range"), ","), " \t,"), "="); ok && !strings.EqualFold(unit, "bytes") {
 			r.Header.Del("Range")
 		}
 		if r.Method == http.MethodHead || strings.Join(r.Header.Values("Range"), ",") != "" || strings.Join(r.Header.Values("If-Match"), ",") != "" || strings.Join(r.Header.Values("If-None-Match"), ",") != "" || strings.Join(r.Header.Values("If-Modified-Since"), ",") != "" || strings.Join(r.Header.Values("If-Unmodified-Since"), ",") != "" {
@@ -519,11 +517,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
-	if r.Method == method {
-		return true
+func (s *Server) requireMethod(w http.ResponseWriter, r *http.Request, methods ...string) bool {
+	for _, method := range methods {
+		if r.Method == method {
+			return true
+		}
 	}
-	w.Header().Set("Allow", method)
+	w.Header().Set("Allow", strings.Join(methods, ", "))
 	writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "This request method is not supported.")
 	return false
 }

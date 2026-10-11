@@ -16,10 +16,23 @@ import (
 // byteRange accepts one byte range only. Multiple ranges and malformed syntax
 // are rejected explicitly; no multipart response is synthesized.
 func byteRange(value string, size int64) (int64, int64, bool) {
-	if (len(value) < 6 || !strings.EqualFold(value[:6], "bytes=")) || strings.Contains(value, ",") || size <= 0 {
+	value = strings.Trim(value, " \t,")
+	if (len(value) < 6 || !strings.EqualFold(value[:6], "bytes=")) || size <= 0 {
 		return 0, 0, false
 	}
-	parts := strings.Split(value[6:], "-")
+	// Ignore empty members before enforcing the single-range policy.
+	member := ""
+	for _, item := range strings.Split(value[6:], ",") {
+		item = strings.Trim(item, " \t")
+		if item == "" {
+			continue
+		}
+		if member != "" {
+			return 0, 0, false
+		}
+		member = item
+	}
+	parts := strings.Split(member, "-")
 	if len(parts) != 2 {
 		return 0, 0, false
 	}
@@ -66,7 +79,7 @@ func byteRange(value string, size int64) (int64, int64, bool) {
 // matchEntityTags parses a complete HTTP entity-tag list before comparing. A
 // comma inside the quoted opaque tag is data; backslash is not an escape.
 func matchEntityTags(list, tag string, weak bool) (bool, bool) {
-	list = strings.Trim(list, " \t")
+	list = strings.Trim(list, " \t,")
 	if list == "*" {
 		return true, true
 	}

@@ -39,6 +39,9 @@ func TestRegisteredRangeDownloadUsesAuthenticatedRoute(t *testing.T) {
 		if tc.status == 206 && w.Body.String() != tc.body {
 			t.Fatal("range route returned wrong bytes")
 		}
+		if tc.status == 405 && w.Header().Get("Allow") != "GET, HEAD" {
+			t.Fatalf("Allow=%q", w.Header().Get("Allow"))
+		}
 		if tc.method == "HEAD" && w.Body.Len() != 0 {
 			t.Fatal("HEAD returned a body")
 		}
@@ -115,6 +118,10 @@ func TestRegisteredDownloadEvaluatesConditionsAfterEmptyField(t *testing.T) {
 		status int
 	}{
 		{"If-Match", []string{"", `"stale"`}, 412},
+		{"If-Match", []string{"", "*", ""}, 200},
+		{"If-None-Match", []string{"", "*", ""}, 304},
+		{"If-Match", []string{"", "*", `"etag"`}, 400},
+		{"If-None-Match", []string{`"etag"`, "*", ""}, 400},
 		{"If-Match", []string{"", `"etag"`, ""}, 200},
 		{"If-None-Match", []string{"", `W/"etag"`, ""}, 304},
 		{"If-None-Match", []string{"", `"other"`, ""}, 200},
@@ -140,6 +147,43 @@ func TestRegisteredDownloadEvaluatesConditionsAfterEmptyField(t *testing.T) {
 			}
 			if tc.status != 200 && b.opens != 0 {
 				t.Fatal("conditional response opened the object body")
+			}
+		})
+	}
+}
+
+func TestRegisteredDownloadRangeEmptyMembers(t *testing.T) {
+	for _, tc := range []struct {
+		values []string
+		status int
+		body   string
+	}{
+		{[]string{"bytes=0-1,"}, 206, "01"},
+		{[]string{"", "bytes=0-1"}, 206, "01"},
+		{[]string{"", "Bytes=, ,0-1,,", ""}, 206, "01"},
+		{[]string{"bytes=,0-1, ,5-5,"}, 416, ""},
+		{[]string{"bytes=, ,"}, 416, ""},
+	} {
+		t.Run(strings.Join(tc.values, ","), func(t *testing.T) {
+			b := &rangeFake{size: 10}
+			s, err := New(Config{Backend: b, Alias: "local", BaseURL: testOrigin, LoginCode: "test-login-code"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { drainOwnedClients(t, s) })
+			cookie, _ := signIn(t, s)
+			r := httptest.NewRequest("GET", testOrigin+"/api/download?bucket=bucket&key=key", nil)
+			r.AddCookie(cookie)
+			for _, value := range tc.values {
+				r.Header.Add("Range", value)
+			}
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			if w.Code != tc.status || w.Body.String() != tc.body {
+				t.Fatalf("status=%d body=%q", w.Code, w.Body.String())
+			}
+			if tc.status == 416 && b.opens != 0 {
+				t.Fatal("invalid range opened body")
 			}
 		})
 	}
