@@ -109,7 +109,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
             cli('admin', 'policy', 'set', 'store', 'consoleAdmin' if role in ('manager', 'target') else 'readonly', 'user=' + name)
         denied_policy = add_policy('denied', [
             {'Effect': 'Allow', 'Action': ['admin:*', 's3:*'], 'Resource': ['arn:aws:s3:::*']},
-            {'Effect': 'Deny', 'Action': ['admin:CreateUser'], 'Resource': ['arn:aws:s3:::*']}])
+            {'Effect': 'Deny', 'Action': ['admin:CreateUser', 'admin:EnableGroup', 'admin:DisableGroup', 'admin:AddUserToGroup', 'admin:RemoveUserFromGroup', 'admin:UpdateServiceAccount', 'admin:RemoveServiceAccount'], 'Resource': ['arn:aws:s3:::*']}])
         cli('admin', 'policy', 'set', 'store', denied_policy, 'user=' + names['denied'])
         start()
         manager, target, target_second, unrelated, denied = (login(role) for role in ('manager', 'target', 'target', 'unrelated', 'denied'))
@@ -203,6 +203,12 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
                 raise RuntimeError('group mutation did not confirm requested status')
             return result
 
+        group_body = {'action': 'group.disable', 'group': group, 'confirmTarget': group}
+        for rejected_actor in (readonly_manager, unrelated, denied):
+            action(rejected_actor, group_body, 403)
+        action(manager, group_body, 403, csrf=False)
+        target('/api/session');unrelated('/api/session')
+        checks.append('group mutation rejects readonly, ordinary user, explicit deny and missing CSRF without affecting existing sessions')
         group_action('disable')
         target('/api/session', expected=401);target_second('/api/session', expected=401)
         unrelated('/api/session');manager('/api/session')
@@ -234,6 +240,12 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
                 raise RuntimeError('service mutation did not confirm requested status')
             return result
 
+        service_body = {'action': 'service-account.disable', 'accessKey': child['accessKey'], 'confirmTarget': child['accessKey']}
+        for rejected_actor in (readonly_manager, unrelated, denied):
+            action(rejected_actor, service_body, 403)
+        action(manager, service_body, 403, csrf=False)
+        child_request('GET', 'plain.txt');target('/api/session');unrelated('/api/session')
+        checks.append('service mutation rejects readonly, ordinary user, explicit deny and missing CSRF without changing child credentials or parent sessions')
         service_action('disable')
         child_request('GET', 'plain.txt', expected=403)
         manager('/api/session');target('/api/session');unrelated('/api/session')
