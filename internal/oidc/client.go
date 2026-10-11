@@ -58,7 +58,11 @@ type pending struct {
 	nonce, verifier string
 	expires         time.Time
 }
-type Client struct {
+
+// Client is an opaque handle. Copies share state and never copy its locks.
+type Client struct{ *clientState }
+
+type clientState struct {
 	config         Config
 	http           *http.Client
 	discovery      discovery
@@ -71,6 +75,10 @@ type Client struct {
 	keyError       error
 	now            func() time.Time
 }
+
+func (Client) String() string               { return "oidc.Client{redacted}" }
+func (Client) GoString() string             { return "oidc.Client{redacted}" }
+func (Client) MarshalJSON() ([]byte, error) { return nil, ErrConfiguration }
 
 // Authorization's state is consumed once and expires after five minutes. The
 // caller must bind it to a random, HttpOnly browser cookie, independent of state.
@@ -123,7 +131,7 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 			return nil, ErrConfiguration
 		}
 	}
-	c := &Client{config: cfg, http: &http.Client{Transport: cfg.Transport, Timeout: cfg.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, pending: map[string]pending{}, now: time.Now}
+	c := &Client{clientState: &clientState{config: cfg, http: &http.Client{Transport: cfg.Transport, Timeout: cfg.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, pending: map[string]pending{}, now: time.Now}}
 	b, err := c.request(ctx, http.MethodGet, strings.TrimRight(cfg.Issuer, "/")+"/.well-known/openid-configuration", nil)
 	if err != nil {
 		return nil, err
@@ -166,6 +174,9 @@ func random() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b[:]), nil
 }
 func (c *Client) Begin(binding string) (Authorization, error) {
+	if c == nil || c.clientState == nil {
+		return Authorization{}, ErrConfiguration
+	}
 	if len(binding) < 32 || len(binding) > 256 {
 		return Authorization{}, ErrLogin
 	}
@@ -212,6 +223,9 @@ func (c *Client) Begin(binding string) (Authorization, error) {
 // Complete accepts only the callback's code/state, never browser-supplied
 // issuer, token, subject or storage target. Even failed exchanges consume state.
 func (c *Client) Complete(ctx context.Context, binding, state, code string) (*Grant, error) {
+	if c == nil || c.clientState == nil {
+		return nil, ErrConfiguration
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	c.mu.Lock()
@@ -245,7 +259,7 @@ func (c *Client) Complete(ctx context.Context, binding, state, code string) (*Gr
 	if !creds.Expires.After(c.now()) {
 		return nil, ErrLogin
 	}
-	return &Grant{refreshGate: make(chan struct{}, 1), deadline: deadline, client: c, issuer: claims.Issuer, subject: claims.Subject, nonce: p.nonce, issued: claims.Issued, refresh: tr.RefreshToken, credentials: creds}, nil
+	return &Grant{grantState: &grantState{refreshGate: make(chan struct{}, 1), deadline: deadline, client: c, issuer: claims.Issuer, subject: claims.Subject, nonce: p.nonce, issued: claims.Issued, refresh: tr.RefreshToken, credentials: creds}}, nil
 }
 
 type tokenResponse struct {

@@ -23,7 +23,9 @@ func (Credentials) MarshalJSON() ([]byte, error) { return nil, ErrConfiguration 
 
 // Grant is an opaque, single-client identity and serializes refresh exchanges.
 // Close drops references; Go strings cannot be securely erased from memory.
-type Grant struct {
+type Grant struct{ *grantState }
+
+type grantState struct {
 	refreshGate                     chan struct{}
 	cancel                          context.CancelFunc
 	mu                              sync.Mutex
@@ -35,15 +37,21 @@ type Grant struct {
 	closed                          bool
 }
 
-func (*Grant) String() string               { return "oidc.Grant{redacted}" }
-func (*Grant) GoString() string             { return "oidc.Grant{redacted}" }
-func (*Grant) MarshalJSON() ([]byte, error) { return nil, ErrConfiguration }
+func (Grant) String() string               { return "oidc.Grant{redacted}" }
+func (Grant) GoString() string             { return "oidc.Grant{redacted}" }
+func (Grant) MarshalJSON() ([]byte, error) { return nil, ErrConfiguration }
 func (g *Grant) Identity() (issuer, subject string) {
+	if g == nil || g.grantState == nil {
+		return "", ""
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.issuer, g.subject
 }
 func (g *Grant) Credentials() (Credentials, error) {
+	if g == nil || g.grantState == nil {
+		return Credentials{}, ErrLogin
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.closed || !g.credentials.Expires.After(g.client.now()) {
@@ -52,6 +60,9 @@ func (g *Grant) Credentials() (Credentials, error) {
 	return g.credentials, nil
 }
 func (g *Grant) Close() {
+	if g == nil || g.grantState == nil {
+		return
+	}
 	g.mu.Lock()
 	g.closed = true
 	g.refresh = ""
@@ -67,6 +78,9 @@ func (g *Grant) Close() {
 // Close marks closed and cancels an in-flight exchange immediately. A late
 // response can never commit replacement credentials to a closed grant.
 func (g *Grant) Refresh(ctx context.Context) (Credentials, error) {
+	if g == nil || g.grantState == nil {
+		return Credentials{}, ErrRefresh
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	select {

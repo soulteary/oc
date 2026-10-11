@@ -613,3 +613,92 @@ func TestCanceledRefreshWithAvailableGateDoesNotConsumeState(t *testing.T) {
 		t.Fatal("refresh token consumed by canceled caller", err)
 	}
 }
+
+func TestOpaqueHandleFormattingRedactsPointerAndValueSecrets(t *testing.T) {
+	f := newFixture(t)
+	c := f.client(t)
+	a := f.begin(t, c)
+	g, err := c.Complete(context.Background(), binding, a.State, "code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinels := []string{"CLIENT-SECRET-PRIVATE-SENTINEL", "REFRESH-TOKEN-PRIVATE-SENTINEL", "STS-SECRET-PRIVATE-SENTINEL", "STS-SESSION-PRIVATE-SENTINEL"}
+	c.config.ClientSecret = sentinels[0]
+	g.refresh = sentinels[1]
+	g.credentials.SecretKey = sentinels[2]
+	g.credentials.SessionToken = sentinels[3]
+	handles := []struct {
+		name  string
+		value any
+	}{
+		{"client pointer", c}, {"client value", *c}, {"grant pointer", g}, {"grant value", *g},
+	}
+	for _, handle := range handles {
+		t.Run(handle.name, func(t *testing.T) {
+			for _, format := range []string{"%v", "%+v", "%#v", "%s"} {
+				output := fmt.Sprintf(format, handle.value)
+				if !strings.Contains(output, "redacted") {
+					t.Errorf("format %s did not use redaction", format)
+				}
+				for _, secret := range sentinels {
+					if strings.Contains(output, secret) {
+						t.Errorf("format %s exposed a secret", format)
+					}
+				}
+			}
+			if _, err := json.Marshal(handle.value); err == nil {
+				t.Error("handle permitted JSON export")
+			}
+		})
+	}
+}
+
+func TestOpaqueHandleZeroAndNilSafety(t *testing.T) {
+	var c *Client
+	var g *Grant
+	for _, value := range []any{c, g, Client{}, Grant{}} {
+		for _, format := range []string{"%v", "%+v", "%#v", "%s"} {
+			output := fmt.Sprintf(format, value)
+			if strings.Contains(output, "PANIC") {
+				t.Fatalf("nil/zero formatting panicked: %s", format)
+			}
+		}
+	}
+	for _, client := range []*Client{nil, {}} {
+		if _, err := client.Begin(binding); err != ErrConfiguration {
+			t.Fatal("nil/zero client accepted Begin")
+		}
+		if _, err := client.Complete(context.Background(), binding, "state", "code"); err != ErrConfiguration {
+			t.Fatal("nil/zero client accepted Complete")
+		}
+	}
+	for _, grant := range []*Grant{nil, {}} {
+		issuer, subject := grant.Identity()
+		if issuer != "" || subject != "" {
+			t.Fatal("nil/zero identity not empty")
+		}
+		if _, err := grant.Credentials(); err != ErrLogin {
+			t.Fatal("nil/zero grant accepted credentials")
+		}
+		if _, err := grant.Refresh(context.Background()); err != ErrRefresh {
+			t.Fatal("nil/zero grant accepted refresh")
+		}
+		grant.Close()
+	}
+}
+
+func TestOpaqueHandleCopiesShareLifecycleWithoutCopyingLocks(t *testing.T) {
+	f := newFixture(t)
+	c := f.client(t)
+	clientCopy := *c
+	a := f.begin(t, &clientCopy)
+	g, err := c.Complete(context.Background(), binding, a.State, "code")
+	if err != nil {
+		t.Fatal("client copy lost shared pending state", err)
+	}
+	grantCopy := *g
+	grantCopy.Close()
+	if _, err := g.Credentials(); err != ErrLogin {
+		t.Fatal("grant copy did not share closed state")
+	}
+}

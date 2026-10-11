@@ -51,8 +51,12 @@ mapping from subject/email.
 
 `Grant.Identity()` returns the verified issuer/subject pair.
 `Grant.Credentials()` returns an in-process copy, including session token and
-hard expiry, for constructing an owned S3 client. Both Grant and Credentials
-reject JSON serialization and redact normal string formatting. Do not extract
+hard expiry, for constructing an owned S3 client. Client, Grant and Credentials reject JSON serialization and redact normal
+string formatting for both pointer and value forms, including `%v`, `%+v`,
+`%#v` and `%s`. Client and Grant are opaque handles to private shared state: a
+handle copy shares lifecycle/state without copying mutexes or secret fields.
+Closing a copied Grant therefore closes all handles to that same Grant. Nil
+pointers and zero handles remain safe to format; zero handles reject operations. Do not extract
 and serialize secret fields, URLs or upstream token response bodies yourself.
 
 Expiry is the earliest of ID token expiry, STS expiry and a fixed session deadline
