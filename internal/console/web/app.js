@@ -2336,7 +2336,7 @@
   if (nativeLogin) {
     iamActions.users = ["user.create", "user.enable", "user.disable", "user.rotate", "user.policies", "user.delete"];
     iamActions.groups = ["group.create", "group.add-members", "group.remove-members", "group.enable", "group.disable", "group.policies", "group.delete"];
-    iamActions["service-accounts"] = ["service-account.create"];
+    iamActions["service-accounts"] = ["service-account.create", "service-account.enable", "service-account.disable", "service-account.rotate", "service-account.policy", "service-account.delete"];
   }
   const iamLabels = {
     "user.policies": "Change user policy bindings", "group.policies": "Change group policy bindings",
@@ -2515,7 +2515,7 @@
           policy.setAttribute("data-no-i18n", ""); policy.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
           card.append(policy);
         }
-        if (!oidcLogin && !state.readOnly && kind !== "policies" && (!nativeLogin || kind === "users" || kind === "groups")) card.append(actionButton("Choose for change", () => {
+        if (!oidcLogin && !state.readOnly && kind !== "policies" && (!nativeLogin || kind === "users" || kind === "groups" || kind === "service-accounts")) card.append(actionButton("Choose for change", () => {
           iamRecord = record;
           elements["iam-action"].value = iamActions[kind][1] || iamActions[kind][0];
           configureIAMAction();
@@ -2535,7 +2535,7 @@
     if (!featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
     const action = elements["iam-action"].value;
     if (oidcLogin) return;
-    if (nativeLogin && !["user.create", "user.enable", "user.disable", "user.rotate", "user.policies", "user.delete", "group.create", "group.add-members", "group.remove-members", "group.enable", "group.disable", "group.policies", "group.delete", "service-account.create"].includes(action)) return;
+    if (nativeLogin && !["user.create", "user.enable", "user.disable", "user.rotate", "user.policies", "user.delete", "group.create", "group.add-members", "group.remove-members", "group.enable", "group.disable", "group.policies", "group.delete", "service-account.create", "service-account.enable", "service-account.disable", "service-account.rotate", "service-account.policy", "service-account.delete"].includes(action)) return;
     const body = { action, confirmTarget: elements["iam-confirm"].value };
     for (const [name, input] of Object.entries(iamInputs)) {
       if (name === "policies") body.policies = [...new Set(input.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];

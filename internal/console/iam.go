@@ -138,6 +138,16 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		s.executeNativeRelationshipBindingPlan(w, r, sess, plan)
 		return
 	}
+	if s.nativeLogin != nil && validPreparedServiceAccountAction(args) {
+		plan, err := prepareNativeServiceAccountPlan(r.Context(), sess, args)
+		if err != nil {
+			s.writeNativeRelationshipPlanError(w, err)
+			return
+		}
+		s.executeNativeServiceAccountPlan(w, r, sess, plan)
+		args.SecretKey = ""
+		return
+	}
 	if s.nativeLogin != nil && validPreparedGroupAction(args) {
 		plan, err := prepareIAMGroupMutation(r.Context(), sess, args)
 		if err != nil {
@@ -209,7 +219,7 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 }
 
 func nativeIAMActionAllowed(action string) bool {
-	return action == "group.add-members" || action == "group.remove-members" || action == "group.enable" || action == "group.disable" || action == "group.delete" || action == "user.rotate" || action == "user.policies" || action == "group.policies" || action == "user.delete" || action == "user.disable" || action == "user.enable" || action == "user.create" || action == "group.create" || action == "service-account.create"
+	return action == "service-account.enable" || action == "service-account.disable" || action == "service-account.rotate" || action == "service-account.policy" || action == "service-account.delete" || action == "group.add-members" || action == "group.remove-members" || action == "group.enable" || action == "group.disable" || action == "group.delete" || action == "user.rotate" || action == "user.policies" || action == "group.policies" || action == "user.delete" || action == "user.disable" || action == "user.enable" || action == "user.create" || action == "group.create" || action == "service-account.create"
 }
 
 func (s *Server) writeNativeRelationshipPlanError(w http.ResponseWriter, err error) {
