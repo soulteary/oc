@@ -63,3 +63,16 @@ OC `a7ebefb03f8669cb93eb927a96f320a6e20229d4` 与 OtterIO `f2bdc23403ee0c4b35f9c
 - 真实 Keycloak 单 TLS 浏览器验收已通过；双 TLS 首次失败保留，诊断与受限清理改进后复验中。最终原始报告另行集成。
 
 这是开发迭代结果。原生 IAM 最终同资产验收、真实 STS/双 TLS 浏览器收尾仍在执行。正式发行配对、跨架构、升级回退、通知周期及有限回退窗口仍未完成，旧 Web 默认和资源保持。
+
+## 真实 STS 父授权缺陷与修复
+
+最终 `f2bdc234` native fixture 发现父用户 disable 后 service GET 返回403，而 STS GET 仍200。该失败及无效长度/reader权限的夹具失败全部保留。不能通过修改预期将200解释为权限撤销。
+
+服务端 `d2479684b344fb1f2975f546471888749f75d671` 在既有读锁内检验当前 STS child 与 active regular native parent，并将当前父用户/组权限与临时凭据发行策略、session restriction 求交集；不改变没有 native parent 的外部 WebIdentity 或已有 LDAP 分支。父 username/userid 条件来自权威身份，保留实际 AssumedRole/source 等请求条件。显式 service key 缺席检查移到生成前，已有长 native key 的碰撞也得到零写冲突，不放宽凭据长度限制。
+
+- root 复验身份/创建/关系协议 race 通过；新增 STS parent race 通过。
+- [修复后的真实 IAM](../../console-relationship-protected-sts-fixed-results.json)：单、双 HTTPS 各29项首次通过，两层清理通过；service/STS disable403、enable200、delete及同名同secret重建后拒绝，原cookie不复活，19/22字符collision409零写。
+- [旧服务端能力拒绝](../../console-relationship-protected-legacy-results.json)：同OC a7ebefb0、legacy cbbffbd，单、双TLS各13项通过，缺新cap不写入。
+- [修复后的设置与协议](../../console-d247968-final-settings-protocols.md)：设置四入口各21项首次通过，range/diagnostics/真实OIDC STS均通过、无skip或PermissionError。
+
+CLI/Console程序仍是同一clean source a7ebefb0；新Darwin/Linux服务端精确source均d2479684、vcs.modified=false，摘要随报告保存。f2的既有写入/版本/功能/OIDC报告保持其真实来源，不改成d247验收。d247真实Keycloak浏览器single/dual复验中。

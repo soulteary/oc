@@ -38,42 +38,42 @@
       "id": "02",
       "file": "02-identity-protocols.md",
       "owner": "identity",
-      "status": "integrated",
+      "status": "verified",
       "dependencies": [],
-      "scope": "锁内重新授权、全关系 CAS、用户/组/服务账号条件协议与受保护创建已实现；服务端 f2bdc234，最终运行配对复验中"
+      "scope": "开发协议验收通过：d2479684锁内重新授权、全关系CAS、受保护创建与native STS当前父权限交集；相关race及真实native单双TLS通过，不是正式发行认证"
     },
     {
       "id": "03-user",
       "file": "03-iam.md",
       "owner": "root",
-      "status": "integrated",
+      "status": "verified",
       "dependencies": [
         "00: shared types",
         "02: required protocols and impact scope"
       ],
-      "scope": "原生IAM条件计划、单次派发、权威范围撤销与UI已集成；最终资产真实单/双TLS复验中"
+      "scope": "开发实现与原生single/dual HTTPS各29项验收通过；同OC缺cap legacy各13项拒绝零写；OIDC写仍拒绝，正式发行另验收"
     },
     {
       "id": "03-group",
       "file": "03-iam.md",
       "owner": "parity",
-      "status": "integrated",
+      "status": "verified",
       "dependencies": [
         "00: shared types",
         "02: required protocols and impact scope"
       ],
-      "scope": "原生IAM条件计划、单次派发、权威范围撤销与UI已集成；最终资产真实单/双TLS复验中"
+      "scope": "开发实现与原生single/dual HTTPS各29项验收通过；同OC缺cap legacy各13项拒绝零写；OIDC写仍拒绝，正式发行另验收"
     },
     {
       "id": "03-service-account",
       "file": "03-iam.md",
       "owner": "parity",
-      "status": "integrated",
+      "status": "verified",
       "dependencies": [
         "00: shared types",
         "02: required protocols and impact scope"
       ],
-      "scope": "原生IAM条件计划、单次派发、权威范围撤销与UI已集成；最终资产真实单/双TLS复验中"
+      "scope": "开发实现与原生single/dual HTTPS各29项验收通过；同OC缺cap legacy各13项拒绝零写；OIDC写仍拒绝，正式发行另验收"
     },
     {
       "id": "04",
@@ -277,6 +277,24 @@
       "path": "docs/console-protected-pair-protocols-wrapper-failed.json",
       "result": "failed: preparationError PermissionError",
       "scope": "首次包装器失败保留；range 与 diagnostics 已通过，异常阶段正在诊断，不能据此声称 STS 通过"
+    },
+    {
+      "task": "02/03",
+      "path": "docs/console-relationship-protected-sts-fixed-results.json",
+      "result": "58 acceptance groups passed",
+      "scope": "OC a7ebefb0 + server d2479684；native single/dual HTTPS各29；父状态/删除/重建后的service与STS权限、cookie不复活、19/22字符碰撞零写"
+    },
+    {
+      "task": "03/05",
+      "path": "docs/console-relationship-protected-legacy-results.json",
+      "result": "26 acceptance groups passed",
+      "scope": "同OC a7ebefb0 + legacy cbbffbd，缺新cap拒绝且零写"
+    },
+    {
+      "task": "04",
+      "path": "docs/console-d247968-final-settings-protocols.md",
+      "result": "84 settings groups; range, diagnostics, real STS passed",
+      "scope": "OC a7ebefb0 +修复server d2479684，首次执行无skip；非正式发行证据"
     }
   ],
   "openDecisions": [
@@ -291,7 +309,7 @@
   },
   "developmentPair": {
     "oc": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
-    "otterio": "f2bdc23403ee0c4b35f9ce4092c68b80074349e1",
+    "otterio": "d2479684b344fb1f2975f546471888749f75d671",
     "kind": "clean module builds; not published release assets"
   }
 }
