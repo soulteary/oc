@@ -87,3 +87,22 @@ func TestRegisteredRangeDownloadRetainsIfRange(t *testing.T) {
 		}
 	}
 }
+
+func TestRegisteredDownloadIgnoresUnsupportedRangeUnit(t *testing.T) {
+	// A plain backend intentionally has no optional RangeBackend implementation.
+	s, err := New(Config{Backend: &fakeBackend{}, Alias: "local", BaseURL: testOrigin, LoginCode: "test-login-code"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { drainOwnedClients(t, s) })
+	cookie, _ := signIn(t, s)
+	r := httptest.NewRequest("GET", testOrigin+"/api/download?bucket=bucket&key=key", nil)
+	r.AddCookie(cookie)
+	r.Header.Set("Range", "items=0-1")
+	r.Header.Set("If-Range", "\"unrelated-etag\"")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != 200 || w.Body.String() != "object" {
+		t.Fatalf("status=%d body=%q", w.Code, w.Body.String())
+	}
+}

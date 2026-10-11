@@ -503,6 +503,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer func() { <-s.downloads }()
+		// Unsupported range units are ignored, including their If-Range condition.
+		if unit, _, ok := strings.Cut(strings.Join(r.Header.Values("Range"), ","), "="); ok && !strings.EqualFold(unit, "bytes") {
+			r.Header.Del("Range")
+		}
 		if r.Method == http.MethodHead || r.Header.Get("Range") != "" || r.Header.Get("If-Match") != "" || r.Header.Get("If-None-Match") != "" || r.Header.Get("If-Modified-Since") != "" || r.Header.Get("If-Unmodified-Since") != "" {
 			s.downloadRange(w, r, ctx, sess, consoleapi.ObjectRef{Bucket: bucket, Key: key, VersionID: q.Get("versionId")})
 			return
