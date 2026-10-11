@@ -21,7 +21,7 @@
 
 组合版本的 console、storageclient、consoleapi、oidc race 回归通过，lint 为 0 issues，页面测试 86/86，wrapper 单元测试 5/5。组合 CLI/console 配合未修改的固定 module 服务 `bcc238bc4c2cc3a21aae05b23321bfdb1b4aad05`，真实 Range 三种拓扑、诊断权限和 OIDC STS 均通过，见 [脱敏报告](real-protocol-results.json)。报告分别记录调用者声明的源码和实际二进制摘要；它是源码组合验收，不是正式发行版认证。诊断浏览器预览使用合成快照，不代替真实服务器浏览器验收。
 
-此前一次 Range 夹具在约 0.96 秒失败，诊断和 STS 仍继续执行；见 [原失败报告](real-protocol-observed-failure.json)。后续独立夹具和最终组合验收通过，但该失败尚未复现、尚未定位。补充了 profile/phase/异常类别定位和强制失败回归，CI 不自动重试；不能宣称已消除偶发失败。
+此前一次 Range 夹具在约 0.96 秒失败，诊断和 STS 仍继续执行；见 [原失败报告](real-protocol-observed-failure.json)。后续独立夹具和最终组合验收通过，但该失败尚未复现、尚未定位。补充了 profile/phase/异常类别定位和强制失败回归，CI 不自动重试；不能宣称已消除偶发失败，也不能从源码不同的前后两轮推断这是相同版本的 flake。原失败 CLI 是 clean `ee1846d...` 正式资产，console 内嵌 base `7d4fb7fb...` 且 modified=true；已核对保留二进制的摘要。原 modified console/harness 精确树未留存，报告明确标记不可作为 07 验收基线，不把 base tree 冒充实际修改树。
 
 远端 PR 检查仍须以各 PR 当前状态为准。本批只完成 01 和 02/05 的上述子范围；权威父/组关系、IAM 完整管理、OIDC 控制台、普通用户 discovery、部署审计和正式发行矩阵继续按后续计划推进。旧 Web 弃用与回退窗口尚未完成，保留入口。
 
