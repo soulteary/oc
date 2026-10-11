@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import json
+import re
 import urllib.parse
 from fault_relay import FaultRelay
 from check_budgets import budgets, paired_throughput_gate
@@ -44,6 +45,17 @@ class TransferProcess(subprocess.Popen):
             # unlike RUSAGE_CHILDREN's shared peak across concurrent transfers.
             self.exit_peak_rss_kib = usage.ru_maxrss / (1024 if sys.platform == 'darwin' else 1)
         return pid, status
+
+
+def timeout_stack_functions(output):
+    """Keep only Go frame names; never retain arguments, paths or raw output."""
+    text = output.decode(errors='replace') if isinstance(output, bytes) else output
+    functions = set()
+    for line in text.splitlines():
+        match = re.match(r'^((?:runtime|sync|net|crypto|io|os|internal|github[.]com/soulteary)(?:/[A-Za-z0-9_./@-]+)?[.](?:\(\*?[A-Za-z0-9_]+\)[.])?[A-Za-z0-9_]+)\(', line)
+        if match:
+            functions.add(match[1])
+    return sorted(functions)[:128]
 
 
 def file_hash(path):
@@ -166,6 +178,21 @@ def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence
             finished = time.monotonic()
             if child.returncode:
                 raise RuntimeError(f'stability transfer returned {child.returncode}')
+        except subprocess.TimeoutExpired:
+            finished = time.monotonic()
+            attempt['failureReason'] = 'transfer-timeout'
+            # Preserve the timeout as failure. SIGQUIT gathers Go frame names
+            # before killing this owned fixture; it never retries the transfer.
+            attempt['timeoutStackFunctions'] = []
+            quit_signal = getattr(signal, 'SIGQUIT', None)
+            if quit_signal is not None:
+                try:
+                    child.send_signal(quit_signal)
+                    _, diagnostic = child.communicate(timeout=5)
+                    attempt['timeoutStackFunctions'] = timeout_stack_functions(diagnostic)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            raise
         finally:
             if child.poll() is None:
                 child.kill()

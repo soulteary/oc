@@ -12,47 +12,12 @@ import (
 // writes (including multipart abort) must finish first. Other users' reads and
 // logins remain available; competing writes receive the ordinary busy response.
 func (s *Server) rotateNativeSecret(w http.ResponseWriter, r *http.Request, sess *session, secret string) {
-	if !nativePrincipalScope(sess.runtime.identity).valid() {
-		writeError(w, 409, "identity_impact_unknown", "The affected identity cannot be established safely.")
+	mutation := s.beginIdentityMutation(w, sess, directIdentityImpact(nativePrincipalScope(sess.runtime.identity)))
+	if mutation == nil {
 		return
 	}
-	s.mu.Lock()
-	if s.closed || sess.ctx.Err() != nil || s.nativeRotating[sess.runtime.identity] || s.nativeUserChanging[sess.nativeUser] {
-		s.mu.Unlock()
-		writeError(w, 409, "credential_change_pending", "This session is ending or its secret is being changed.")
-		return
-	}
-	for i := 0; i < cap(s.writeSlots); i++ {
-		if err := tryAcquire(sess.ctx, s.writeSlots); err != nil {
-			for j := 0; j < i; j++ {
-				<-s.writeSlots
-			}
-			s.mu.Unlock()
-			writeError(w, 409, "active_tasks", "Complete or cancel active storage writes before changing the account secret.")
-			return
-		}
-	}
-	s.nativeRotating[sess.runtime.identity] = true
-	s.workers.Add(1)
-	s.mu.Unlock()
 	revoke := false
-	defer func() {
-		s.mu.Lock()
-		if revoke {
-			_ = s.revocations.revoke(nativePrincipalScope(sess.runtime.identity))
-			for token, other := range s.sessions {
-				if other.runtime.identity == sess.runtime.identity {
-					s.removeSessionLocked(token, other)
-				}
-			}
-		}
-		delete(s.nativeRotating, sess.runtime.identity)
-		for i := 0; i < cap(s.writeSlots); i++ {
-			<-s.writeSlots
-		}
-		s.mu.Unlock()
-		s.workers.Done()
-	}()
+	defer func() { mutation.finish(revoke) }()
 	err := sess.runtime.settings.RotateOwnSecret(r.Context(), secret)
 	if err != nil {
 		var apiError *consoleapi.Error

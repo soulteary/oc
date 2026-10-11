@@ -259,7 +259,7 @@ class MaintenanceTests(unittest.TestCase):
         child.returncode = None if timeout else 0
         child.poll.side_effect = lambda: child.returncode
         child.kill.side_effect = lambda: setattr(child, 'returncode', -9)
-        child.communicate.side_effect = ([subprocess.TimeoutExpired('fixture', 120), (b'', b'')]
+        child.communicate.side_effect = ([subprocess.TimeoutExpired('fixture', 120), (b'', b''), (b'', b'')]
                                          if timeout else [(b'', b'')])
         outcome = {}
         def one_transfer(transfer, *args):
@@ -282,6 +282,16 @@ class MaintenanceTests(unittest.TestCase):
         child.communicate.assert_any_call(timeout=budgets()['transferSeconds'])
         return outcome
 
+    def test_timeout_stack_retains_only_function_names(self):
+        raw = b"secret-output\nnet/http.(*persistConn).readLoop(0x123)\n\t/private/secret.go:8\ngithub.com/soulteary/mc/cmd.doCopy(0x123)\nruntime.gopark(0x1)\n"
+        result = stability.timeout_stack_functions(raw)
+        self.assertIn('github.com/soulteary/mc/cmd.doCopy', result)
+        self.assertIn('net/http.(*persistConn).readLoop', result)
+        self.assertIn('runtime.gopark', result)
+        self.assertNotIn('secret-output', str(result))
+        self.assertNotIn('0x123', str(result))
+        self.assertNotIn('/private/', str(result))
+
     def test_transfer_timer_excludes_sampler_cleanup(self):
         outcome = self.invoke_sampled_transfer()
         self.assertEqual(outcome['elapsedSeconds'], 0.25)
@@ -294,6 +304,16 @@ class MaintenanceTests(unittest.TestCase):
         with self.assertRaises(subprocess.TimeoutExpired):
             self.invoke_sampled_transfer(timeout=True)
         self.assertEqual(self.transfer_evidence['transferAttempts'][0]['status'], 'failed')
+        self.assertEqual(self.transfer_evidence['transferAttempts'][0]['failureReason'], 'transfer-timeout')
+
+    def test_transfer_timeout_without_sigquit_still_fails(self):
+        with patch.object(stability.signal, 'SIGQUIT', None, create=True):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                self.invoke_sampled_transfer(timeout=True)
+        attempt = self.transfer_evidence['transferAttempts'][0]
+        self.assertEqual(attempt['status'], 'failed')
+        self.assertEqual(attempt['failureReason'], 'transfer-timeout')
+        self.assertEqual(attempt['timeoutStackFunctions'], [])
 
     def test_transfer_exit_peak_closes_short_process_sampling_race(self):
         outcome = self.invoke_sampled_transfer(rss_kib=None, exit_rss_kib=2048)
