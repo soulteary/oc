@@ -45,9 +45,13 @@ with tempfile.TemporaryDirectory(prefix='oc-diagnostics-') as data:
             env.update(OC_DIAGNOSTICS_TEST_URL=url,
                        OC_DIAGNOSTICS_TEST_ACCESS='diagnostic-test-root',
                        OC_DIAGNOSTICS_TEST_SECRET='diagnostic-test-root-secret')
-            subprocess.run(['go', 'test', './internal/storageclient', '-run',
-                            'TestDiagnosticsRealServer', '-count=1', '-v'],
+            subprocess.run(['go', 'test', '-json', './internal/storageclient', '-timeout=60s', '-run',
+                            '^TestDiagnosticsRealServer$', '-count=1', '-v'],
                            env=env, cwd=repo, check=True)
         finally:
             process.terminate()
-            process.wait(timeout=10)
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)

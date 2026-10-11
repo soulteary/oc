@@ -39,6 +39,7 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
         command += [str(root / f'data-{i}') for i in range(4)]
         server = console = None
         with (root / 'server.log').open('wb') as log, (root / 'console.log').open('wb') as clog:
+            phase = 'server-startup'
             try:
                 server = subprocess.Popen(command, env=env, stdout=log, stderr=log)
                 for _ in range(300):
@@ -56,12 +57,14 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
                 if tls:
                     (cfg / 'certs' / 'CAs' / 's3.crt').write_bytes(s3ca.read_bytes())
                 cli = lambda *args: h.run_fixture_cli([options.cli, '--config-dir', str(cfg), '--no-color', *args], env, [access, secret, 'range-denied-user-secret-2026'])
+                phase = 'fixture-setup'
                 cli('mb', 'rangefixture/range-fixture')
                 data = b'0123456789abcdef' * 65536
                 fixture = root / 'payload'
                 fixture.write_bytes(data)
                 key = '中文 range+%.bin'
                 h.put_object(endpoint, 'range-fixture', key, data, access, secret, ctx)
+                phase = 'console-startup'
                 console = subprocess.Popen([options.console, '--config-dir', str(cfg), '--alias', 'rangefixture', '--address', '127.0.0.1:0'], env=env, stdout=clog, stderr=clog)
                 for _ in range(200):
                     fields = dict((line.split(': ', 1) for line in (root / 'console.log').read_text().splitlines() if ': ' in line))
@@ -71,6 +74,7 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
                 else:
                     raise RuntimeError('console startup')
                 command = [sys.executable, 'buildscripts/test-console-range.py', '--console-url', fields['URL'], '--login-code', fields['Login code'], '--object-path', '/api/download?' + urllib.parse.urlencode({'bucket': 'range-fixture', 'key': key}), '--fixture', str(fixture)]
+                phase = 'range-conditions'
                 out = subprocess.run(command, env=env, capture_output=True, text=True)
                 assert out.returncode == 0, out.stderr
                 import http.cookiejar, urllib.request, urllib.error
@@ -87,6 +91,7 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
                 req = urllib.request.Request(fields['URL'] + '/api/login', data=json.dumps({'code': fields['Login code']}).encode(), headers={'Origin': fields['URL'], 'Content-Type': 'application/json'})
                 with opener.open(req, timeout=10):
                     pass
+                phase = 'empty-object'
                 h.put_object(endpoint, 'range-fixture', 'empty', b'', access, secret, ctx)
                 status, headers, body = probe({'bucket': 'range-fixture', 'key': 'empty'}, headers={'Range': 'bytes=0-0'})
                 assert status == 416 and headers['Content-Range'] == 'bytes */0' and (not body)
@@ -97,12 +102,14 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
                 if status == 206:
                     assert body == data[:2]
                 null_status = status
+                phase = 'historical-version'
                 cli('version', 'enable', 'rangefixture/range-fixture')
                 h.put_object(endpoint, 'range-fixture', 'history', b'OLD-BYTES', access, secret, ctx)
                 old_version = json.loads(cli('--json', 'stat', 'rangefixture/range-fixture/history'))['versionID']
                 h.put_object(endpoint, 'range-fixture', 'history', b'NEW-BYTES', access, secret, ctx)
                 status, headers, body = probe({'bucket': 'range-fixture', 'key': 'history', 'versionId': old_version}, headers={'Range': 'bytes=0-2'})
                 assert status == 206 and body == b'OLD', (status, body)
+                phase = 'restricted-user-setup'
                 denied_access = 'range-denied-user'
                 denied_secret = 'range-denied-user-secret-2026'
                 cli('admin', 'user', 'add', 'rangefixture', denied_access, denied_secret)
@@ -113,6 +120,7 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
                 config = json.loads((cfg / 'config.json').read_text())
                 config['aliases']['currentonly'] = {**config['aliases']['rangefixture'], 'accessKey': denied_access, 'secretKey': denied_secret}
                 (cfg / 'config.json').write_text(json.dumps(config))
+                phase = 'restricted-console-startup'
                 h.stop(console)
                 console = subprocess.Popen([options.console, '--config-dir', str(cfg), '--alias', 'currentonly', '--address', '127.0.0.1:0'], env=env, stdout=clog, stderr=clog)
                 previous = fields['URL']
@@ -127,6 +135,7 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
                 req = urllib.request.Request(fields['URL'] + '/api/login', data=json.dumps({'code': fields['Login code']}).encode(), headers={'Origin': fields['URL'], 'Content-Type': 'application/json'})
                 with opener.open(req, timeout=10):
                     pass
+                phase = 'restricted-downloads'
                 status, headers, body = probe({'bucket': 'range-fixture', 'key': 'history'}, headers={'Range': 'bytes=0-2'})
                 assert status == 206 and body == b'NEW', (status, body)
                 status, headers, body = probe({'bucket': 'range-fixture', 'key': 'history', 'versionId': old_version}, headers={'Range': 'bytes=0-2'})
@@ -136,6 +145,12 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
                 status, headers, body = probe({'bucket': 'range-fixture', 'key': 'history'}, headers={'Range': 'bytes=0-2', 'If-Range': '"different"'})
                 assert status == 200 and body == b'NEW-BYTES', (status, body)
                 results.append({'profile': profile, **json.loads(out.stdout), 'emptyObjectChecks': 2, 'nullVersionStatus': null_status, 'historicalVersionStatus': 206, 'restrictedCurrentStatus': 206, 'restrictedHistoricalStatus': 403, 'restrictedConditionalFullStatus': 200, 'restrictedIfRangeFallbackStatus': 200})
+            except Exception as error:
+                pathlib.Path(options.output).write_text(json.dumps({
+                    'serverSource': options.server_source, 'profiles': results,
+                    'failure': {'profile': profile, 'phase': phase, 'exceptionClass': type(error).__name__},
+                }, indent=2))
+                raise
             finally:
                 h.stop(console)
                 h.stop(server)
