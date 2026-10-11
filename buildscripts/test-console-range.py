@@ -21,12 +21,14 @@ def main():
     parser.add_argument('--object-path', required=True)
     parser.add_argument('--fixture', required=True)
     parser.add_argument('--ca')
+    parser.add_argument('--login-code', help='code from a disposable local-mode console')
     args = parser.parse_args()
     with open(args.fixture, 'rb') as fixture:
         data = fixture.read()
     if len(data) < 4:
         parser.error('fixture must contain at least four bytes')
     opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
         urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
         urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=args.ca)))
     def request(path, method='GET', headers=None, body=None):
@@ -37,7 +39,7 @@ def main():
             response = error
         with response:
             return response.status, response.headers, response.read()
-    login = {'accessKey': os.environ['OC_RANGE_ACCESS_KEY'], 'secretKey': os.environ['OC_RANGE_SECRET_KEY']}
+    login = {'code': args.login_code} if args.login_code else {'accessKey': os.environ['OC_RANGE_ACCESS_KEY'], 'secretKey': os.environ['OC_RANGE_SECRET_KEY']}
     status, _, _ = request('/api/login', 'POST', {'Content-Type': 'application/json'}, json.dumps(login).encode())
     assert status == 200, ('login', status)
     path = args.object_path

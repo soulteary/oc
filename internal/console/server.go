@@ -359,7 +359,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/api/logout":
 		method = http.MethodPost
-	case "/api/session", "/api/buckets", "/api/objects", "/api/account", "/api/download", "/api/capabilities", "/api/object-info":
+	case "/api/download":
+		if r.Method == http.MethodHead {
+			method = http.MethodHead
+		}
+	case "/api/session", "/api/buckets", "/api/objects", "/api/account", "/api/capabilities", "/api/object-info":
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "This console endpoint does not exist.")
 		return
@@ -498,6 +502,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer func() { <-s.downloads }()
+		if r.Method == http.MethodHead || r.Header.Get("Range") != "" || r.Header.Get("If-Match") != "" || r.Header.Get("If-None-Match") != "" || r.Header.Get("If-Modified-Since") != "" || r.Header.Get("If-Unmodified-Since") != "" || r.Header.Get("If-Range") != "" {
+			s.downloadRange(w, r, ctx, sess, consoleapi.ObjectRef{Bucket: bucket, Key: key, VersionID: q.Get("versionId")})
+			return
+		}
 		if versionID := q.Get("versionId"); versionID != "" {
 			s.downloadReference(w, ctx, sess, consoleapi.ObjectRef{Bucket: bucket, Key: key, VersionID: versionID})
 		} else {

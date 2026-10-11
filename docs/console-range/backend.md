@@ -26,10 +26,27 @@ existing download implementation through an unwrap-capable response adapter.
 Validation performed on this branch: console and storageclient package tests
 with the race detector; protocol fixtures cover range rejection, selected
 version protection, suffix and overflow, conditional statuses, HEAD and
-truncated output. No real server combination has been certified before route
-integration. `buildscripts/test-console-range.py` is a dedicated real-service
+truncated output. Route integration is included and tested through the existing authenticated
+endpoint. `buildscripts/test-console-range.py` is a dedicated real-service
 probe for integration: caller supplies a disposable native account via
 OC_RANGE_ACCESS_KEY/OC_RANGE_SECRET_KEY, exact object fixture and browser TLS CA.
 Run separately for each real server/HTTP/TLS/CA/version fixture. Empty objects,
 historical/null versions and denied historical versions require additional
 integration fixtures; local protocol tests alone do not certify those pairs.
+
+## Formal-server evidence
+
+The disposable matrix passed against OtterIO source
+`8cc518b31ac8b69c8f855e19b4bd027f44275c47`: single HTTP, split HTTP, and
+split TLS with independent S3/Admin CAs. Each profile checked nine ordinary
+Range/conditional/HEAD cases on a 1 MiB Unicode/percent-key fixture, two empty
+object cases, explicit null version 206, historical-version old bytes 206, and
+a restricted account allowed current bytes 206 but denied historical bytes 403.
+The browser session used local login codes; native IAM browser login and a
+browser-facing TLS matrix were not part of this run. Upstream CA verification
+remained enabled and all local requests bypassed proxies.
+
+Reproduce with `buildscripts/test-console-range-real.py --cli ... --console ...
+--server ... --server-source ... --output ...` from the repository root. All
+configuration, aliases, identities, storage and processes are disposable.
+The source argument is a declared source identifier, not binary authentication.
