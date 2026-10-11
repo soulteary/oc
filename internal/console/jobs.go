@@ -124,7 +124,7 @@ func (s *Server) serveJobs(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		jobs := []consoleapi.Job{}
 		for _, j := range s.jobs {
-			if j.owner == sess {
+			if sameSession(j.owner, sess) {
 				jobs = append(jobs, snapshot(j))
 			}
 		}
@@ -172,7 +172,7 @@ func snapshot(j *job) consoleapi.Job {
 
 func (s *Server) ownedJobLocked(id string, sess *session) *job {
 	j := s.jobs[id]
-	if j == nil || j.owner != sess {
+	if j == nil || !sameSession(j.owner, sess) {
 		return nil
 	}
 	return j
@@ -192,7 +192,7 @@ func (s *Server) createJob(w http.ResponseWriter, sess *session, info consoleapi
 	}
 	count := 0
 	for _, j := range s.jobs {
-		if j.owner == sess {
+		if sameSession(j.owner, sess) {
 			count++
 		}
 	}
@@ -215,7 +215,7 @@ func (s *Server) createJob(w http.ResponseWriter, sess *session, info consoleapi
 func (s *Server) evictTerminalLocked(owner *session) bool {
 	var oldest *job
 	for _, j := range s.jobs {
-		if !terminal(j.info.Status) || (owner != nil && j.owner != owner) {
+		if !terminal(j.info.Status) || (owner != nil && !sameSession(j.owner, owner)) {
 			continue
 		}
 		if oldest == nil || j.info.Created.Before(oldest.info.Created) {
@@ -587,6 +587,8 @@ func (s *Server) executeDeletion(w http.ResponseWriter, r *http.Request, sess *s
 		writeError(w, 409, "connection_ending", "This connection is ending.")
 		return
 	}
+	// Use the same runtime retained above, including after OIDC refresh.
+	j.owner = sess
 	j.confirm = [32]byte{}
 	j.info.Status = "running"
 	j.info.Expires = j.owner.expires

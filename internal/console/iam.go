@@ -32,6 +32,10 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 	}
 	var nativeArgs *consoleapi.IAMActionRequest
 	if method == http.MethodPost {
+		if s.oidc != nil {
+			writeError(w, 403, "identity_relationship_unknown", "OIDC identity has no authoritative native parent mapping; IAM changes are unavailable.")
+			return
+		}
 		if !s.requireOrigin(w, r) || !s.requireCSRF(w, r, sess) {
 			return
 		}

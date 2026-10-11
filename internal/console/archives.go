@@ -109,7 +109,7 @@ func (s *Server) serveArchives(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		archives := make([]archiveReply, 0)
 		for _, task := range s.archives {
-			if task.owner == sess {
+			if sameSession(task.owner, sess) {
 				archives = append(archives, task.info)
 			}
 		}
@@ -131,7 +131,7 @@ func (s *Server) serveArchives(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	task := s.archives[id]
-	if task == nil || task.owner != sess {
+	if task == nil || !sameSession(task.owner, sess) {
 		s.mu.Unlock()
 		writeError(w, 404, "not_found", "This archive does not exist.")
 		return
@@ -249,7 +249,7 @@ func (s *Server) newArchive(w http.ResponseWriter, r *http.Request, sess *sessio
 	}
 	owned := 0
 	for _, existing := range s.archives {
-		if existing.owner == sess || (s.nativeLogin != nil && existing.owner.runtime.identity == sess.runtime.identity) {
+		if sameSession(existing.owner, sess) || (s.nativeLogin != nil && existing.owner.runtime.identity == sess.runtime.identity) {
 			owned++
 		}
 	}

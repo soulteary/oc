@@ -191,6 +191,10 @@ func (s *Server) saveBucketSetting(w http.ResponseWriter, r *http.Request, sess 
 }
 
 func (s *Server) rotateOwnSecret(w http.ResponseWriter, r *http.Request, sess *session) {
+	if s.oidc != nil {
+		writeError(w, 403, "identity_relationship_unknown", "Manage OIDC credentials with the identity provider.")
+		return
+	}
 	var args struct {
 		NewSecret string `json:"newSecret"`
 		Confirm   bool   `json:"confirm"`
