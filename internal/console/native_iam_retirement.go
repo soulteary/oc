@@ -12,6 +12,10 @@ import (
 // Gate only the target user's new requests and sign-ins. Existing read requests
 // are canceled when its sessions are retired after the acknowledgement.
 func (s *Server) retireNativeUser(w http.ResponseWriter, r *http.Request, sess *session, backend consoleapi.IAMBackend, args consoleapi.IAMActionRequest) {
+	if !nativeUserScope(args.User).valid() {
+		writeError(w, 409, "identity_impact_unknown", "The affected identity cannot be established safely.")
+		return
+	}
 	if !s.startSettingsWrite(w, sess, true) {
 		return
 	}
@@ -27,10 +31,7 @@ func (s *Server) retireNativeUser(w http.ResponseWriter, r *http.Request, sess *
 		finished = true
 		s.mu.Lock()
 		if revoke {
-			s.nativeEpoch++
-			if s.nativeLogins > 0 {
-				s.nativeUserRevoked[args.User] = s.nativeEpoch
-			}
+			_ = s.revocations.revoke(nativeUserScope(args.User))
 			for token, other := range s.sessions {
 				if other.nativeUser == args.User {
 					s.removeSessionLocked(token, other)

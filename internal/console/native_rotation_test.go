@@ -96,7 +96,7 @@ func TestNativeRotationRejectsLoginValidatedBeforeRotation(t *testing.T) {
 		t.Fatal("stale login survived rotation")
 	}
 	s.mu.Lock()
-	n := len(s.nativeRevoked)
+	n := len(s.revocations.tombstones)
 	s.mu.Unlock()
 	if n != 0 {
 		t.Fatal("rotation tombstones retained without pending logins")
