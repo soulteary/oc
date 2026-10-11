@@ -1,0 +1,11 @@
+# Real browser OIDC acceptance
+
+The independent Python hook invokes real cached Playwright Chromium 141.0.7390.37 in nonpersistent contexts. Passwords are passed through stdin only. It produces no screenshots, URL/query/header logs, credential files, or persistent profiles. Node/Playwright/browser paths can be overridden with OC_BROWSER_NODE, OC_BROWSER_PLAYWRIGHT_MODULE, and OC_BROWSER_EXECUTABLE. No installation or system trust changes are required.
+
+Use the isolated Keycloak harness with `--browser-hook buildscripts/console_oidc_browser_acceptance.py --cross-site-idp --console-session-ttl 150s --console-refresh-wait 95`. IdP localhost and Console 127.0.0.1 are different sites, not merely different ports. Browser contexts ignore fixture certificate errors only; production Console and storage verification still use explicitly supplied temporary primary/Admin CAs, including wrong-CA rejection.
+
+The clean fcb9a168 Console failed actual browser navigation: binding cookie present, callback GET marked cross-site accepted with 303, subsequent home response 403. A redirect chain retains its cross-site request metadata. The fixed callback returns a fixed 200 HTML document with meta navigation and a fixed local link. Host/Origin and all other cross-site checks remain intact; the document contains no callback values.
+
+Clean 77484479 Console passed eleven real browser checks: two UI logins, Secure/HttpOnly/Lax host binding, actual cross-site callback GET cookie transmission, Alice UI logout and Bob isolation, Bob alive beyond the initial 90-second token, successful provider refresh events, and 150-second fixed deadline returning 401. This establishes meta navigation behavior in Chromium. The enclosing protocol harness subsequently failed because it timed later protocol sessions from Console startup, preceding the 150-second browser hook. Accordingly the archived report remains failed; its browserAcceptance section is passed. Final combined rerun is pending the harness timing correction.
+
+Evidence files bind exact binary/source hashes and cleanup results. They are test-built clean binaries, not published release assets. The browser does not yet exercise preference/archive UI interactions; separate protocol acceptance covers those. This evidence does not substitute for other browser engines or production certificate deployment.
