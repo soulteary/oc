@@ -75,6 +75,12 @@ func (c *Client) IAMCreateRelationshipServiceAccount(ctx context.Context, args c
 	if err != nil {
 		return result, outcomeUnknown()
 	}
+	if response.StatusCode == http.StatusPreconditionFailed {
+		code, parseErr := managementErrorCode(encrypted, true)
+		if parseErr == nil && code == "PreconditionFailed" {
+			return result, iamConflict("identity_revision_conflict", "The parent IAM graph changed. Reload before creating a service account.")
+		}
+	}
 	observer := iamTransport{dispatched: true, status: response.StatusCode, data: encrypted, allowBody: true}
 	if err := observer.mutationError(nil); err != nil {
 		return result, err

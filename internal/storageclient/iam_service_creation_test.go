@@ -17,7 +17,7 @@ import (
 )
 
 func TestRelationshipServiceCreationSingleDispatchProtectedAck(t *testing.T) {
-	for _, scenario := range []string{"confirmed", "supplied-secret", "missing-marker", "duplicate-marker", "wrong-parent", "wrong-key", "session-token", "expiration", "disabled", "duplicate-credential", "unexpected-field", "unknown", "denied"} {
+	for _, scenario := range []string{"confirmed", "supplied-secret", "missing-marker", "duplicate-marker", "wrong-parent", "wrong-key", "session-token", "expiration", "disabled", "duplicate-credential", "unexpected-field", "conflict", "stale-proof", "collision", "unknown-conflict", "unknown", "denied"} {
 		t.Run(scenario, func(t *testing.T) {
 			var writes atomic.Int32
 			relation := consoleapi.IAMRelationships{Kind: "user", Target: "parent", State: "known", CoupledServiceCreation: true, Revision: strings.Repeat("a", 64), ExpiresAt: time.Now().Add(20 * time.Second), AffectedAccessKeys: []string{"parent"}}
@@ -46,6 +46,16 @@ func TestRelationshipServiceCreationSingleDispatchProtectedAck(t *testing.T) {
 				var req madmin.AddServiceAccountReq
 				if json.Unmarshal(decrypted, &req) != nil || req.TargetUser != "parent" || req.AccessKey != "new-child" || req.SecretKey != args.SecretKey {
 					t.Error("unexpected creation payload")
+				}
+				if scenario == "conflict" || scenario == "stale-proof" || scenario == "collision" {
+					w.WriteHeader(412)
+					w.Write([]byte(`{"Code":"PreconditionFailed"}`))
+					return
+				}
+				if scenario == "unknown-conflict" {
+					w.WriteHeader(503)
+					w.Write([]byte(`{"Code":"PreconditionFailed"}`))
+					return
 				}
 				if scenario == "unknown" {
 					w.WriteHeader(503)
@@ -108,6 +118,9 @@ func TestRelationshipServiceCreationSingleDispatchProtectedAck(t *testing.T) {
 			}
 			var failure *consoleapi.Error
 			code := "outcome_unknown"
+			if scenario == "conflict" || scenario == "stale-proof" || scenario == "collision" {
+				code = "identity_revision_conflict"
+			}
 			if scenario == "denied" {
 				code = "iam_action_denied"
 			}
