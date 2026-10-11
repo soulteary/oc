@@ -36,8 +36,12 @@ integration fixtures; local protocol tests alone do not certify those pairs.
 
 ## Formal-server evidence
 
-The disposable matrix passed against OtterIO source
-`8cc518b31ac8b69c8f855e19b4bd027f44275c47`: single HTTP, split HTTP, and
+The disposable matrix passed against the published OtterIO
+`RELEASE.2026-10-10T16-38-05Z` binary (SHA256
+`48b673ad0e03723eeeedb2ab5773569093b426d8fa04e132d17183ac7afb6f9c`).
+Its embedded base revision is `8cc518b31ac8b69c8f855e19b4bd027f44275c47`,
+with `vcs.modified=true`; the base does not identify the complete release source.
+The tested profiles were single HTTP, split HTTP, and
 split TLS with independent S3/Admin CAs. Each profile checked nine ordinary
 Range/conditional/HEAD cases on a 1 MiB Unicode/percent-key fixture, two empty
 object cases, explicit null version 206, historical-version old bytes 206, and
