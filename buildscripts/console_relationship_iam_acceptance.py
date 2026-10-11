@@ -79,12 +79,13 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
 
     def action(client, body, expected=200, csrf=True):
         payload = client('/api/iam/actions', 'POST', body, expected=expected,
-                         headers=client.csrf if csrf else {})[0]
+                         headers=client.csrf if csrf else {},
+                         allowed_credentials=tuple(names.values()) + ((child['accessKey'],) if child else ()))[0]
         return json.loads(payload)
 
     def bindings(client, kind, target):
         query = urllib.parse.urlencode({'kind': kind, 'target': target})
-        return json.loads(client('/api/iam/bindings?' + query)[0])
+        return json.loads(client('/api/iam/bindings?' + query, allowed_credentials=tuple(names.values()))[0])
 
     def child_request(method, key, payload=b'', expected=200):
         spec = importlib.util.spec_from_file_location('relationship_fixture_signer', Path(__file__).with_name('test-console-integration.py'))
