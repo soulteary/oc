@@ -165,14 +165,18 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
             checks.append('real legacy server missing coupled relationship capability rejects secret/binding mutations; original credentials and sessions remain valid')
             return {'processCleanup': own_cleanup, 'capabilityMode': 'expected-unsupported', 'unsupportedActionsPassed': ['user.rotate', 'user.policies', 'user.disable', 'user.enable', 'user.delete'], 'positiveMutationCoverage': []}
 
-        collision_secret = secrets.token_hex(20)
-        credentials.append(collision_secret)
-        collision = action(manager, {'action': 'service-account.create', 'user': names['target'],
-            'accessKey': names['denied'], 'secretKey': collision_secret, 'confirmTarget': names['target']}, 409)
-        if collision.get('code') != 'identity_revision_conflict':
-            raise RuntimeError('protected service creation collision did not return explicit revision conflict')
-        unrelated('/api/session');target('/api/session');manager('/api/session')
-        checks.append('protected service creation rejects existing native access-key collision with explicit 409 and preserves original user sessions')
+        before_children = list_target_children()
+        for collision_target in (names['denied'], names['unrelated']):
+            collision_secret = secrets.token_hex(20)
+            credentials.append(collision_secret)
+            collision = action(manager, {'action': 'service-account.create', 'user': names['target'],
+                'accessKey': collision_target, 'secretKey': collision_secret, 'confirmTarget': names['target']}, 409)
+            if collision.get('code') != 'identity_revision_conflict':
+                raise RuntimeError('protected service creation collision did not return explicit revision conflict')
+            if list_target_children() != before_children:
+                raise RuntimeError('protected service creation collision wrote an unexpected child')
+            unrelated('/api/session');target('/api/session');manager('/api/session')
+        checks.append('protected service creation rejects existing 19/22-character native access-key collisions with explicit 409, zero writes and preserved user sessions')
 
         # Real child credential exists, but native browser login intentionally accepts only IAM users.
         created = action(manager, {'action': 'service-account.create', 'user': names['target'], 'confirmTarget': names['target']})
