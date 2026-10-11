@@ -201,6 +201,21 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/otterio-source"
           go build -mod=readonly -trimpath -o "$RUNNER_TEMP/otterio" .
+      - name: Verify real Range, diagnostics and OIDC STS protocols
+        timeout-minutes: 9
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: ${{ matrix.cgo }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          go mod verify
+          python3 -m unittest discover -s buildscripts -p test_real_protocol_ci.py -v
+          python3 buildscripts/test-real-protocol-ci.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio" \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --source-kind module-build --source-state clean \
+            --output "$RUNNER_TEMP/console-real-protocols.json"
       - name: Verify CLI startup, gateways, management routing and signal exits
         env:
           CLI_TEST_OTTERIO_BINARY: ${{ runner.temp }}/otterio
@@ -423,6 +438,7 @@ jobs:
         with:
           name: core-integration-${{ matrix.os }}-cgo-${{ matrix.cgo }}
           path: |
+            ${{ runner.temp }}/console-real-protocols.json
             ${{ runner.temp }}/core-integration.json
             ${{ runner.temp }}/core-evidence/
             ${{ runner.temp }}/console-current-integration.json
