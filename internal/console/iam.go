@@ -40,8 +40,8 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 			if !decodeJSON(w, r, nativeArgs, 6*20*1024+8192) {
 				return
 			}
-			if !nativeIAMCreation(nativeArgs.Action) || (nativeArgs.Action == "group.create" && len(nativeArgs.Members) != 0) {
-				writeError(w, 403, "identity_changes_disabled", "Native IAM currently supports only new user, group and service account creation.")
+			if !nativeIAMActionAllowed(nativeArgs.Action) || (nativeArgs.Action == "group.create" && len(nativeArgs.Members) != 0) {
+				writeError(w, 403, "identity_changes_disabled", "Native IAM supports creation and user activation; other identity changes are unavailable.")
 				return
 			}
 		}
@@ -116,7 +116,7 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		return
 	}
 	// Local IAM edits can invalidate the shared identity and reserve every
-	// write slot. Native mode permits creation only and uses one ordinary slot;
+	// write slot. Native creation and account activation use one ordinary slot;
 	// conditional creation must not replace existing identities.
 	rotate := s.nativeLogin == nil
 	if !s.startSettingsWrite(w, sess, rotate) {
@@ -140,7 +140,7 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 			return
 		}
 		if s.nativeLogin != nil {
-			writeError(w, 502, "outcome_unknown", "The IAM creation may have completed. Verify the exact target before making another request.")
+			writeError(w, 502, "outcome_unknown", "The IAM operation may have completed. Verify the exact target before making another request.")
 			return
 		}
 		// A lost IAM acknowledgement can leave the startup identity invalid.
@@ -153,8 +153,13 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		}{"outcome_unknown", "The IAM change may have completed. Verify it with an administrative client, then restart OC before continuing.", true})
 		return
 	}
+	if s.nativeLogin != nil && args.Action == "user.enable" && result.Outcome == "confirmed" {
+		// Enabling an account does not change its credentials. The local SDK
+		// conservatively marks self-target actions as requiring restart.
+		result.RestartRequired = false
+	}
 	if s.nativeLogin != nil && (result.RestartRequired || result.Outcome != "confirmed") {
-		writeError(w, 502, "outcome_unknown", "The IAM creation was not safely confirmed. Verify the exact target before making another request.")
+		writeError(w, 502, "outcome_unknown", "The IAM operation was not safely confirmed. Verify the exact target before making another request.")
 		return
 	}
 	if result.RestartRequired {
@@ -167,6 +172,6 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 	writeJSON(w, 200, result)
 }
 
-func nativeIAMCreation(action string) bool {
-	return action == "user.create" || action == "group.create" || action == "service-account.create"
+func nativeIAMActionAllowed(action string) bool {
+	return action == "user.enable" || action == "user.create" || action == "group.create" || action == "service-account.create"
 }

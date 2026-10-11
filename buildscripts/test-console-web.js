@@ -1806,12 +1806,12 @@ test("native page suspension clears unsubmitted identity credentials", async () 
  assert.equal(h.calls.filter(c=>c.url==="/api/login").length,0);
 });
 
-test("native writable sessions expose creation only and cannot submit identity edits", async () => {
+test("native writable sessions expose creation and activation but reject other identity edits", async () => {
   const h = createHarness({ native: true, readOnly: false, capabilities: fullCapabilities });
   await h.ready();
   await h.fire("open-iam");
   assert.equal(h.element("iam-action-form").hidden, false);
-  assert.deepEqual(h.element("iam-action").children.map(o=>o.value),["user.create"]);
+  assert.deepEqual(h.element("iam-action").children.map(o=>o.value),["user.create", "user.enable"]);
   h.element("iam-action").value="user.disable";
   await h.fire("iam-action-form", "submit", { force: true });
   assert.equal(h.calls.filter(call => call.url === "/api/iam/actions").length, 0);
@@ -1848,6 +1848,17 @@ test("native IAM creation shows confirmed credentials once and keeps uncertain o
   assert.equal(h.calls.filter(c=>c.url==="/api/iam/actions").length,1);
   await h.fire("close-iam");assert.equal(h.element("iam-result-secret").value,"");
  }
+});
+
+test("native IAM account activation keeps the console available after confirmation", async () => {
+ const h=createHarness({native:true,readOnly:false,capabilities:fullCapabilities});
+ h.route("POST","/api/iam/actions",()=>response({outcome:"confirmed",restartRequired:false}));
+ await h.ready();await h.fire("open-iam");
+ h.element("iam-action").value="user.enable";await h.fire("iam-action","change");
+ iamField(h,"user").value="enabled-user";h.element("iam-confirm").value="enabled-user";
+ await h.fire("iam-action-form","submit");
+ assert.equal(JSON.parse(h.calls.find(c=>c.url==="/api/iam/actions").body).action,"user.enable");
+ assert.equal(h.element("workspace").hidden,false);assert.equal(h.element("iam-confirm").value,"");
 });
 
 (async () => {

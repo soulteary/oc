@@ -2289,7 +2289,7 @@
     policies: [],
   };
   if (nativeLogin) {
-    iamActions.users = ["user.create"];
+    iamActions.users = ["user.create", "user.enable"];
     iamActions.groups = ["group.create"];
     iamActions["service-accounts"] = ["service-account.create"];
   }
@@ -2470,7 +2470,7 @@
           policy.setAttribute("data-no-i18n", ""); policy.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
           card.append(policy);
         }
-        if (!nativeLogin && !state.readOnly && kind !== "policies") card.append(actionButton("Choose for change", () => {
+        if (!state.readOnly && kind !== "policies" && (!nativeLogin || kind === "users")) card.append(actionButton("Choose for change", () => {
           iamRecord = record;
           elements["iam-action"].value = iamActions[kind][1] || iamActions[kind][0];
           configureIAMAction();
@@ -2489,7 +2489,7 @@
     event.preventDefault();
     if (!featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
     const action = elements["iam-action"].value;
-    if (nativeLogin && !["user.create", "group.create", "service-account.create"].includes(action)) return;
+    if (nativeLogin && !["user.create", "user.enable", "group.create", "service-account.create"].includes(action)) return;
     const body = { action, confirmTarget: elements["iam-confirm"].value };
     for (const [name, input] of Object.entries(iamInputs)) {
       if (name === "policies") body.policies = [...new Set(input.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];
@@ -2548,7 +2548,7 @@
         if (nativeLogin) {
           elements["iam-confirm"].value = "";
           clearIAMSecret();
-          setText("iam-action-status", "The creation outcome is unknown. Verify the exact target before making another request. This request was not repeated.");
+          setText("iam-action-status", "The IAM operation outcome is unknown. Verify the exact target before making another request. This request was not repeated.");
           return;
         }
         consoleStopped = true;
