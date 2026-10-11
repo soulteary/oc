@@ -25,6 +25,12 @@ func TestRangeChecksWireResponse(t *testing.T) {
 		{"valid", "bytes 2-4/10", "null", "v1", "etag", 206, true}, {"ignored", "", "null", "v1", "etag", 200, false},
 		{"wrong total", "bytes 2-4/11", "null", "v1", "etag", 206, false}, {"wrong range", "bytes 3-5/10", "null", "v1", "etag", 206, false},
 		{"missing protection", "bytes 2-4/10", "null", "", "etag", 206, false}, {"wrong version", "bytes 2-4/10", "other", "v1", "etag", 206, false},
+		{"equivalent spelling", "Bytes 02-04/010", "null", "v1", "etag", 206, true},
+		{"unsupported unit", "items 2-4/10", "null", "v1", "etag", 206, false},
+		{"signed number", "bytes +2-4/10", "null", "v1", "etag", 206, false},
+		{"overflow", "bytes 2-4/9223372036854775808", "null", "v1", "etag", 206, false},
+		{"trailing data", "bytes 2-4/10/10", "null", "v1", "etag", 206, false},
+		{"unknown total", "bytes 2-4/*", "null", "v1", "etag", 206, false},
 		{"changed", "bytes 2-4/10", "null", "v1", "other", 206, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

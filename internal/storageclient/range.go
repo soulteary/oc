@@ -3,8 +3,9 @@ package storageclient
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/soulteary/mc/internal/consoleapi"
 	minio "github.com/soulteary/otterio-sdk/v7"
@@ -44,7 +45,7 @@ func (c *Client) OpenRange(ctx context.Context, ref consoleapi.ObjectRef, expect
 		return reject(referenceChanged())
 	}
 	length := end - start + 1
-	if headers.Get("Content-Range") != fmt.Sprintf("bytes %d-%d/%d", start, end, expected.Size) || info.Size != length {
+	if !matchesContentRange(headers.Get("Content-Range"), start, end, expected.Size) || info.Size != length {
 		return reject(&consoleapi.Error{Status: http.StatusBadGateway, Code: "range_unsupported", Message: "The storage server did not honor the requested byte range."})
 	}
 	return consoleapi.Object{Body: body, Size: length, ContentType: info.ContentType, Modified: info.LastModified, ETag: info.ETag}, nil
@@ -95,4 +96,37 @@ func (c *Client) OpenRangeFull(ctx context.Context, ref consoleapi.ObjectRef, ex
 		return reject(referenceChanged())
 	}
 	return consoleapi.Object{Body: body, Size: info.Size, ETag: info.ETag, ContentType: info.ContentType, Modified: info.LastModified}, nil
+}
+
+// matchesContentRange compares the parsed byte interval, allowing equivalent
+// unit casing and leading zeroes while rejecting malformed or overflowing values.
+func matchesContentRange(value string, start, end, size int64) bool {
+	unit, interval, ok := strings.Cut(value, " ")
+	if !ok || !strings.EqualFold(unit, "bytes") {
+		return false
+	}
+	bounds, total, ok := strings.Cut(interval, "/")
+	if !ok {
+		return false
+	}
+	first, last, ok := strings.Cut(bounds, "-")
+	if !ok {
+		return false
+	}
+	parse := func(value string) (int64, bool) {
+		if value == "" {
+			return 0, false
+		}
+		for i := range value {
+			if value[i] < '0' || value[i] > '9' {
+				return 0, false
+			}
+		}
+		n, err := strconv.ParseInt(value, 10, 64)
+		return n, err == nil
+	}
+	a, aOK := parse(first)
+	b, bOK := parse(last)
+	n, nOK := parse(total)
+	return aOK && bOK && nOK && a == start && b == end && n == size
 }
