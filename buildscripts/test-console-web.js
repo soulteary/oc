@@ -268,6 +268,23 @@ test("language switching translates UI and preserves exact data values", async (
  assert.equal(window.OCI18n.translate("Preparing upload…"),"正在准备上传…");
 });
 
+test("diagnostics labels translate while snapshot values remain exact", () => {
+ const navigation={nodeValue:"服务诊断",parentElement:{closest:()=>null}};
+ const title={nodeValue:"服务诊断",parentElement:{closest:()=>null}};
+ const values=["Version","Failed","版本","失败"].map(nodeValue=>({nodeValue,parentElement:{closest:selector=>selector.split(",").includes("#diagnostics-body") ? {} : null}}));
+ const nodes=[navigation,title,...values];
+ const document={title:"",documentElement:{},body:{querySelectorAll:()=>[]},getElementById:()=>null,createTreeWalker(){let i=0;return {nextNode:()=>nodes[i++]||null};}};
+ const window={}; let observe;
+ class MutationObserver { constructor(callback){observe=callback;} observe(){} }
+ vm.runInNewContext(fs.readFileSync(path.join(web,"i18n.js"),"utf8"),{document,window,MutationObserver});
+ for(const language of ["en","zh","en"]){
+  window.OCI18n.setLanguage(language); observe();
+  assert.equal(navigation.nodeValue,language==="en" ? "Service diagnostics" : "服务诊断");
+  assert.equal(title.nodeValue,navigation.nodeValue);
+  assert.deepEqual(values.map(node=>node.nodeValue),["Version","Failed","版本","失败"]);
+ }
+});
+
 test("saved favorites and recent visits restore independently of bucket listing", async () => {
   const h = createHarness({listDenied:true, preferences:{language:"en",favorites:[{bucket:"private",key:"exact/中文 +%.jpg"}],recent:["private","other"]}});
   await h.ready();
