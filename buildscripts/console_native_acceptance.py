@@ -139,87 +139,110 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             credentials.extend([created['credentials']['accessKey'], created['credentials']['secretKey']])
             manager('/api/iam/actions', 'POST', create_user, expected=409, headers=manager_headers)
             manager('/api/iam/actions', 'POST', {'action': 'group.create', 'group': new_group, 'confirmTarget': new_group}, headers=manager_headers)
-            created_browser = browser(base, tls_context)
-            new_secret = created['credentials']['secretKey']
-            created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-            cli('admin', 'user', 'disable', 'store', new_user)
-            created_browser('/api/session', expected=401)
-            enable_user = {'action': 'user.enable', 'user': new_user, 'confirmTarget': new_user}
-            alice('/api/iam/actions', 'POST', enable_user, expected=403, headers=alice_headers)
-            manager('/api/iam/actions', 'POST', enable_user, headers=manager_headers)
-            created_browser('/api/session', expected=401)
-            created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-            manager('/api/iam/actions', 'POST', {'action': 'user.enable', 'user': manager_access, 'confirmTarget': manager_access}, headers=manager_headers)
-            manager('/api/session')
-            checks.append('native account activation enforces manager permission, never revives revoked sessions and does not stop self-targeted manager sessions')
-            service = json.loads(manager('/api/iam/actions', 'POST', {'action': 'service-account.create', 'user': new_user, 'confirmTarget': new_user}, headers=manager_headers)[0])
-            service_key = service['credentials']['accessKey']
-            credentials.extend([service_key, service['credentials']['secretKey']])
-            second_created = browser(base, tls_context)
-            second_created('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-            disable_user = {'action': 'user.disable', 'user': new_user, 'confirmTarget': new_user}
-            alice('/api/iam/actions', 'POST', disable_user, expected=403, headers=alice_headers)
-            disabled = json.loads(manager('/api/iam/actions', 'POST', disable_user, headers=manager_headers)[0])
-            assert disabled['outcome'] == 'confirmed' and not disabled['restartRequired'] and not disabled['loginRequired']
-            rejected('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret}, expected=401)
-            # Enable before either old browser makes another request: explicit
-            # target retirement must not rely on request-time credential denial.
-            manager('/api/iam/actions', 'POST', enable_user, headers=manager_headers)
-            created_browser('/api/session', expected=401)
-            second_created('/api/session', expected=401)
-            created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-            checks.append('native user disable requires manager permission, revokes all target sessions before any follow-up request, and later enable permits only a fresh login')
-            delete_user = {'action': 'user.delete', 'user': new_user, 'confirmTarget': new_user}
-            alice('/api/iam/actions', 'POST', delete_user, expected=403, headers=alice_headers)
-            manager('/api/iam/actions', 'POST', delete_user, expected=409, headers=manager_headers)
-            created_browser('/api/session')  # service-account preflight preserves the session
-            cli('admin', 'group', 'add', 'store', new_group, new_user)
-            blocked = json.loads(manager('/api/iam/actions', 'POST', delete_user, expected=409, headers=manager_headers)[0])
-            assert blocked['code'] == 'user_has_groups'
-            created_browser('/api/session')
-            cli('admin', 'group', 'remove', 'store', new_group, new_user)
-            checks.append('native user deletion rejects unauthorized operators and users with groups/service accounts without revoking target sessions')
-            alice('/api/session')
-            bob('/api/session')
-            # Service-account cleanup must use its actual manager identity;
-            # the server deliberately prevents root from managing this target.
-            fixture_config = root / 'config' / 'config.json'
-            config = json.loads(fixture_config.read_text())
-            config['aliases']['native-manager'] = {**config['aliases']['store'], 'accessKey': manager_access, 'secretKey': manager_secret}
-            fixture_config.write_text(json.dumps(config))
-            fixture_config.chmod(0o600)
-            cli('admin', 'user', 'svcacct', 'rm', 'native-manager', service_key)
-            del config['aliases']['native-manager']
-            fixture_config.write_text(json.dumps(config))
-            second_created('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-            deleted = json.loads(manager('/api/iam/actions', 'POST', delete_user, headers=manager_headers)[0])
-            assert deleted['outcome'] == 'confirmed' and not deleted['restartRequired'] and not deleted['loginRequired']
-            # Recreate the name AND secret before either old browser requests
-            # identity again. Only explicit retirement keeps both cookies dead.
-            cli('admin', 'user', 'add', 'store', new_user, new_secret)
-            created_browser('/api/session', expected=401)
-            second_created('/api/session', expected=401)
-            created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-            checks.append('native user deletion retires all target sessions; recreating the identical username/secret cannot revive old cookies and requires fresh login')
-            cli('admin', 'user', 'remove', 'store', new_user)
-            cli('admin', 'group', 'remove', 'store', new_group)
-            self_disabled = json.loads(manager('/api/iam/actions', 'POST', {'action': 'user.disable', 'user': manager_access, 'confirmTarget': manager_access}, headers=manager_headers)[0])
-            assert self_disabled['outcome'] == 'confirmed' and self_disabled['loginRequired'] and not self_disabled['restartRequired']
-            cli('admin', 'user', 'enable', 'store', manager_access)
-            manager('/api/session', expected=401)
-            manager('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret})
-            alice('/api/session')
-            bob('/api/session')
-            checks.append('native self-disable acknowledges before retiring own session, keeps shared console available and requires fresh login after administrative activation')
-            self_deleted = json.loads(manager('/api/iam/actions', 'POST', {'action': 'user.delete', 'user': manager_access, 'confirmTarget': manager_access}, headers={'X-CSRF-Token': json.loads(manager('/api/session')[0])['csrfToken']})[0])
-            assert self_deleted['outcome'] == 'confirmed' and self_deleted['loginRequired'] and not self_deleted['restartRequired']
-            manager('/api/session', expected=401)
-            rejected('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret}, expected=401)
-            alice('/api/session')
-            bob('/api/session')
-            checks.append('native self-deletion acknowledges before ending own session, rejects deleted credentials and leaves other users available')
+            if getattr(args, 'expect_relationship_unsupported', False):
+                # This historical fixture implements create-only IAM, but no
+                # relationship proof. Every coupled write must fail closed.
+                created_browser = browser(base, tls_context)
+                created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': created['credentials']['secretKey']})
+                unsupported_actions = [
+                    {'action': 'user.' + operation, 'user': new_user, 'confirmTarget': new_user}
+                    for operation in ('enable', 'disable', 'delete')
+                ] + [{'action': 'service-account.create', 'user': new_user, 'confirmTarget': new_user}]
+                for request in unsupported_actions:
+                    for actor, headers in ((alice, alice_headers), (manager, manager_headers)):
+                        denied = json.loads(actor('/api/iam/actions', 'POST', request, expected=501, headers=headers)[0])
+                        assert denied['code'] == 'identity_relationships_unknown'
+                    created_browser('/api/session')
+                    manager('/api/session')
+                    alice('/api/session')
+                    bob('/api/session')
+                cli('admin', 'user', 'remove', 'store', new_user)
+                cli('admin', 'group', 'remove', 'store', new_group)
+                cli('admin', 'user', 'remove', 'store', manager_access)
+                manager('/api/session', expected=401)
+                checks.append('legacy create-only native user/group creation succeeds; user enable/disable/delete and service creation require relationship proofs, return explicit unsupported errors, and preserve every existing session')
+            else:
+                created_browser = browser(base, tls_context)
+                new_secret = created['credentials']['secretKey']
+                created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
+                cli('admin', 'user', 'disable', 'store', new_user)
+                created_browser('/api/session', expected=401)
+                enable_user = {'action': 'user.enable', 'user': new_user, 'confirmTarget': new_user}
+                alice('/api/iam/actions', 'POST', enable_user, expected=403, headers=alice_headers)
+                manager('/api/iam/actions', 'POST', enable_user, headers=manager_headers)
+                created_browser('/api/session', expected=401)
+                created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
+                manager('/api/iam/actions', 'POST', {'action': 'user.enable', 'user': manager_access, 'confirmTarget': manager_access}, headers=manager_headers)
+                manager('/api/session')
+                checks.append('native account activation enforces manager permission, never revives revoked sessions and does not stop self-targeted manager sessions')
+                service = json.loads(manager('/api/iam/actions', 'POST', {'action': 'service-account.create', 'user': new_user, 'confirmTarget': new_user}, headers=manager_headers)[0])
+                service_key = service['credentials']['accessKey']
+                credentials.extend([service_key, service['credentials']['secretKey']])
+                second_created = browser(base, tls_context)
+                second_created('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
+                disable_user = {'action': 'user.disable', 'user': new_user, 'confirmTarget': new_user}
+                alice('/api/iam/actions', 'POST', disable_user, expected=403, headers=alice_headers)
+                disabled = json.loads(manager('/api/iam/actions', 'POST', disable_user, headers=manager_headers)[0])
+                assert disabled['outcome'] == 'confirmed' and not disabled['restartRequired'] and not disabled['loginRequired']
+                rejected('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret}, expected=401)
+                # Enable before either old browser makes another request: explicit
+                # target retirement must not rely on request-time credential denial.
+                manager('/api/iam/actions', 'POST', enable_user, headers=manager_headers)
+                created_browser('/api/session', expected=401)
+                second_created('/api/session', expected=401)
+                created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
+                checks.append('native user disable requires manager permission, revokes all target sessions before any follow-up request, and later enable permits only a fresh login')
+                delete_user = {'action': 'user.delete', 'user': new_user, 'confirmTarget': new_user}
+                alice('/api/iam/actions', 'POST', delete_user, expected=403, headers=alice_headers)
+                manager('/api/iam/actions', 'POST', delete_user, expected=409, headers=manager_headers)
+                created_browser('/api/session')  # service-account preflight preserves the session
+                cli('admin', 'group', 'add', 'store', new_group, new_user)
+                blocked = json.loads(manager('/api/iam/actions', 'POST', delete_user, expected=409, headers=manager_headers)[0])
+                assert blocked['code'] == 'user_has_groups'
+                created_browser('/api/session')
+                cli('admin', 'group', 'remove', 'store', new_group, new_user)
+                checks.append('native user deletion rejects unauthorized operators and users with groups/service accounts without revoking target sessions')
+                alice('/api/session')
+                bob('/api/session')
+                # Service-account cleanup must use its actual manager identity;
+                # the server deliberately prevents root from managing this target.
+                fixture_config = root / 'config' / 'config.json'
+                config = json.loads(fixture_config.read_text())
+                config['aliases']['native-manager'] = {**config['aliases']['store'], 'accessKey': manager_access, 'secretKey': manager_secret}
+                fixture_config.write_text(json.dumps(config))
+                fixture_config.chmod(0o600)
+                cli('admin', 'user', 'svcacct', 'rm', 'native-manager', service_key)
+                del config['aliases']['native-manager']
+                fixture_config.write_text(json.dumps(config))
+                second_created('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
+                deleted = json.loads(manager('/api/iam/actions', 'POST', delete_user, headers=manager_headers)[0])
+                assert deleted['outcome'] == 'confirmed' and not deleted['restartRequired'] and not deleted['loginRequired']
+                # Recreate the name AND secret before either old browser requests
+                # identity again. Only explicit retirement keeps both cookies dead.
+                cli('admin', 'user', 'add', 'store', new_user, new_secret)
+                created_browser('/api/session', expected=401)
+                second_created('/api/session', expected=401)
+                created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
+                checks.append('native user deletion retires all target sessions; recreating the identical username/secret cannot revive old cookies and requires fresh login')
+                cli('admin', 'user', 'remove', 'store', new_user)
+                cli('admin', 'group', 'remove', 'store', new_group)
+                self_disabled = json.loads(manager('/api/iam/actions', 'POST', {'action': 'user.disable', 'user': manager_access, 'confirmTarget': manager_access}, headers=manager_headers)[0])
+                assert self_disabled['outcome'] == 'confirmed' and self_disabled['loginRequired'] and not self_disabled['restartRequired']
+                cli('admin', 'user', 'enable', 'store', manager_access)
+                manager('/api/session', expected=401)
+                manager('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret})
+                alice('/api/session')
+                bob('/api/session')
+                checks.append('native self-disable acknowledges before retiring own session, keeps shared console available and requires fresh login after administrative activation')
+                self_deleted = json.loads(manager('/api/iam/actions', 'POST', {'action': 'user.delete', 'user': manager_access, 'confirmTarget': manager_access}, headers={'X-CSRF-Token': json.loads(manager('/api/session')[0])['csrfToken']})[0])
+                assert self_deleted['outcome'] == 'confirmed' and self_deleted['loginRequired'] and not self_deleted['restartRequired']
+                manager('/api/session', expected=401)
+                rejected('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret}, expected=401)
+                alice('/api/session')
+                bob('/api/session')
+                checks.append('native self-deletion acknowledges before ending own session, rejects deleted credentials and leaves other users available')
 
-            checks.append('native manager creates new IAM user/group/service credential with own permissions; unauthorized create, existing-user replacement rejected; other identity edits remain gated; other sessions continue')
+                checks.append('native manager creates new IAM user/group/service credential with own permissions; unauthorized create, existing-user replacement rejected; other identity edits remain gated; other sessions continue')
             alice('/api/logout', 'POST', expected=403)
             alice('/api/logout', 'POST', expected=204, headers=alice_headers)
             alice('/api/session', expected=401)
@@ -247,6 +270,6 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             cli('admin', 'policy', 'remove', 'store', 'console-native-exact-object')
             assert not any(value in log_path.read_text() for value in credentials)
             checks.append('native process shutdown drains clients and startup/preferences disclose no credentials')
-            return {'users': 3, 'iamCreation': 'native user/group/service-account; permission and duplicate-target checks verified', 'browserTLS': 'verified', 'storageTLS': 'verified', 'rootLogin': 'denied', 'writes': 'explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; user disable/delete and exact-target session retirement verified; unsupported IAM mutations disabled'}
+            return {'users': 3, 'iamCreation': 'native user/group; service creation explicitly unsupported' if getattr(args, 'expect_relationship_unsupported', False) else 'native user/group/service-account; permission and duplicate-target checks verified', 'browserTLS': 'verified', 'storageTLS': 'verified', 'rootLogin': 'denied', 'writes': 'explicit opt-in; per-user bucket create/delete and self-secret rotation verified; relationship mutations explicitly unsupported without session retirement' if getattr(args, 'expect_relationship_unsupported', False) else 'explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; user disable/delete and exact-target session retirement verified; unsupported IAM mutations disabled'}
         finally:
             stop(process)

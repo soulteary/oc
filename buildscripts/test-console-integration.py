@@ -485,8 +485,8 @@ def main():
         parser.error('--features-iam-create-unsupported requires --features without --features-legacy')
     if args.settings_base and not args.settings:
         parser.error('--settings-base requires --settings')
-    if args.expect_relationship_unsupported and not args.relationship_iam:
-        parser.error('--expect-relationship-unsupported requires --relationship-iam')
+    if args.expect_relationship_unsupported and not (args.relationship_iam or args.native):
+        parser.error('--expect-relationship-unsupported requires --relationship-iam or --native')
     if args.native and args.relationship_iam:
         parser.error('select one native acceptance profile')
     names = (args.scenarios or ('single-tls,dual-tls' if args.native or args.relationship_iam else 'single-http,dual-http,dual-tls')).split(',')
