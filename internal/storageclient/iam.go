@@ -46,7 +46,7 @@ func iamError(err error) *consoleapi.Error {
 		return &consoleapi.Error{Status: 404, Code: "iam_not_found", Message: "The IAM user, group or policy could not be found. Reload the list."}
 	case "XOtterioAdminGroupNotEmpty", "XMinioAdminGroupNotEmpty":
 		return iamConflict("group_not_empty", "Remove every member before deleting this group.")
-	case "XOtterioInvalidIAMCredentials", "XMinioInvalidIAMCredentials", "XOtterioAdminActionNotAllowed", "XMinioAdminActionNotAllowed":
+	case "XOtterioIAMActionNotAllowed", "XMinioIAMActionNotAllowed", "XOtterioInvalidIAMCredentials", "XMinioInvalidIAMCredentials", "XOtterioAdminActionNotAllowed", "XMinioAdminActionNotAllowed":
 		return &consoleapi.Error{Status: 403, Code: "iam_action_denied", Message: "This identity cannot manage the selected IAM target. Root, temporary and external identities have additional restrictions."}
 	case "XOtterioAdminInvalidArgument", "XOtterioAdminInvalidAccessKey", "XOtterioAdminInvalidSecretKey", "XOtterioAdminConfigBadJSON", "XMinioAdminInvalidArgument", "XMinioAdminInvalidAccessKey", "XMinioAdminInvalidSecretKey", "XMinioAdminConfigBadJSON":
 		return invalidRequest()
