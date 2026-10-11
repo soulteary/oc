@@ -300,11 +300,10 @@ func (s *Server) prepareArchive(task *archiveTask, reader consoleapi.ReferenceBa
 			s.finishArchive(task, "failed", archiveError(failure))
 		}
 		s.mu.Lock()
-		canceled := task.ctx.Err() != nil
-		s.mu.Unlock()
-		if canceled {
-			s.finishArchive(task, "canceled", nil)
+		if task.ctx.Err() != nil {
+			s.finishArchiveLocked(task, "canceled", nil)
 		}
+		s.mu.Unlock()
 		if filename != "" {
 			s.mu.Lock()
 			keep := task.path == filename && (task.info.Status == "ready" || task.info.Status == "downloading")
@@ -566,6 +565,11 @@ func (s *Server) releaseArchiveLocked(task *archiveTask) {
 func (s *Server) finishArchive(task *archiveTask, status string, err *consoleapi.Error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.finishArchiveLocked(task, status, err)
+}
+
+// The caller holds s.mu, including when testing the context for cancellation.
+func (s *Server) finishArchiveLocked(task *archiveTask, status string, err *consoleapi.Error) {
 	if task.ctx.Err() != nil || task.info.Status == "canceled" {
 		status, err = "canceled", nil
 	}
