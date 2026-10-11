@@ -35,7 +35,7 @@ func TestOIDCGenerationLeaseAndExpiry(t *testing.T) {
 		t.Fatal("old credential request crossed expiry")
 	}
 	if next.ctx.Err() != nil {
-		t.Fatal("old expiry cancelled replacement")
+		t.Fatal("old expiry canceled replacement")
 	}
 	lease.runtime.release()
 	m.close()
@@ -102,7 +102,7 @@ func TestOIDCGenerationRefreshSingleFlight(t *testing.T) {
 	cancel()
 	err := <-done
 	if err == nil {
-		t.Fatal("cancelled waiter did not stop")
+		t.Fatal("canceled waiter did not stop")
 	}
 	close(finish)
 	if err := <-done; err != nil {

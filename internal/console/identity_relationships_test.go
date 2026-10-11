@@ -2,10 +2,11 @@
 package console
 
 import (
-	"github.com/soulteary/mc/internal/consoleapi"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/soulteary/mc/internal/consoleapi"
 )
 
 func TestOIDCPrincipalNamespace(t *testing.T) {

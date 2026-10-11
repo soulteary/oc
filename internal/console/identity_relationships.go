@@ -3,8 +3,9 @@ package console
 
 import (
 	"encoding/hex"
-	"github.com/soulteary/mc/internal/consoleapi"
 	"time"
+
+	"github.com/soulteary/mc/internal/consoleapi"
 )
 
 // A relation is authoritative only for its bound target, revision and lifetime.

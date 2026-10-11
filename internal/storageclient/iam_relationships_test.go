@@ -3,11 +3,12 @@ package storageclient
 
 import (
 	"encoding/json"
-	"github.com/soulteary/mc/internal/consoleapi"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/soulteary/mc/internal/consoleapi"
 )
 
 func TestIAMRelationshipsKnownEmptyAndMalformed(t *testing.T) {
