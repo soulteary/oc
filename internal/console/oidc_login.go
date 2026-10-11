@@ -187,7 +187,7 @@ func (s *Server) serveOIDC(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 503, "login_unavailable", "Sign-in unavailable.")
 		return
 	}
-	deadline := time.Now().Add(s.ttl)
+	deadline := grant.SessionDeadline()
 	manager := newOIDCGenerations(s.life, runtime, credentials.Expires, deadline)
 	sess := &session{runtime: runtime, csrf: csrf, expires: deadline, ctx: manager.ctx, cancel: manager.cancel, oidc: &oidcSession{grant: grant, generations: manager}}
 	hash := sha256.Sum256([]byte(token))

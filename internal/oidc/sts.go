@@ -48,6 +48,16 @@ func (g *Grant) Identity() (issuer, subject string) {
 	defer g.mu.Unlock()
 	return g.issuer, g.subject
 }
+
+// SessionDeadline is the immutable lifetime bound established by Complete.
+func (g *Grant) SessionDeadline() time.Time {
+	if g == nil || g.grantState == nil {
+		return time.Time{}
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.deadline
+}
 func (g *Grant) Credentials() (Credentials, error) {
 	if g == nil || g.grantState == nil {
 		return Credentials{}, ErrLogin
