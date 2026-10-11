@@ -124,6 +124,41 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             bob('/api/login', 'POST', {'accessKey': other_access, 'secretKey': external_secret})
             alice('/api/session')
             checks.append('external secret replacement revokes the old native browser credentials; only the new secret can log in')
+            manager_access, manager_secret = 'native-manager-' + secrets.token_hex(4), secrets.token_hex(24)
+            credentials.extend([manager_access, manager_secret])
+            cli('admin', 'user', 'add', 'store', manager_access, manager_secret)
+            cli('admin', 'policy', 'set', 'store', 'consoleAdmin', 'user=' + manager_access)
+            manager = browser(base, tls_context)
+            manager_session = json.loads(manager('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret})[0])
+            manager_headers = {'X-CSRF-Token': manager_session['csrfToken']}
+            new_user, new_group = 'native-created-' + secrets.token_hex(4), 'native-group-' + secrets.token_hex(4)
+            create_user = {'action': 'user.create', 'user': new_user, 'confirmTarget': new_user}
+            alice('/api/iam/actions', 'POST', create_user, expected=403, headers=alice_headers)
+            created = json.loads(manager('/api/iam/actions', 'POST', create_user, headers=manager_headers)[0])
+            assert created['outcome'] == 'confirmed' and not created['restartRequired']
+            credentials.extend([created['credentials']['accessKey'], created['credentials']['secretKey']])
+            manager('/api/iam/actions', 'POST', create_user, expected=409, headers=manager_headers)
+            manager('/api/iam/actions', 'POST', {'action': 'group.create', 'group': new_group, 'confirmTarget': new_group}, headers=manager_headers)
+            service = json.loads(manager('/api/iam/actions', 'POST', {'action': 'service-account.create', 'user': new_user, 'confirmTarget': new_user}, headers=manager_headers)[0])
+            service_key = service['credentials']['accessKey']
+            credentials.extend([service_key, service['credentials']['secretKey']])
+            manager('/api/iam/actions', 'POST', {'action': 'user.disable', 'user': new_user, 'confirmTarget': new_user}, expected=403, headers=manager_headers)
+            alice('/api/session')
+            bob('/api/session')
+            # Service-account cleanup must use its actual manager identity;
+            # the server deliberately prevents root from managing this target.
+            fixture_config = root / 'config' / 'config.json'
+            config = json.loads(fixture_config.read_text())
+            config['aliases']['native-manager'] = {**config['aliases']['store'], 'accessKey': manager_access, 'secretKey': manager_secret}
+            fixture_config.write_text(json.dumps(config))
+            fixture_config.chmod(0o600)
+            cli('admin', 'user', 'svcacct', 'rm', 'native-manager', service_key)
+            del config['aliases']['native-manager']
+            fixture_config.write_text(json.dumps(config))
+            cli('admin', 'user', 'remove', 'store', new_user)
+            cli('admin', 'group', 'remove', 'store', new_group)
+            cli('admin', 'user', 'remove', 'store', manager_access)
+            checks.append('native manager creates new IAM user/group/service credential with own permissions; unauthorized create, existing-user replacement and identity edits rejected; other sessions continue')
             alice('/api/logout', 'POST', expected=403)
             alice('/api/logout', 'POST', expected=204, headers=alice_headers)
             alice('/api/session', expected=401)
@@ -151,6 +186,6 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             cli('admin', 'policy', 'remove', 'store', 'console-native-exact-object')
             assert not any(value in log_path.read_text() for value in credentials)
             checks.append('native process shutdown drains clients and startup/preferences disclose no credentials')
-            return {'users': 2, 'browserTLS': 'verified', 'storageTLS': 'verified', 'rootLogin': 'denied', 'writes': 'explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; IAM mutations disabled'}
+            return {'users': 3, 'iamCreation': 'native user/group/service-account; permission and duplicate-target checks verified', 'browserTLS': 'verified', 'storageTLS': 'verified', 'rootLogin': 'denied', 'writes': 'explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; IAM mutations disabled'}
         finally:
             stop(process)

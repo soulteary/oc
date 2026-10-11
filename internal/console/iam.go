@@ -30,13 +30,20 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 401, "login_required", s.loginPrompt())
 		return
 	}
+	var nativeArgs *consoleapi.IAMActionRequest
 	if method == http.MethodPost {
 		if !s.requireOrigin(w, r) || !s.requireCSRF(w, r, sess) {
 			return
 		}
 		if s.nativeLogin != nil {
-			writeError(w, 403, "identity_changes_disabled", "Native IAM changes require identity-scoped session revocation and are not enabled yet.")
-			return
+			nativeArgs = new(consoleapi.IAMActionRequest)
+			if !decodeJSON(w, r, nativeArgs, 6*20*1024+8192) {
+				return
+			}
+			if !nativeIAMCreation(nativeArgs.Action) || (nativeArgs.Action == "group.create" && len(nativeArgs.Members) != 0) {
+				writeError(w, 403, "identity_changes_disabled", "Native IAM currently supports only new user, group and service account creation.")
+				return
+			}
 		}
 		if sess.runtime.writer == nil {
 			writeError(w, 403, "writes_disabled", "Restart OC with writes explicitly enabled to manage IAM.")
@@ -82,7 +89,7 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 	case "/api/iam/bindings":
 		value, err = backend.IAMBindings(ctx, q.Get("kind"), q.Get("target"))
 	case "/api/iam/actions":
-		s.iamAction(w, r, sess, backend)
+		s.iamAction(w, r, sess, backend, nativeArgs)
 		return
 	}
 	if err != nil {
@@ -92,9 +99,12 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, value)
 }
 
-func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session, backend consoleapi.IAMBackend) {
+func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session, backend consoleapi.IAMBackend, provided *consoleapi.IAMActionRequest) {
 	var args consoleapi.IAMActionRequest
-	if !decodeJSON(w, r, &args, 6*20*1024+8192) {
+	if provided != nil {
+		args = *provided
+		provided.SecretKey = ""
+	} else if !decodeJSON(w, r, &args, 6*20*1024+8192) {
 		return
 	}
 	if strings.Contains(args.Action, "policies") && args.Action != "user.policies" && args.Action != "group.policies" {
@@ -105,16 +115,17 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		writeError(w, 400, "invalid_input", "Choose a supported IAM action and confirm its exact target. Include only the fields required by that action.")
 		return
 	}
-	// Any IAM change can alter the selected identity, directly or through a
-	// parent/group. Pause other requests and reserve all storage write slots
-	// before preflight, so active tasks cannot outlive invalidated credentials.
-	if !s.startSettingsWrite(w, sess, true) {
+	// Local IAM edits can invalidate the shared identity and reserve every
+	// write slot. Native mode permits creation only and uses one ordinary slot;
+	// conditional creation must not replace existing identities.
+	rotate := s.nativeLogin == nil
+	if !s.startSettingsWrite(w, sess, rotate) {
 		return
 	}
 	writePending := true
 	finishWrite := func() {
 		if writePending {
-			s.finishSettingsWrite(true)
+			s.finishSettingsWrite(rotate)
 			writePending = false
 		}
 	}
@@ -128,6 +139,10 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 			writeBackendError(w, apiError)
 			return
 		}
+		if s.nativeLogin != nil {
+			writeError(w, 502, "outcome_unknown", "The IAM creation may have completed. Verify the exact target before making another request.")
+			return
+		}
 		// A lost IAM acknowledgement can leave the startup identity invalid.
 		// Retire conservatively, even when the browser already disconnected.
 		defer s.Close()
@@ -138,6 +153,10 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		}{"outcome_unknown", "The IAM change may have completed. Verify it with an administrative client, then restart OC before continuing.", true})
 		return
 	}
+	if s.nativeLogin != nil && (result.RestartRequired || result.Outcome != "confirmed") {
+		writeError(w, 502, "outcome_unknown", "The IAM creation was not safely confirmed. Verify the exact target before making another request.")
+		return
+	}
 	if result.RestartRequired {
 		defer s.Close()
 	} else {
@@ -146,4 +165,8 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		finishWrite()
 	}
 	writeJSON(w, 200, result)
+}
+
+func nativeIAMCreation(action string) bool {
+	return action == "user.create" || action == "group.create" || action == "service-account.create"
 }
