@@ -22,7 +22,7 @@ class ReleasedComposeEvidenceTests(unittest.TestCase):
         self.assertTrue(legacy_route_disabled(400, '<Error xmlns="urn:s3"><Code>InvalidRequest</Code></Error>'))
 
     def test_image_evidence_uses_recipe_and_requires_matching_immutable_refs(self):
-        recipe=(Path(__file__).resolve().parents[1]/'deploy/compose.console.yaml').read_text()
+        recipe=(Path(__file__).resolve().parents[1]/'deploy/compose.console.yaml').read_text(encoding="utf-8")
         refs=images_from_recipe(recipe)
         self.assertEqual(refs['oc'], refs['oc-init'])
         with self.assertRaises(ValueError):
@@ -37,14 +37,14 @@ class ReleasedComposeEvidenceTests(unittest.TestCase):
             path=Path(root)/'nested/report.json'
             report={'status':'failed','error':'original failure'}
             finalize_report(report, path, fail)
-            saved=json.loads(path.read_text())
+            saved=json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(saved['error'], 'original failure')
             self.assertEqual(saved['cleanup'], 'failed')
-            self.assertNotIn('sensitive', path.read_text())
+            self.assertNotIn('sensitive', path.read_text(encoding="utf-8"))
             report={'status':'passed'}
             with self.assertRaises(RuntimeError):
                 finalize_report(report, path, fail)
-            self.assertEqual(json.loads(path.read_text())['status'], 'failed')
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))['status'], 'failed')
 
     @patch('console_released_compose_acceptance.subprocess.run')
     def test_probe_requires_response_body_and_successful_curl(self, run):
