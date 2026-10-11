@@ -14,28 +14,15 @@ import (
 	"github.com/soulteary/mc/internal/consoleapi"
 	"github.com/soulteary/otterio-sdk/v7/pkg/credentials"
 	"github.com/soulteary/otterio-sdk/v7/pkg/signer"
+	"github.com/soulteary/otterio/pkg/madmin"
 )
 
 var _ consoleapi.IAMRelationshipMutationsBackend = (*Client)(nil)
 
 func (c *Client) IAMReplaceRelationshipBindings(ctx context.Context, binding consoleapi.IAMBindings, relation consoleapi.IAMRelationships, policies []string) (consoleapi.IAMRelationshipMutationResult, error) {
 	var result consoleapi.IAMRelationshipMutationResult
-	scheme := "http://"
-	if c.s3Options.Secure {
-		scheme = "https://"
-	}
-	target := scheme + c.s3Endpoint + "\x00" + c.adminEndpoint
-	if !binding.Conditional || !validRevision(binding.Revision) || !relation.CoupledBindings || relation.StorageTarget != target || relation.Kind != binding.Kind || relation.Target != binding.Target || (binding.Kind != "user" && binding.Kind != "group") || !consoleapi.ValidIAMName(binding.Target) {
+	if !relation.CoupledBindings {
 		return result, iamRelationshipsUnknown()
-	}
-	// Reuse query validation to reject null, stale, malformed or mismatched scope
-	// snapshots before any network mutation. The server rechecks atomically.
-	relationData, _ := json.Marshal(relation)
-	header := http.Header{}
-	header.Set("X-Otterio-IAM-Relationships", "v1")
-	header.Set("X-Otterio-IAM-Impact-Revision", relation.Revision)
-	if _, err := decodeIAMRelationships(relationData, header, binding.Kind, binding.Target, time.Now().UTC()); err != nil {
-		return result, err
 	}
 	if len(policies) > 100 || policies == nil {
 		return result, invalidRequest()
@@ -53,11 +40,35 @@ func (c *Client) IAMReplaceRelationshipBindings(ctx context.Context, binding con
 	if err != nil {
 		return result, invalidRequest()
 	}
+	return c.dispatchRelationshipMutation(ctx, "iam-relationship-bindings", binding, relation, data, policies, false)
+}
+
+func (c *Client) dispatchRelationshipMutation(ctx context.Context, route string, binding consoleapi.IAMBindings, relation consoleapi.IAMRelationships, data []byte, policies []string, encrypt bool) (consoleapi.IAMRelationshipMutationResult, error) {
+	var result consoleapi.IAMRelationshipMutationResult
+	target := c.IAMStorageTarget()
+	if !binding.Conditional || !validRevision(binding.Revision) || relation.StorageTarget != target || relation.Kind != binding.Kind || relation.Target != binding.Target || (binding.Kind != "user" && binding.Kind != "group") || !consoleapi.ValidIAMName(binding.Target) {
+		return result, iamRelationshipsUnknown()
+	}
+	// Reuse query validation to reject null, stale, malformed or mismatched scope
+	// snapshots before any network mutation. The server rechecks atomically.
+	relationData, _ := json.Marshal(relation)
+	header := http.Header{}
+	header.Set("X-Otterio-IAM-Relationships", "v1")
+	header.Set("X-Otterio-IAM-Impact-Revision", relation.Revision)
+	if _, err := decodeIAMRelationships(relationData, header, binding.Kind, binding.Target, time.Now().UTC()); err != nil {
+		return result, err
+	}
 	credential, err := c.selectedCredentials(ctx)
 	if err != nil || credential.SignerType != credentials.SignatureV4 {
 		return result, iamUnsupported()
 	}
-	endpoint, err := url.Parse(c.adminEndpoint + "/otterio/admin/v3/iam-relationship-bindings")
+	if encrypt {
+		data, err = madmin.EncryptData(credential.SecretAccessKey, data)
+		if err != nil {
+			return result, invalidRequest()
+		}
+	}
+	endpoint, err := url.Parse(c.adminEndpoint + "/otterio/admin/v3/" + route)
 	if err != nil {
 		return result, configError()
 	}
@@ -67,6 +78,9 @@ func (c *Client) IAMReplaceRelationshipBindings(ctx context.Context, binding con
 		return result, invalidRequest()
 	}
 	request.Header.Set("Content-Type", "application/json")
+	if encrypt {
+		request.Header.Set("Content-Type", "application/octet-stream")
+	}
 	request.Header.Set("User-Agent", c.appName+"/"+c.appVersion)
 	request.Header.Set(iamBindingsCondition, binding.Revision)
 	request.Header.Set("X-Otterio-IAM-Impact-If-Match", relation.Revision)
@@ -130,7 +144,7 @@ func (c *Client) IAMReplaceRelationshipBindings(ctx context.Context, binding con
 		return result, outcomeUnknown()
 	}
 	result.Impact, err = decodeIAMRelationships(fields["impact"], response.Header, binding.Kind, binding.Target, time.Now().UTC())
-	if err != nil || !result.Impact.CoupledBindings {
+	if err != nil || (encrypt && !result.Impact.CoupledUserSecret) || (!encrypt && !result.Impact.CoupledBindings) {
 		return result, outcomeUnknown()
 	}
 	// A binding replacement cannot change membership. Refuse acknowledgements

@@ -13,6 +13,7 @@ type IAMRelationshipsBackend interface {
 }
 
 type IAMRelationships struct {
+	CoupledUserSecret  bool      `json:"coupledUserSecret"`
 	CoupledBindings    bool      `json:"coupledBindings"`
 	Kind               string    `json:"kind"`
 	Target             string    `json:"target"`
@@ -35,4 +36,11 @@ type IAMRelationshipMutationResult struct {
 	Outcome  string           `json:"outcome"`
 	Bindings IAMBindings      `json:"bindings"`
 	Impact   IAMRelationships `json:"impact"`
+}
+
+// IAMRelationshipTargetBackend supplies the immutable storage namespace from
+// the owned connection configuration, independently of a query response.
+type IAMRelationshipTargetBackend interface{ IAMStorageTarget() string }
+type IAMRelationshipSecretsBackend interface {
+	IAMRotateRelationshipUserSecret(context.Context, IAMBindings, IAMRelationships, string) (IAMRelationshipMutationResult, error)
 }

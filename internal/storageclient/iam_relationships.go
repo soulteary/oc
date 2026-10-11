@@ -44,11 +44,7 @@ func (c *Client) IAMRelationships(ctx context.Context, kind, target string) (con
 	if err != nil {
 		return consoleapi.IAMRelationships{}, err
 	}
-	scheme := "http://"
-	if c.s3Options.Secure {
-		scheme = "https://"
-	}
-	result.StorageTarget = scheme + c.s3Endpoint + "\x00" + c.adminEndpoint
+	result.StorageTarget = c.IAMStorageTarget()
 	return result, nil
 }
 func decodeIAMRelationships(data []byte, header http.Header, kind, target string, now time.Time) (consoleapi.IAMRelationships, error) {
@@ -64,6 +60,11 @@ func decodeIAMRelationships(data []byte, header http.Header, kind, target string
 		{"kind", &result.Kind}, {"target", &result.Target}, {"state", &result.State}, {"revision", &result.Revision}, {"expiresAt", &result.ExpiresAt}, {"affectedAccessKeys", &result.AffectedAccessKeys},
 	} {
 		if json.Unmarshal(fields[field.name], field.destination) != nil {
+			return result, iamRelationshipsUnknown()
+		}
+	}
+	if capability, ok := fields["coupledUserSecret"]; ok {
+		if json.Unmarshal(capability, &result.CoupledUserSecret) != nil {
 			return result, iamRelationshipsUnknown()
 		}
 	}
@@ -94,4 +95,12 @@ func decodeIAMRelationships(data []byte, header http.Header, kind, target string
 		return result, iamRelationshipsUnknown()
 	}
 	return result, nil
+}
+
+func (c *Client) IAMStorageTarget() string {
+	scheme := "http://"
+	if c.s3Options.Secure {
+		scheme = "https://"
+	}
+	return scheme + c.s3Endpoint + "\x00" + c.adminEndpoint
 }
