@@ -68,7 +68,7 @@ func decodeIAMRelationships(data []byte, header http.Header, kind, target string
 		name        string
 		destination *bool
 	}{
-		{"coupledBindings", &result.CoupledBindings}, {"coupledUserSecret", &result.CoupledUserSecret}, {"coupledUsers", &result.CoupledUsers}, {"coupledGroups", &result.CoupledGroups}, {"coupledServiceAccounts", &result.CoupledServiceAccounts},
+		{"coupledBindings", &result.CoupledBindings}, {"coupledUserSecret", &result.CoupledUserSecret}, {"coupledServiceCreation", &result.CoupledServiceCreation}, {"coupledUsers", &result.CoupledUsers}, {"coupledGroups", &result.CoupledGroups}, {"coupledServiceAccounts", &result.CoupledServiceAccounts},
 	} {
 		if raw, ok := fields[capability.name]; ok {
 			raw = bytes.TrimSpace(raw)

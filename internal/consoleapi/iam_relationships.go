@@ -15,6 +15,7 @@ type IAMRelationshipsBackend interface {
 type IAMRelationships struct {
 	CoupledServiceAccounts bool      `json:"coupledServiceAccounts"`
 	CoupledUserSecret      bool      `json:"coupledUserSecret"`
+	CoupledServiceCreation bool      `json:"coupledServiceCreation"`
 	CoupledUsers           bool      `json:"coupledUsers"`
 	CoupledGroups          bool      `json:"coupledGroups"`
 	CoupledBindings        bool      `json:"coupledBindings"`
