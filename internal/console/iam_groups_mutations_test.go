@@ -13,7 +13,10 @@ import (
 )
 
 type groupRelationFixture struct {
-	*fakeBackend
+	consoleapi.Backend
+	result    consoleapi.IAMGroupMutationResult
+	err       error
+	calls     int
 	actor     *session
 	snapshots map[string]consoleapi.IAMRelationships
 	queries   []string
@@ -30,7 +33,7 @@ func groupFixture() *groupRelationFixture {
 	snapshot := func(kind, name string, keys []string) consoleapi.IAMRelationships {
 		return consoleapi.IAMRelationships{Kind: kind, Target: name, State: "known", Revision: strings.Repeat("a", 64), CoupledGroups: true, StorageTarget: target, ExpiresAt: time.Now().Add(20 * time.Second), AffectedAccessKeys: keys}
 	}
-	fixture := &groupRelationFixture{fakeBackend: &fakeBackend{}, target: target, snapshots: map[string]consoleapi.IAMRelationships{"group:team": snapshot("group", "team", []string{"old-user", "old-child"}), "user:new-user": snapshot("user", "new-user", []string{"new-user", "new-child"})}}
+	fixture := &groupRelationFixture{Backend: &fakeBackend{}, target: target, snapshots: map[string]consoleapi.IAMRelationships{"group:team": snapshot("group", "team", []string{"old-user", "old-child"}), "user:new-user": snapshot("user", "new-user", []string{"new-user", "new-child"})}}
 	fixture.actor = &session{nativeUser: "actor", ctx: context.Background(), runtime: sessionRuntime{backend: fixture}}
 	return fixture
 }
@@ -104,16 +107,6 @@ func TestGroupPlanKnownEmptyAndResponseCannotChangeRetirement(t *testing.T) {
 	}
 }
 
-type groupMutationFixture struct {
-	result consoleapi.IAMGroupMutationResult
-	err    error
-	calls  int
-}
-
-func (f *groupMutationFixture) IAMMutateRelationshipGroup(context.Context, consoleapi.IAMActionRequest, consoleapi.IAMRelationships) (consoleapi.IAMGroupMutationResult, error) {
-	f.calls++
-	return f.result, f.err
-}
 func TestGroupExecutionRejectionKeepsSessionsUnknownRetiresCapturedSet(t *testing.T) {
 	for _, scenario := range []string{"confirmed", "conflict", "unknown", "changed-impact", "expired-plan", "typed503"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -128,9 +121,17 @@ func TestGroupExecutionRejectionKeepsSessionsUnknownRetiresCapturedSet(t *testin
 				}
 			}
 			s.mu.Unlock()
-			relation := consoleapi.IAMRelationships{Kind: "group", Target: "team", State: "known", CoupledGroups: true, StorageTarget: "store", AffectedAccessKeys: []string{"alice"}}
-			plan := iamGroupMutationPlan{args: consoleapi.IAMActionRequest{Action: "group.disable", Group: "team", ConfirmTarget: "team"}, relation: relation, scopes: []identityScope{nativeUserScope("alice")}, expires: time.Now().Add(time.Minute)}
-			backend := &groupMutationFixture{result: consoleapi.IAMGroupMutationResult{Outcome: "confirmed", Group: consoleapi.IAMGroup{Name: "team", Status: "disabled", Members: []string{}, Policies: []string{}}, Impact: relation}}
+			backend := groupFixture()
+			backend.Backend = actor.runtime.backend
+			actor.runtime.backend = backend
+			relation := backend.snapshots["group:team"]
+			relation.AffectedAccessKeys = []string{"alice"}
+			backend.snapshots["group:team"] = relation
+			plan, err := prepareIAMGroupMutation(context.Background(), actor, consoleapi.IAMActionRequest{Action: "group.disable", Group: "team", ConfirmTarget: "team"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			backend.result = consoleapi.IAMGroupMutationResult{Outcome: "confirmed", Group: consoleapi.IAMGroup{Name: "team", Status: "disabled", Members: []string{}, Policies: []string{}}, Impact: plan.relation}
 			switch scenario {
 			case "expired-plan":
 				plan.expires = time.Now().Add(-time.Second)
@@ -144,10 +145,6 @@ func TestGroupExecutionRejectionKeepsSessionsUnknownRetiresCapturedSet(t *testin
 				backend.result.Impact.AffectedAccessKeys = []string{"bob"}
 			}
 			w := httptest.NewRecorder()
-			plan.owned = actor.runtime.backend
-			plan.owner = actor
-			plan.backend = backend
-			plan.use = &iamGroupPlanUse{}
 			s.executeIAMGroupMutation(w, httptest.NewRequest("POST", "/api/iam/actions", nil), actor, plan)
 			wantHTTP := 200
 			if scenario == "conflict" || scenario == "expired-plan" {
@@ -174,38 +171,27 @@ func TestGroupExecutionRejectionKeepsSessionsUnknownRetiresCapturedSet(t *testin
 }
 
 func (f *groupRelationFixture) IAMMutateRelationshipGroup(context.Context, consoleapi.IAMActionRequest, consoleapi.IAMRelationships) (consoleapi.IAMGroupMutationResult, error) {
-	return consoleapi.IAMGroupMutationResult{}, nil
+	f.calls++
+	return f.result, f.err
 }
 
 func TestGroupPlanRejectsCrossOwnerBackendReplacementAndCopiedReplay(t *testing.T) {
-	f := groupFixture()
-	plan, err := prepareIAMGroupMutation(context.Background(), f.actor, consoleapi.IAMActionRequest{Action: "group.disable", Group: "team", ConfirmTarget: "team"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Use a real executor server with another session to prove a prepared plan
-	// cannot migrate to a different actor or connection, even via a copied value.
 	s := nativeRotationFixture(t, func(context.Context, string) error { return nil }, nil)
 	alice, _ := nativeSignIn(t, s, "alice")
 	bob, _ := nativeSignIn(t, s, "bob")
-	var actor, other *session
-	s.mu.Lock()
-	for _, sess := range s.sessions {
-		if sess.nativeUser == "alice" {
-			actor = sess
-		}
-		if sess.nativeUser == "bob" {
-			other = sess
-		}
+	actor := findNativePlanSession(s, "alice")
+	other := findNativePlanSession(s, "bob")
+	backend := groupFixture()
+	backend.Backend = actor.runtime.backend
+	actor.runtime.backend = backend
+	relation := backend.snapshots["group:team"]
+	relation.AffectedAccessKeys = []string{"unrelated"}
+	backend.snapshots["group:team"] = relation
+	plan, err := prepareIAMGroupMutation(context.Background(), actor, consoleapi.IAMActionRequest{Action: "group.disable", Group: "team", ConfirmTarget: "team"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	s.mu.Unlock()
-	backend := &groupMutationFixture{result: consoleapi.IAMGroupMutationResult{Outcome: "confirmed", Group: consoleapi.IAMGroup{Name: "team", Status: "disabled", Members: []string{}, Policies: []string{}}, Impact: plan.relation}}
-	plan.owner = actor
-	plan.owned = actor.runtime.backend
-	plan.backend = backend
-	plan.scopes = []identityScope{nativeUserScope("unrelated")}
-	plan.relation.AffectedAccessKeys = []string{"unrelated"}
-	backend.result.Impact = plan.relation
+	backend.result = consoleapi.IAMGroupMutationResult{Outcome: "confirmed", Group: consoleapi.IAMGroup{Name: "team", Status: "disabled", Members: []string{}, Policies: []string{}}, Impact: plan.relation}
 	invoke := func(sess *session, p iamGroupMutationPlan) int {
 		w := httptest.NewRecorder()
 		s.executeIAMGroupMutation(w, httptest.NewRequest("POST", "/api/iam/actions", nil), sess, p)
@@ -237,5 +223,52 @@ func TestGroupPrepareRejectsOIDCWithoutRelationshipQueries(t *testing.T) {
 	f.actor.oidc = &oidcSession{}
 	if _, err := prepareIAMGroupMutation(context.Background(), f.actor, consoleapi.IAMActionRequest{Action: "group.disable", Group: "team", ConfirmTarget: "team"}); err == nil || len(f.queries) != 0 {
 		t.Fatal("OIDC actor acquired native group plan")
+	}
+}
+
+func TestGroupPlanRejectsSameBackendIdentityLifetimeAndTargetChanges(t *testing.T) {
+	for _, change := range []string{"actor-user", "actor-identity", "lifetime", "namespace", "nil-context", "canceled-context"} {
+		t.Run(change, func(t *testing.T) {
+			s := nativeRotationFixture(t, func(context.Context, string) error { return nil }, nil)
+			cookie, _ := nativeSignIn(t, s, "alice")
+			actor := findNativePlanSession(s, "alice")
+			backend := groupFixture()
+			backend.Backend = actor.runtime.backend
+			actor.runtime.backend = backend
+			relation := backend.snapshots["group:team"]
+			relation.AffectedAccessKeys = []string{"unrelated"}
+			backend.snapshots["group:team"] = relation
+			plan, err := prepareIAMGroupMutation(context.Background(), actor, consoleapi.IAMActionRequest{Action: "group.disable", Group: "team", ConfirmTarget: "team"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			backend.result = consoleapi.IAMGroupMutationResult{Outcome: "confirmed", Group: consoleapi.IAMGroup{Name: "team", Status: "disabled", Members: []string{}, Policies: []string{}}, Impact: plan.relation}
+			oldUser, oldIdentity, oldLifetime, oldCtx, oldTarget := actor.nativeUser, actor.runtime.identity, actor.runtime.lifetime, actor.ctx, backend.target
+			switch change {
+			case "actor-user":
+				actor.nativeUser = "different-user"
+			case "actor-identity":
+				actor.runtime.identity = "different-native-identity"
+			case "lifetime":
+				actor.runtime.lifetime = &backendLifetime{}
+			case "namespace":
+				backend.target = "https://other-store\x00https://other-admin"
+			case "nil-context":
+				actor.ctx = nil
+			case "canceled-context":
+				ctx, cancel := context.WithCancel(oldCtx)
+				cancel()
+				actor.ctx = ctx
+			}
+			w := httptest.NewRecorder()
+			s.executeIAMGroupMutation(w, httptest.NewRequest("POST", "/api/iam/actions", nil), actor, plan)
+			actor.nativeUser, actor.runtime.identity, actor.runtime.lifetime, actor.ctx, backend.target = oldUser, oldIdentity, oldLifetime, oldCtx, oldTarget
+			if w.Code != 409 || backend.calls != 0 || len(s.writeSlots) != 0 || len(s.nativeUserChanging) != 0 {
+				t.Fatal("changed same-pointer owner dispatched or acquired barrier")
+			}
+			if nativeSessionStatus(s, cookie) != 200 {
+				t.Fatal("invalid plan retired existing session")
+			}
+		})
 	}
 }

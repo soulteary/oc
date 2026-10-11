@@ -20,14 +20,16 @@ type iamGroupPlanUse struct {
 	used bool
 }
 type iamGroupMutationPlan struct {
-	owner    *session
-	backend  consoleapi.IAMRelationshipGroupsBackend
-	owned    consoleapi.Backend
-	use      *iamGroupPlanUse
-	args     consoleapi.IAMActionRequest
-	relation consoleapi.IAMRelationships
-	scopes   []identityScope
-	expires  time.Time
+	lifetime                                *backendLifetime
+	actorUser, actorIdentity, storageTarget string
+	owner                                   *session
+	backend                                 consoleapi.IAMRelationshipGroupsBackend
+	owned                                   consoleapi.Backend
+	use                                     *iamGroupPlanUse
+	args                                    consoleapi.IAMActionRequest
+	relation                                consoleapi.IAMRelationships
+	scopes                                  []identityScope
+	expires                                 time.Time
 }
 
 func validPreparedGroupAction(args consoleapi.IAMActionRequest) bool {
@@ -118,7 +120,7 @@ func prepareIAMGroupMutation(ctx context.Context, sess *session, args consoleapi
 	args.Members = append([]string{}, args.Members...)
 	args.Policies = append([]string(nil), args.Policies...)
 	relation.AffectedAccessKeys = keys
-	return iamGroupMutationPlan{owner: sess, backend: mutationBackend, owned: sess.runtime.backend, use: &iamGroupPlanUse{}, args: args, relation: relation, scopes: append([]identityScope{}, scopes...), expires: expires}, nil
+	return iamGroupMutationPlan{lifetime: sess.runtime.lifetime, actorUser: sess.nativeUser, actorIdentity: sess.runtime.identity, storageTarget: ownedTarget, owner: sess, backend: mutationBackend, owned: sess.runtime.backend, use: &iamGroupPlanUse{}, args: args, relation: relation, scopes: append([]identityScope{}, scopes...), expires: expires}, nil
 }
 func (plan iamGroupMutationPlan) responseMatches(result consoleapi.IAMGroupMutationResult) bool {
 	if result.Group.Members == nil || result.Group.Policies == nil {
@@ -162,10 +164,11 @@ func (plan iamGroupMutationPlan) responseMatches(result consoleapi.IAMGroupMutat
 	return len(expected) == 0
 }
 
-// executeIAMGroupMutation is intentionally unregistered. The dispatcher may
+// The dispatcher may
 // call it only after native actor/write/CSRF checks and protocol capability gating.
 func (s *Server) executeIAMGroupMutation(w http.ResponseWriter, r *http.Request, sess *session, plan iamGroupMutationPlan) {
-	if plan.use == nil || plan.owner != sess || sess == nil || sess.oidc != nil || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || !sameOwnedIAMGroupBackend(sess.runtime.backend, plan.owned) || plan.backend == nil {
+	targetBackend, targetOK := plan.owned.(interface{ IAMStorageTarget() string })
+	if plan.use == nil || plan.owner != sess || sess == nil || sess.oidc != nil || sess.ctx == nil || sess.ctx.Err() != nil || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || plan.actorUser != sess.nativeUser || plan.actorIdentity != sess.runtime.identity || plan.lifetime != sess.runtime.lifetime || !sameOwnedIAMGroupBackend(sess.runtime.backend, plan.owned) || plan.backend == nil || !targetOK || plan.storageTarget == "" || targetBackend.IAMStorageTarget() != plan.storageTarget || plan.relation.StorageTarget != plan.storageTarget {
 		writeError(w, 409, "identity_plan_invalid", "Prepare a new group change in this session.")
 		return
 	}
