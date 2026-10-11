@@ -1806,11 +1806,13 @@ test("native page suspension clears unsubmitted identity credentials", async () 
  assert.equal(h.calls.filter(c=>c.url==="/api/login").length,0);
 });
 
-test("native writable sessions keep IAM actions hidden and cannot submit identity mutations", async () => {
+test("native writable sessions expose creation only and cannot submit identity edits", async () => {
   const h = createHarness({ native: true, readOnly: false, capabilities: fullCapabilities });
   await h.ready();
   await h.fire("open-iam");
-  assert.equal(h.element("iam-action-form").hidden, true);
+  assert.equal(h.element("iam-action-form").hidden, false);
+  assert.deepEqual(h.element("iam-action").children.map(o=>o.value),["user.create"]);
+  h.element("iam-action").value="user.disable";
   await h.fire("iam-action-form", "submit", { force: true });
   assert.equal(h.calls.filter(call => call.url === "/api/iam/actions").length, 0);
   assert.equal(h.element("workspace").hidden, false);
@@ -1828,6 +1830,23 @@ test("native secret rotation ends own browser session and permits fresh login wi
   assert.ok(!h.element("login-status").textContent.includes("restart OC"));
   h.element("login-access-key").value="alice";h.element("login-secret").value="changed-secret";
   await h.fire("login-form","submit");assert.equal(h.calls.filter(c=>c.url==="/api/login").length,1);
+ }
+});
+
+test("native IAM creation shows confirmed credentials once and keeps uncertain outcomes available without replay", async () => {
+ for (const uncertain of [false,true]) {
+  const h=createHarness({native:true,readOnly:false,capabilities:fullCapabilities});
+  h.route("POST","/api/iam/actions",()=>uncertain ? response({code:"outcome_unknown"},502) : response({outcome:"confirmed",restartRequired:false,credentials:{accessKey:"created-user",secretKey:"generated-secret"}}));
+  await h.ready();await h.fire("open-iam");
+  iamField(h,"user").value="created-user";h.element("iam-confirm").value="created-user";
+  await h.fire("iam-action-form","submit");
+  assert.equal(h.element("workspace").hidden,false);
+  assert.equal(h.element("iam-confirm").value,"");
+  assert.equal(h.element("iam-secret-result").hidden,uncertain);
+  assert.equal(h.element("iam-result-secret").value,uncertain ? "" : "generated-secret");
+  await h.fire("iam-action-form","submit",{force:true});
+  assert.equal(h.calls.filter(c=>c.url==="/api/iam/actions").length,1);
+  await h.fire("close-iam");assert.equal(h.element("iam-result-secret").value,"");
  }
 });
 

@@ -2288,6 +2288,11 @@
     "service-accounts": ["service-account.create", "service-account.enable", "service-account.disable", "service-account.rotate", "service-account.policy", "service-account.delete"],
     policies: [],
   };
+  if (nativeLogin) {
+    iamActions.users = ["user.create"];
+    iamActions.groups = ["group.create"];
+    iamActions["service-accounts"] = ["service-account.create"];
+  }
   const iamLabels = {
     "user.policies": "Change user policy bindings", "group.policies": "Change group policy bindings",
     "user.create": "Create user", "user.enable": "Enable user", "user.disable": "Disable user", "user.rotate": "Change user secret key", "user.delete": "Delete user",
@@ -2361,7 +2366,7 @@
       elements["iam-action"].append(option);
     }
     elements["iam-action"].value = iamActions[kind]?.[0] || "";
-    elements["iam-action-form"].hidden = nativeLogin || state.readOnly || !(iamActions[kind]?.length);
+    elements["iam-action-form"].hidden = state.readOnly || !(iamActions[kind]?.length);
     elements["iam-list"].replaceChildren();
     setText("iam-action-status", "");
     configureIAMAction();
@@ -2482,8 +2487,9 @@
 
   async function applyIAMAction(event) {
     event.preventDefault();
-    if (nativeLogin || !featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
+    if (!featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
     const action = elements["iam-action"].value;
+    if (nativeLogin && !["user.create", "group.create", "service-account.create"].includes(action)) return;
     const body = { action, confirmTarget: elements["iam-confirm"].value };
     for (const [name, input] of Object.entries(iamInputs)) {
       if (name === "policies") body.policies = [...new Set(input.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];
@@ -2511,6 +2517,7 @@
       const result = await api("/api/iam/actions", mutationOptions(body), request);
       if (!currentRequest("iam-action", request)) return;
       if (result?.outcome !== "confirmed") throw new APIError(0, "UnknownIAMOutcome", "The change was not confirmed. Verify storage before retrying.");
+      if (nativeLogin && result?.restartRequired) throw new APIError(0, "UnknownIAMOutcome", "The creation was not safely confirmed.");
       if (result?.restartRequired) {
         consoleStopped = true;
         showLogin("The current credentials changed. Update the alias in your terminal and restart OC console before continuing.");
@@ -2538,6 +2545,12 @@
       if (iamInputs.secretKey) iamInputs.secretKey.value = "";
       if (!currentRequest("iam-action", request) || error.name === "AbortError") return;
       if (error.restartRequired || error.status === 0 || error.code === "outcome_unknown") {
+        if (nativeLogin) {
+          elements["iam-confirm"].value = "";
+          clearIAMSecret();
+          setText("iam-action-status", "The creation outcome is unknown. Verify the exact target before making another request. This request was not repeated.");
+          return;
+        }
         consoleStopped = true;
         showLogin("The credential change outcome is unconfirmed. Verify which secret works, update the alias, and restart OC console. This action will not be repeated.");
         return;
