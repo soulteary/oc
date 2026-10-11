@@ -123,13 +123,13 @@ function createHarness(options = {}) {
   }
   elements.get("settings-kind").value = "policy";
   document = {
-    body: { dataset: { authMode: options.native ? "native" : "local" } },
+    body: { dataset: { authMode: options.oidc ? "oidc" : options.native ? "native" : "local" } },
     activeElement: null,
     getElementById(id) { assert.ok(elements.has(id), `script references missing HTML id ${id}`); return elements.get(id); },
     createElement(tagName) { return new Element(tagName); },
   };
   const window = {
-    location: { origin: "http://127.0.0.1:9001" },
+    location: { origin: "http://127.0.0.1:9001", assign(url) { downloads.push(url); } },
     addEventListener(type, callback) {
       if (!windowListeners.has(type)) windowListeners.set(type, []);
       windowListeners.get(type).push(callback);
@@ -1944,6 +1944,16 @@ test("diagnostics session expiry clears snapshots and returns to login", async (
  assert.equal(h.element("workspace").hidden,true); assert.equal(h.element("diagnostics-body").textContent,"");
 });
 
+test("OIDC sign-in navigates without collecting local or IAM credentials", async () => {
+ const h = createHarness({oidc:true}); await h.ready();
+ assert.equal(h.element("login-code-fields").hidden,true);
+ assert.equal(h.element("native-login-fields").hidden,true);
+ assert.equal(h.element("login-code").required,false);
+ const before=h.calls.filter(c=>c.url==="/api/login").length;
+ await h.fire("login-form","submit");
+ assert.equal(h.calls.filter(c=>c.url==="/api/login").length,before);
+ assert.ok(h.downloads.includes("/api/oidc/login"));
+});
 (async () => {
   let passed = 0;
   for (const item of tests) {

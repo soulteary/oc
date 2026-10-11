@@ -387,10 +387,17 @@
   const settingLabels = { policy: "Bucket policy", versioning: "Versioning", lifecycle: "Lifecycle" };
   function uiLocale() { return window.OCI18n?.language() === "en" ? "en-US" : "zh-CN"; }
 
+  const oidcLogin = document.body?.dataset?.authMode === "oidc";
   const nativeLogin = document.body?.dataset?.authMode === "native";
-  elements["login-code-fields"].hidden = nativeLogin;
+  elements["login-code-fields"].hidden = nativeLogin || oidcLogin;
   elements["native-login-fields"].hidden = !nativeLogin;
-  elements["login-code"].required = !nativeLogin;
+  elements["login-code"].required = !nativeLogin && !oidcLogin;
+  if (oidcLogin) {
+    elements["login-access-key"].required = false;
+    elements["login-secret"].required = false;
+    setText("login-description", "Sign in through your identity provider.");
+    setText("login-submit", "Sign in with identity provider");
+  }
   if (nativeLogin) {
     setText("login-brand", "Storage console");
     setText("login-eyebrow", "YOUR STORAGE");
@@ -402,7 +409,7 @@
     elements["login-access-key"].value = "";
     elements["login-secret"].value = "";
   }
-  function focusLogin() { elements[nativeLogin ? "login-access-key" : "login-code"].focus(); }
+  function focusLogin() { elements[oidcLogin ? "login-submit" : nativeLogin ? "login-access-key" : "login-code"].focus(); }
 
   class APIError extends Error {
     constructor(status, code, message, restartRequired, loginRequired) {
@@ -420,7 +427,7 @@
 
   function updateBusy() {
     elements["login-submit"].disabled = consoleStopped || requests.has("login") || requests.has("session");
-    elements["login-code"].disabled = consoleStopped || nativeLogin;
+    elements["login-code"].disabled = consoleStopped || nativeLogin || oidcLogin;
  elements["login-access-key"].disabled = consoleStopped || !nativeLogin || requests.has("login");
  elements["login-secret"].disabled = consoleStopped || !nativeLogin || requests.has("login");
     // Refresh is also the way to stop and restart a slow read request.
@@ -590,7 +597,7 @@
 
   function expired(error) {
     if (error.status !== 401 && !(error.status === 403 && error.code === "invalid_csrf")) return false;
-    showLogin(nativeLogin ? "Your session has expired or changed. Sign in again with your IAM credentials." : error.code === "invalid_csrf" ? "Your local session has changed. Enter the login code from your OC terminal to reconnect." : "Your session has expired. Enter the login code from your OC terminal to reconnect.");
+    showLogin(oidcLogin ? "Your identity provider session has expired. Sign in again." : nativeLogin ? "Your session has expired or changed. Sign in again with your IAM credentials." : error.code === "invalid_csrf" ? "Your local session has changed. Enter the login code from your OC terminal to reconnect." : "Your session has expired. Enter the login code from your OC terminal to reconnect.");
     focusLogin();
     return true;
   }
@@ -1558,7 +1565,7 @@
   }
 
   function canRotateSecret() {
-    return state.authenticated && !state.readOnly && selfAccount?.kind === "iam" && selfAccount.status === "enabled" && selfAccount.canRotateSecret === true;
+    return !oidcLogin && state.authenticated && !state.readOnly && selfAccount?.kind === "iam" && selfAccount.status === "enabled" && selfAccount.canRotateSecret === true;
   }
 
   function renderAccountBuckets() {
@@ -2325,6 +2332,7 @@
     "service-accounts": ["service-account.create", "service-account.enable", "service-account.disable", "service-account.rotate", "service-account.policy", "service-account.delete"],
     policies: [],
   };
+  if (oidcLogin) { for (const kind of Object.keys(iamActions)) iamActions[kind] = []; }
   if (nativeLogin) {
     iamActions.users = ["user.create", "user.enable", "user.disable", "user.delete"];
     iamActions.groups = ["group.create"];
@@ -2507,7 +2515,7 @@
           policy.setAttribute("data-no-i18n", ""); policy.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
           card.append(policy);
         }
-        if (!state.readOnly && kind !== "policies" && (!nativeLogin || kind === "users")) card.append(actionButton("Choose for change", () => {
+        if (!oidcLogin && !state.readOnly && kind !== "policies" && (!nativeLogin || kind === "users")) card.append(actionButton("Choose for change", () => {
           iamRecord = record;
           elements["iam-action"].value = iamActions[kind][1] || iamActions[kind][0];
           configureIAMAction();
@@ -2526,6 +2534,7 @@
     event.preventDefault();
     if (!featureEnabled("iam") || state.readOnly || requests.has("iam-action") || !elements["iam-secret-result"].hidden || !bindingReady() || pendingBindingRead) return;
     const action = elements["iam-action"].value;
+    if (oidcLogin) return;
     if (nativeLogin && !["user.create", "user.enable", "user.disable", "user.delete", "group.create", "service-account.create"].includes(action)) return;
     const body = { action, confirmTarget: elements["iam-confirm"].value };
     for (const [name, input] of Object.entries(iamInputs)) {
@@ -2788,6 +2797,7 @@
   elements["login-form"].addEventListener("submit", async event => {
     event.preventDefault();
     if (consoleStopped) return;
+    if (oidcLogin) { window.location.assign("/api/oidc/login"); return; }
     const credentials = nativeLogin ? { accessKey: elements["login-access-key"].value, secretKey: elements["login-secret"].value } : { code: elements["login-code"].value.trim() };
     if (nativeLogin ? !credentials.accessKey || !credentials.secretKey : !credentials.code) return;
     const body = JSON.stringify(credentials);
@@ -2815,7 +2825,7 @@
     try {
       await api("/api/logout", { method: "POST", headers: { "X-CSRF-Token": state.csrfToken } }, request);
       if (!currentRequest("logout", request)) return;
-      showLogin(nativeLogin ? "You are logged out. Sign in again with your IAM credentials." : "You are logged out. Use the code from your OC terminal to reconnect.");
+      showLogin(oidcLogin ? "You are logged out. Sign in through your identity provider to reconnect." : nativeLogin ? "You are logged out. Sign in again with your IAM credentials." : "You are logged out. Use the code from your OC terminal to reconnect.");
       focusLogin();
     } catch (error) {
       if (!currentRequest("logout", request) || error.name === "AbortError") return;

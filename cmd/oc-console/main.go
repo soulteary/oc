@@ -40,6 +40,11 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags := flag.NewFlagSet("oc-console", flag.ContinueOnError)
 	flags.SetOutput(errorOutput)
 	var opts options
+	flags.StringVar(&opts.oidcIssuer, "oidc-issuer", "", "fixed HTTPS identity provider issuer")
+	flags.StringVar(&opts.oidcClientID, "oidc-client-id", "", "identity provider client ID")
+	flags.StringVar(&opts.oidcCA, "oidc-ca", "", "identity provider PEM CA file")
+	flags.StringVar(&opts.oidcSecretFile, "oidc-client-secret-file", "", "private file containing confidential client secret")
+	flags.DurationVar(&opts.sessionTTL, "session-ttl", 30*time.Minute, "fixed OIDC session lifetime (1m to 24h)")
 	flags.StringVar(&opts.authMode, "auth-mode", "local", "local login code or native IAM user login (HTTPS; read-only by default)")
 	flags.StringVar(&opts.s3URL, "s3-url", "", "fixed HTTPS storage root URL for native login")
 	flags.StringVar(&opts.tlsCert, "tls-cert", "", "browser HTTPS certificate PEM for native login")
@@ -86,11 +91,17 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	if opts.allowSharing && opts.shareURL == "" && os.Getenv("OC_SHARE_URL") == "" && os.Getenv("OC_SHARE_URL_"+opts.alias) == "" {
 		return errors.New("--allow-sharing requires --share-url or OC_SHARE_URL for recipients")
 	}
+	if opts.authMode == "oidc" {
+		return runOIDC(ctx, opts, output)
+	}
+	if opts.oidcIssuer != "" || opts.oidcClientID != "" || opts.oidcCA != "" || opts.oidcSecretFile != "" {
+		return errors.New("OIDC options require --auth-mode oidc")
+	}
 	if opts.authMode == "native" {
 		return runNative(ctx, opts, output)
 	}
 	if opts.authMode != "local" {
-		return errors.New("--auth-mode must be local or native")
+		return errors.New("--auth-mode must be local, native or oidc")
 	}
 	if opts.s3URL != "" || opts.tlsCert != "" || opts.tlsKey != "" {
 		return errors.New("--s3-url and browser TLS options require --auth-mode native")

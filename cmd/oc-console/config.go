@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
+	"time"
 
 	"github.com/soulteary/mc/internal/clienttransport"
 	"github.com/soulteary/mc/internal/storageclient"
@@ -20,6 +21,8 @@ import (
 )
 
 type options struct {
+	oidcIssuer, oidcClientID, oidcCA, oidcSecretFile                         string
+	sessionTTL                                                               time.Duration
 	authMode, s3URL, tlsCert, tlsKey                                         string
 	dataDir                                                                  string
 	containerListen                                                          bool
