@@ -1,0 +1,199 @@
+{
+  "planDate": "2026-10-12",
+  "timezone": "Asia/Shanghai",
+  "scope": "保留 OIDC，完成替代和迁移验收后移除 OtterIO 内置 Web",
+  "baselines": {
+    "oc": "8bc379e238e4dd85ec57adce2504b8482af9326e",
+    "otterio": "8cc518b31ac8b69c8f855e19b4bd027f44275c47"
+  },
+  "maxConcurrentAgents": 4,
+  "coordinatorConsumesSlot": true,
+  "statuses": [
+    "unclaimed",
+    "active",
+    "blocked",
+    "review",
+    "integrated",
+    "verified"
+  ],
+  "tasks": [
+    {
+      "id": "00",
+      "file": "00-integration.md",
+      "owner": "root",
+      "status": "active",
+      "dependencies": []
+    },
+    {
+      "id": "01",
+      "file": "01-oidc.md",
+      "owner": "parity",
+      "status": "active",
+      "dependencies": [
+        "00: lifecycle contract",
+        "02: identity contract"
+      ]
+    },
+    {
+      "id": "02",
+      "file": "02-identity-protocols.md",
+      "owner": "identity",
+      "status": "active",
+      "dependencies": []
+    },
+    {
+      "id": "03-user",
+      "file": "03-iam.md",
+      "owner": null,
+      "status": "unclaimed",
+      "dependencies": [
+        "00: shared types",
+        "02: required protocols and impact scope"
+      ]
+    },
+    {
+      "id": "03-group",
+      "file": "03-iam.md",
+      "owner": null,
+      "status": "unclaimed",
+      "dependencies": [
+        "00: shared types",
+        "02: required protocols and impact scope"
+      ]
+    },
+    {
+      "id": "03-service-account",
+      "file": "03-iam.md",
+      "owner": null,
+      "status": "unclaimed",
+      "dependencies": [
+        "00: shared types",
+        "02: required protocols and impact scope"
+      ]
+    },
+    {
+      "id": "04",
+      "file": "04-parity.md",
+      "owner": "root",
+      "status": "integrated",
+      "dependencies": [],
+      "verificationDependencies": [
+        "01",
+        "02",
+        "03-user",
+        "03-group",
+        "03-service-account"
+      ],
+      "scope": "28项能力矩阵与结构验收门禁；完整等价验收仍待认证/IAM实现"
+    },
+    {
+      "id": "05",
+      "file": "05-deployment-release.md",
+      "owner": "deployment",
+      "status": "active",
+      "dependencies": [],
+      "verificationDependencies": [
+        "01",
+        "02",
+        "03-user",
+        "03-group",
+        "03-service-account",
+        "04"
+      ],
+      "scope": "Compose首批已集成；继续临时Keycloak真实验收"
+    },
+    {
+      "id": "06",
+      "file": "06-removal.md",
+      "owner": null,
+      "status": "unclaimed",
+      "dependencies": [],
+      "executionGates": [
+        "05: actual release pair certified",
+        "OIDC replacement verified",
+        "notified release cycles complete",
+        "bounded fallback window complete before physical deletion"
+      ]
+    }
+  ],
+  "sharedFileWindows": [
+    {
+      "owner": "parity",
+      "files": [
+        "internal/console/server.go",
+        "internal/console/session_clients.go",
+        "cmd/oc-console/*",
+        "internal/console/web/*"
+      ],
+      "status": "active",
+      "purpose": "OIDC Console接入；root不编辑认证核心或主UI"
+    },
+    {
+      "owner": "identity",
+      "files": [
+        "internal/console/identity_revocations.go"
+      ],
+      "status": "active"
+    },
+    {
+      "owner": "deployment",
+      "files": [
+        "buildscripts/console_released_compose_acceptance.py",
+        "buildscripts/test_console_released_compose.py"
+      ],
+      "status": "active"
+    },
+    {
+      "owner": "identity",
+      "repository": "otterio",
+      "files": [
+        "cmd/fiber_admin_router.go"
+      ],
+      "status": "active",
+      "purpose": "接入条件IAM协议并修复锁内授权"
+    }
+  ],
+  "integrations": [
+    {
+      "task": "02",
+      "sourceCommit": "0f7adee5",
+      "integrationCommit": "157fac2e",
+      "scope": "OIDC主体命名空间与关系快照拒绝语义"
+    },
+    {
+      "task": "04",
+      "sourceCommit": "5b5426f1",
+      "integrationCommit": "5b32e51a",
+      "scope": "矩阵与门禁；集成复查补客户端二进制绑定"
+    },
+    {
+      "task": "05",
+      "sourceCommit": "72d5e464",
+      "integrationCommit": "c10b4948",
+      "scope": "发布Compose持久化、回退与清理报告"
+    }
+  ],
+  "evidence": [
+    {
+      "task": "05",
+      "path": "docs/console-next-deployment-compose-results.json",
+      "result": "passed",
+      "scope": "已固定发布对/local shared alias/HTTP/linux arm64；非OIDC认证"
+    },
+    {
+      "task": "04",
+      "result": "5 unittest groups passed",
+      "scope": "门禁负例，不是完整功能替代证据"
+    }
+  ],
+  "openDecisions": [
+    "用户已选择隔离临时Keycloak；真实profile/版本由05记录",
+    "supported platforms and proxy topology",
+    "fallback end release/date after default-off gates"
+  ],
+  "executionStarted": "2026-10-12",
+  "executionBaselines": {
+    "oc": "1c5c3edc",
+    "otterio": "8cc518b"
+  }
+}
