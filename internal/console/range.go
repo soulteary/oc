@@ -101,26 +101,21 @@ func (s *Server) downloadRange(w http.ResponseWriter, r *http.Request, ctx conte
 	}
 	w.Header().Set("Accept-Ranges", "bytes")
 	if value := r.Header.Get("If-Match"); value != "" && !etagMatches(value, tag, false) {
-		w.WriteHeader(412)
-		return true
+		return rangeHeaders(w, ctx, 412)
 	}
 	if date, err := http.ParseTime(r.Header.Get("If-Unmodified-Since")); r.Header.Get("If-Match") == "" && err == nil && !info.Modified.IsZero() && info.Modified.Truncate(time.Second).After(date) {
-		w.WriteHeader(412)
-		return true
+		return rangeHeaders(w, ctx, 412)
 	}
 	if value := r.Header.Get("If-None-Match"); value != "" {
 		if etagMatches(value, tag, true) {
-			w.WriteHeader(304)
-			return true
+			return rangeHeaders(w, ctx, 304)
 		}
 	} else if notModifiedSince(r.Header.Get("If-Modified-Since"), info.Modified) {
-		w.WriteHeader(304)
-		return true
+		return rangeHeaders(w, ctx, 304)
 	}
 	if r.Method == http.MethodHead {
 		w.Header().Set("Content-Length", strconv.FormatInt(info.Size, 10))
-		w.WriteHeader(200)
-		return true
+		return rangeHeaders(w, ctx, 200)
 	}
 	value := r.Header.Get("Range")
 	if condition := r.Header.Get("If-Range"); condition != "" && condition != tag && !ifRangeDateMatches(condition, info.Modified) {
@@ -134,8 +129,7 @@ func (s *Server) downloadRange(w http.ResponseWriter, r *http.Request, ctx conte
 	start, end, ok := byteRange(value, info.Size)
 	if !ok {
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", info.Size))
-		w.WriteHeader(416)
-		return true
+		return rangeHeaders(w, ctx, 416)
 	}
 	object, err := backend.OpenRange(ctx, ref, info, start, end)
 	if err != nil {
@@ -147,6 +141,31 @@ func (s *Server) downloadRange(w http.ResponseWriter, r *http.Request, ctx conte
 	}
 	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, info.Size))
 	return s.downloadUsing(rangeResponse{w}, ctx, ref.Key, func(context.Context) (consoleapi.Object, error) { return object, nil })
+}
+
+// rangeHeaders flushes HEAD and conditional responses with the same bounded,
+// cancelable downstream writes as object streams. It leaves the deadline set
+// until net/http finishes the response, preserving final-chunk protection.
+func rangeHeaders(w http.ResponseWriter, ctx context.Context, status int) bool {
+	writer := &flushWriter{ctx: ctx, response: w, controller: http.NewResponseController(w)}
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() { defer close(done); writer.cancelWrite() })
+	defer func() {
+		if !stop() {
+			<-done
+		}
+	}()
+	if status != http.StatusNotModified && w.Header().Get("Content-Length") == "" {
+		w.Header().Set("Content-Length", "0")
+	}
+	w.WriteHeader(status)
+	_, err := writer.Write(nil)
+	if err != nil {
+		if writer.controller.SetWriteDeadline(time.Now()) == nil {
+			panic(http.ErrAbortHandler)
+		}
+	}
+	return err == nil
 }
 
 // Unwrap preserves ResponseController deadlines and flushes.
