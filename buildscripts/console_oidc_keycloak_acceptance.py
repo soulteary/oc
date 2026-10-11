@@ -464,7 +464,6 @@ def main(args):
                 console_secret_args = ['--oidc-client-secret-file', str(secret_file)] if client_secret else []
                 if args.console_session_ttl:
                     console_secret_args += ['--session-ttl', args.console_session_ttl]
-                console_started = time.monotonic()
                 start([args.console, *console_secret_args, '--auth-mode', 'oidc', '--oidc-issuer', issuer, '--oidc-client-id', 'oc-console',
                        '--oidc-ca', str(root/'ca.pem'), '--s3-url', endpoint, '--admin-url', admin,
                        '--s3-ca', str(root/'ca.pem'), '--admin-ca', str(admin_ca), '--public-url', public,
@@ -496,6 +495,7 @@ def main(args):
                     if browser_runner.is_file():
                         report['browserHook']['runnerSha256'] = hashlib.sha256(browser_runner.read_bytes()).hexdigest()
                 users = {}
+                session_started = {}
                 for user, password in passwords.items():
                     user_browser = browser(context, callback)
                     location = login(user_browser, public+'/api/oidc/login', callback, user, password, issuer)
@@ -505,6 +505,7 @@ def main(args):
                     status, _, _ = request(user_browser, location)
                     if status not in (200, 302, 303):
                         raise RuntimeError('Console callback rejected')
+                    session_started[user] = time.monotonic()
                     for owner, prefix, expected in [(user, 'allowed', 200), (user, 'denied', 403),
                                                    ('bob' if user == 'alice' else 'alice', 'allowed', 403)]:
                         query = urllib.parse.urlencode({'bucket': owner+'-bucket', 'key': prefix+'/object.txt'})
@@ -583,12 +584,14 @@ def main(args):
                     raise RuntimeError('no actual Keycloak refresh event observed for Console')
                 report['checks'].append('Bob survives initial ID token expiry; additional actual Keycloak refresh events observed')
                 if args.console_session_ttl:
-                    # Fixed TTL uses the same start-of-session bound, never a refreshed deadline.
+                    # Each protocol session starts after the optional browser hook.
+                    # Console process launch or another browser's login is not this session's deadline.
                     import re
                     match = re.fullmatch(r'(\d+)s', args.console_session_ttl)
                     if not match:
                         raise RuntimeError('acceptance fixed session TTL must use integer seconds')
-                    end = console_started+int(match.group(1))+5
+                    end = session_started['bob']+int(match.group(1))+5
+                    report['consoleFixedExpiryReference'] = 'Bob successful protocol callback completion plus configured TTL and 5s observation margin'
                     while time.monotonic() < end:
                         time.sleep(.5)
                     status, _, _ = request(browser(context, callback), public+'/api/session',
