@@ -44,12 +44,13 @@
     {
       "id": "03-user",
       "file": "03-iam.md",
-      "owner": null,
-      "status": "unclaimed",
+      "owner": "identity",
+      "status": "active",
       "dependencies": [
         "00: shared types",
         "02: required protocols and impact scope"
-      ]
+      ],
+      "scope": "关系耦合用户改密协议、计划和撤销边界；其他用户写路径未全开"
     },
     {
       "id": "03-group",
@@ -122,11 +123,10 @@
       "files": [
         "internal/console/server.go",
         "internal/console/session_clients.go",
-        "cmd/oc-console/*",
-        "internal/console/web/*"
+        "internal/console/oidc_*.go"
       ],
       "status": "active",
-      "purpose": "OIDC Console接入；root不编辑认证核心或主UI"
+      "purpose": "OIDC生命周期安全复查及修正；CLI/UI由root集成"
     },
     {
       "owner": "identity",
@@ -151,6 +151,16 @@
       ],
       "status": "active",
       "purpose": "接入条件IAM协议并修复锁内授权"
+    },
+    {
+      "owner": "root",
+      "files": [
+        "cmd/oc-console/*",
+        "internal/console/web/*",
+        "buildscripts/test-console-web.js"
+      ],
+      "status": "active",
+      "purpose": "OIDC入口、界面与回归集成"
     }
   ],
   "integrations": [
@@ -171,6 +181,21 @@
       "sourceCommit": "72d5e464",
       "integrationCommit": "c10b4948",
       "scope": "发布Compose持久化、回退与清理报告"
+    },
+    {
+      "task": "01",
+      "integrationCommit": "ddcc66bb",
+      "scope": "OIDC世代租约、独立STS会话、固定寿命与CLI/UI"
+    },
+    {
+      "task": "02",
+      "integrationCommit": "6c6de24d",
+      "scope": "权威关系查询及coupled policy binding客户端；服务端19560364"
+    },
+    {
+      "task": "05",
+      "integrationCommit": "9ea39081",
+      "scope": "临时HTTPS Keycloak协议验收与失败证据"
     }
   ],
   "evidence": [
@@ -201,6 +226,17 @@
       "task": "00",
       "result": "5 related Go packages race passed; lint 0 issues",
       "scope": "integration b32781de, prior to OIDC session integration"
+    },
+    {
+      "task": "01",
+      "result": "88 web behavior groups passed; 5 related Go packages race passed",
+      "scope": "OIDC集成CLI/UI和生命周期；真实Console OIDC仍验收中"
+    },
+    {
+      "task": "01/04",
+      "path": "docs/console-next-oidc-native-results.json",
+      "result": "52 acceptance groups passed",
+      "scope": "OIDC集成ddcc66bb后的native single/dual HTTPS回归；server19560364"
     }
   ],
   "openDecisions": [
