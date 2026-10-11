@@ -201,7 +201,7 @@ func TestNativeUserRetirementRejectsPendingLoginEvenAfterAccountIsEnabledAgain(t
 			if <-done != 409 {
 				t.Fatal("stale verified login committed")
 			}
-			if len(s.nativeUserRevoked) != 0 {
+			if len(s.revocations.tombstones) != 0 {
 				t.Fatal("tombstone retained without pending login")
 			}
 		})
