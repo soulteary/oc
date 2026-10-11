@@ -470,7 +470,10 @@ def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_sess
     assert samples_rss, 'no console RSS samples'
     assert all(any(begin <= stamp <= end for stamp, _ in samples_rss) for begin, end in [*single_windows, concurrent_window]), 'no samples during one transfer phase'
     peak_rss = max(value for _, value in samples_rss)
-    assert peak_rss <= 512 and all(value <= 120 for value in [*timings.values(), *cli_seconds, *console_seconds, *download_seconds])
+    assert peak_rss <= 512, f'console peak RSS exceeds 512 MiB: {peak_rss}'
+    for phase, values in (('transfer', list(timings.values())), ('CLI upload', cli_seconds),
+                          ('console upload', console_seconds), ('verification download', download_seconds)):
+        assert all(value <= 120 for value in values), f'{phase} exceeds 120 seconds: {values}'
     require_upload_budget(throughput)
     checks.append('65MiB SHA256 fidelity per CLI/console trial, two concurrent uploads, sampled RSS and fixed five-pair median throughput budget')
     jobs = job('/api/jobs')['jobs']

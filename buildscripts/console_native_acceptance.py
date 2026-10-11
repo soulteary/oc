@@ -139,6 +139,19 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             credentials.extend([created['credentials']['accessKey'], created['credentials']['secretKey']])
             manager('/api/iam/actions', 'POST', create_user, expected=409, headers=manager_headers)
             manager('/api/iam/actions', 'POST', {'action': 'group.create', 'group': new_group, 'confirmTarget': new_group}, headers=manager_headers)
+            created_browser = browser(base, tls_context)
+            new_secret = created['credentials']['secretKey']
+            created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
+            cli('admin', 'user', 'disable', 'store', new_user)
+            created_browser('/api/session', expected=401)
+            enable_user = {'action': 'user.enable', 'user': new_user, 'confirmTarget': new_user}
+            alice('/api/iam/actions', 'POST', enable_user, expected=403, headers=alice_headers)
+            manager('/api/iam/actions', 'POST', enable_user, headers=manager_headers)
+            created_browser('/api/session', expected=401)
+            created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
+            manager('/api/iam/actions', 'POST', {'action': 'user.enable', 'user': manager_access, 'confirmTarget': manager_access}, headers=manager_headers)
+            manager('/api/session')
+            checks.append('native account activation enforces manager permission, never revives revoked sessions and does not stop self-targeted manager sessions')
             service = json.loads(manager('/api/iam/actions', 'POST', {'action': 'service-account.create', 'user': new_user, 'confirmTarget': new_user}, headers=manager_headers)[0])
             service_key = service['credentials']['accessKey']
             credentials.extend([service_key, service['credentials']['secretKey']])
