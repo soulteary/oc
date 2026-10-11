@@ -315,6 +315,8 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         if not all(temporary.values()):
             raise RuntimeError('lifecycle STS credentials incomplete')
         credentials.extend(temporary.values())
+        browser(base, tls_context)('/api/login', 'POST', {'accessKey': temporary['accessKey'], 'secretKey': temporary['secretKey']}, expected=401)
+        checks.append('real STS credentials cannot create native browser sessions; child authorization is tested through signed S3 requests')
 
         def sts_read(expected=200):
             status, _, _ = signer.signed_request(endpoint, 'GET', '/' + bucket + '/plain.txt', b'',
