@@ -33,3 +33,7 @@ parity获得认证核心/启动/UI独占窗口，实现OIDC安全会话、临时
 新Console与服务端 `19560364ec735f5b811964f5199b2b59e7100400` 的native单/双HTTPS各26组通过，原始记录为[OIDC接入后的native回归](../../console-next-oidc-native-results.json)。此次使用CLI `b32781de` 与Console `ddcc66bb`，不把不同源资产声称为同一发行。
 
 临时Keycloak协议夹具已集成；真实浏览器Console的刷新、固定期限、退出和双用户隔离仍在验收。发现Docker身份提供方与本机存储亚秒时钟差可能触发未来iat拒绝，保留失败记录并使用同容器时钟进一步验证。OIDC的IAM写/自身改密仍拒绝；用户关系耦合改密协议正在实现。
+
+最新 OIDC 安全修复集成 `51ee915235ac20a3ee49a75fd60136f3d2032b9d`：请求固定世代后仍检验绝对到期；刷新失败原子关闭再唤醒等待者；尾斜线根URL回调规范化。相关Console/OIDC/CLI race通过，lint 0 issues。local四入口各17组再次通过，共68组；[原始结果](../../console-next-oidc-features-results.json)。
+
+已知空关系集合和未知关系集合严格区分，`85eec74d` 的执行器测试证明空组不撤销无关会话，但仍保留全部写槽屏障；组原子协议尚在开发，未因此开放组写动作。
