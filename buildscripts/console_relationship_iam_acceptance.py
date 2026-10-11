@@ -87,6 +87,17 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
                          allowed_credentials=tuple(names.values()) + tuple(public_child_keys) + ((child['accessKey'],) if child else ()))[0]
         return json.loads(payload)
 
+    def list_target_children():
+        config = json.loads(original_config)
+        config['aliases']['relationship-manager'] = {**config['aliases']['store'], 'accessKey': names['manager'], 'secretKey': secrets_by_role['manager']}
+        config_path.write_text(json.dumps(config))
+        config_path.chmod(0o600)
+        try:
+            return cli('admin', 'user', 'svcacct', 'ls', 'relationship-manager', names['target'])
+        finally:
+            config_path.write_bytes(original_config)
+            config_path.chmod(0o600)
+
     def bindings(client, kind, target):
         query = urllib.parse.urlencode({'kind': kind, 'target': target})
         return json.loads(client('/api/iam/bindings?' + query, allowed_credentials=tuple(names.values()))[0])
@@ -132,6 +143,13 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         checks.append('legacy relationship attempts reject readonly/CSRF; ordinary and denied actors reject permission or missing capability without session retirement' if unsupported else 'relationship user rotation rejects default-readonly, ordinary user, explicit deny and missing CSRF without retiring unaffected sessions')
 
         if unsupported:
+            before_children = list_target_children()
+            creation = action(manager, {'action': 'service-account.create', 'user': names['target'], 'confirmTarget': names['target']}, (403, 501))
+            if creation.get('code') not in ('identity_changes_disabled', 'identity_relationship_unknown', 'identity_relationships_unknown', 'iam_relationships_unsupported', 'identity_impact_unsupported'):
+                raise RuntimeError('legacy protected service creation did not explicitly reject missing capability')
+            if list_target_children() != before_children:
+                raise RuntimeError('legacy protected service creation wrote an unexpected child')
+            checks.append('native protected service creation on legacy server rejects missing capability with zero service-account writes')
             error = rotate(manager, 'target', candidate, (403, 501))
             if error.get('code') not in ('identity_changes_disabled', 'identity_relationship_unknown', 'identity_relationships_unknown', 'iam_relationships_unsupported', 'identity_impact_unsupported'):
                 raise RuntimeError('missing capability rejection was not explicit')
@@ -146,6 +164,15 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
             browser(base, tls_context)('/api/login', 'POST', {'accessKey': names['target'], 'secretKey': candidate}, expected=401)
             checks.append('real legacy server missing coupled relationship capability rejects secret/binding mutations; original credentials and sessions remain valid')
             return {'processCleanup': own_cleanup, 'capabilityMode': 'expected-unsupported', 'unsupportedActionsPassed': ['user.rotate', 'user.policies', 'user.disable', 'user.enable', 'user.delete'], 'positiveMutationCoverage': []}
+
+        collision_secret = secrets.token_hex(20)
+        credentials.append(collision_secret)
+        collision = action(manager, {'action': 'service-account.create', 'user': names['target'],
+            'accessKey': names['denied'], 'secretKey': collision_secret, 'confirmTarget': names['target']}, 409)
+        if collision.get('code') != 'identity_revision_conflict':
+            raise RuntimeError('protected service creation collision did not return explicit revision conflict')
+        unrelated('/api/session');target('/api/session');manager('/api/session')
+        checks.append('protected service creation rejects existing native access-key collision with explicit 409 and preserves original user sessions')
 
         # Real child credential exists, but native browser login intentionally accepts only IAM users.
         created = action(manager, {'action': 'service-account.create', 'user': names['target'], 'confirmTarget': names['target']})
@@ -325,7 +352,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
                 temporary['accessKey'], temporary['secretKey'], storage_context,
                 extra_headers={'X-Amz-Security-Token': temporary['sessionToken']})
             if status != expected:
-                raise RuntimeError('real STS child lifecycle permission mismatch')
+                raise RuntimeError('real STS child lifecycle permission mismatch: expected ' + str(expected) + ', got ' + str(status))
 
         def lifecycle(client, operation, role='target', expected=200, csrf=True):
             result = action(client, {'action': 'user.' + operation, 'user': names[role],
