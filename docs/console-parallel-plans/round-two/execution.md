@@ -24,3 +24,7 @@
 此前一次 Range 夹具在约 0.96 秒失败，诊断和 STS 仍继续执行；见 [原失败报告](real-protocol-observed-failure.json)。后续独立夹具和最终组合验收通过，但该失败尚未复现、尚未定位。补充了 profile/phase/异常类别定位和强制失败回归，CI 不自动重试；不能宣称已消除偶发失败。
 
 远端 PR 检查仍须以各 PR 当前状态为准。本批只完成 01 和 02/05 的上述子范围；权威父/组关系、IAM 完整管理、OIDC 控制台、普通用户 discovery、部署审计和正式发行矩阵继续按后续计划推进。旧 Web 弃用与回退窗口尚未完成，保留入口。
+
+## 客户端组合源码追溯
+
+真实协议报告的两份客户端二进制均内嵌 `vcs.revision=9df4ea4ec766b126d1f983a7406d114741b1e26e`、`vcs.modified=false`，对应 tree `d701f85cf7ccb7155208a9c4bc158c3a7825492f`。该组合提交保存于 `test/console-round-two-baseline` 分支，可 fetch 后 checkout 精确重建。报告的 checkoutSHA/checkoutTree 则记录执行最终 harness 的干净组合工作树（在上述客户端源码上加入 CI 提交）。两者分开记录，避免把 harness 提交误称客户端构建来源。该历史基线不包含之后的审查修正，07 必须对最终集成提交重新构建并验收。
