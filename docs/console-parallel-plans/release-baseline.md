@@ -6,7 +6,7 @@
 
 - OC `RELEASE.2026-10-10T11-42-18Z`，源码 `ee1846d587a6548db4e595d653ca4f54baea2b1a`。
 - OtterIO `RELEASE.2026-10-10T16-38-05Z`，发行资产内嵌的基础 VCS 修订为 `8cc518b31ac8b69c8f855e19b4bd027f44275c47`；构建标记 `vcs.modified=true`，该哈希不能证明发行资产的确切全部源码。
-- macOS arm64；验收程序来自 OC 集成基线 `0a162c82`；本次重生成设置报告包含联合 `--writes --settings` 的 scope 分类修正。
+- macOS arm64。两份报告使用不同验收程序版本：设置报告使用可检出的 OC 修订 `77f2a20a` 中已修正联合 `--writes --settings` scope 分类的 `buildscripts/test-console-integration.py`，完整 SHA-256 为 `3e1e49d4d4554504803248586b2a22c6a5dce7373afb090d488212fa1b4647a8`；功能报告仍使用可检出的集成基线 `0a162c82` 中同一路径脚本，完整 SHA-256 为 `6ddc2ea8e39f5e9cc45e29f7841caa3f7797b8d2503ce123bd13892fd6a67371`。两者分别与各自机器报告的 `harnesses` 记录一致，其余 helper 的完整摘要也在相应机器报告中。
 - 下载 OC 压缩包 SHA-256 `013b08e1c0d66f33202b8fe8e0705d95e0caa0358511ad924bae5b08ab00ca22`，服务端二进制 SHA-256 `48b673ad0e03723eeeedb2ab5773569093b426d8fa04e132d17183ac7afb6f9c`，均与发行校验文件一致。解包后的二进制信息与摘要见机器报告。
 
 服务端两份机器报告的来源分类均为 `verified-base-vcs-revision`。本次没有取得发行构建的源码差异或完整归档；验收结果绑定上述正式发行二进制摘要。复现时应使用同一发行资产并核对 SHA-256，不能将干净检出该基础提交后的构建视为相同被测对象。OC/oc-console 的构建标记为 `vcs.modified=false`。
