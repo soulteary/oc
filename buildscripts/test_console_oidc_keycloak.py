@@ -1,9 +1,10 @@
 import copy
+import subprocess
 import unittest
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
-from console_oidc_keycloak_acceptance import check_discovery, realm_config, LoginForm, CaptureCallback, check_refresh_claims, program_identity
+from console_oidc_keycloak_acceptance import check_discovery, realm_config, LoginForm, CaptureCallback, check_refresh_claims, program_identity, keycloak_refresh_events
 
 
 class KeycloakProfileTests(unittest.TestCase):
@@ -55,6 +56,16 @@ class KeycloakProfileTests(unittest.TestCase):
                              ('aud', 'other-client'), ('iat', 9)]:
             with self.subTest(field=field), self.assertRaises(RuntimeError):
                 check_refresh_claims(initial, {**refreshed, field: value}, 'bound')
+
+    @patch('console_oidc_keycloak_acceptance.subprocess.run')
+    def test_event_observation_counts_success_not_refresh_errors_and_includes_stderr(self, run):
+        run.return_value = subprocess.CompletedProcess([], 0,
+            stdout=b'type="REFRESH_TOKEN", realmId="fixture"\ntype="REFRESH_TOKEN_ERROR", error="invalid_token"\n',
+            stderr=b'type=REFRESH_TOKEN, realmId=fixture\n')
+        self.assertEqual(keycloak_refresh_events('temporary-idp'), 2)
+        run.return_value = subprocess.CompletedProcess([], 1, stdout=b'', stderr=b'sensitive log')
+        with self.assertRaisesRegex(RuntimeError, 'event observation failed'):
+            keycloak_refresh_events('temporary-idp')
 
     @patch('console_oidc_keycloak_acceptance.run')
     def test_binary_evidence_refuses_dirty_or_wrong_source(self, run):

@@ -1,0 +1,140 @@
+{
+  "userAgentScope": "Python HTTPS cookie-jar protocol client; browser rendering/SameSite not evaluated",
+  "storageTopology": "dual HTTPS S3/Admin listeners",
+  "certificateTopology": "independent Admin CA; IdP/S3/Console share primary CA",
+  "dateUTC": "2026-10-11T18:41:33.757545+00:00",
+  "status": "passed",
+  "checks": [
+    "actual Keycloak discovery satisfies fixed HTTPS origin RS256/code/S256/client_secret_basic profile",
+    "independent Admin HTTPS CA accepted; S3 primary CA is rejected for Admin listener",
+    "isolated two-user distinct bucket/prefix policies and real objects created",
+    "alice: real code/PKCE login STS permits own prefix and denies other prefix/user bucket",
+    "alice: real code/PKCE login and refresh STS credentials allow own prefix and deny other prefix/user bucket",
+    "bob: real code/PKCE login STS permits own prefix and denies other prefix/user bucket",
+    "bob: real code/PKCE login and refresh STS credentials allow own prefix and deny other prefix/user bucket",
+    "alice: production Console binding/replay rejection, isolated object permissions and scoped Admin account",
+    "bob: production Console binding/replay rejection, isolated object permissions and scoped Admin account",
+    "simultaneously active Alice/Bob preferences and archive tasks remain isolated",
+    "Alice logout rejects old cookie while Bob continues authorized reads",
+    "Bob survives initial ID token expiry; additional actual Keycloak refresh events observed",
+    "Bob saved pre-expiry cookie is rejected after fixed TTL despite successful refresh",
+    "Console protected log contains no fixture password, root credential or client secret"
+  ],
+  "scope": "isolated HTTPS Keycloak + real OtterIO STS",
+  "harnessSha256": "c7aea8f593aa615599b10907aed85f832e9c08213056e904f4f711d0b46aa5ad",
+  "programs": {
+    "server": {
+      "sha256": "08d868f66bd03db38c0d118aad52e93660e13e3f60712eba5f413afb5a954f34",
+      "declaredSource": "19560364ec735f5b811964f5199b2b59e7100400",
+      "binaryVCSRevision": "19560364ec735f5b811964f5199b2b59e7100400",
+      "binaryVCSModified": false,
+      "platform": "linux/arm64"
+    },
+    "oc": {
+      "sha256": "ec5f6bade1a9ed7a50376a3749a289e6caa4768a01b8187333a8589e326aae6a",
+      "declaredSource": "b32781defdcc859081fb7797ea15339c894804b0",
+      "binaryVCSRevision": "b32781defdcc859081fb7797ea15339c894804b0",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    },
+    "console": {
+      "sha256": "73175254cff409f4a60786e67ca0670c8742812a90f365daa99ca8c8c0f25a36",
+      "declaredSource": "51ee915235ac20a3ee49a75fd60136f3d2032b9d",
+      "binaryVCSRevision": "51ee915235ac20a3ee49a75fd60136f3d2032b9d",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    }
+  },
+  "certificateIdentities": {
+    "primaryCAsha256": "77623e02c2364d81bf3c30f5b2f034264923f2d16ed3352189f4e614cea9657f",
+    "adminCAsha256": "e231a61f08adca02fd86c4479c7666fb25444cabbad23fc6469b184aa9efb63c"
+  },
+  "keycloak": {
+    "version": "26.8.0",
+    "image": "quay.io/keycloak/keycloak@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+    "platform": "linux/arm64",
+    "profile": "confidential/client_secret_basic; RS256; code; mandatory PKCE S256; HTTPS; offline_access"
+  },
+  "discoveryProfile": {
+    "id_token_signing_alg_values_supported": [
+      "PS384",
+      "RS384",
+      "EdDSA",
+      "ES384",
+      "HS256",
+      "HS512",
+      "ES256",
+      "RS256",
+      "HS384",
+      "ES512",
+      "PS256",
+      "PS512",
+      "RS512"
+    ],
+    "response_types_supported": [
+      "code",
+      "none",
+      "id_token",
+      "token",
+      "id_token token",
+      "code id_token",
+      "code token",
+      "code id_token token"
+    ],
+    "code_challenge_methods_supported": [
+      "plain",
+      "S256"
+    ],
+    "token_endpoint_auth_methods_supported": [
+      "private_key_jwt",
+      "client_secret_basic",
+      "client_secret_post",
+      "tls_client_auth",
+      "client_secret_jwt"
+    ]
+  },
+  "storageContainer": {
+    "baseImage": "ghcr.io/soulteary/otterio:RELEASE.2026-10-09T15-22-07Z@sha256:7ddf211748d11bb8f6af23576f19eaf5b2675f70f647e38ed9fdd14912824ba8",
+    "runtimeProgram": {
+      "sha256": "08d868f66bd03db38c0d118aad52e93660e13e3f60712eba5f413afb5a954f34",
+      "declaredSource": "19560364ec735f5b811964f5199b2b59e7100400",
+      "binaryVCSRevision": "19560364ec735f5b811964f5199b2b59e7100400",
+      "binaryVCSModified": false,
+      "platform": "linux/arm64"
+    },
+    "clockTopology": "Keycloak and OtterIO share Docker VM clock and temporary network namespace"
+  },
+  "initialTokenClock": {
+    "alice": {
+      "issuedAtOffsetSeconds": 0.097,
+      "secondsUntilExpiry": 90.097
+    },
+    "bob": {
+      "issuedAtOffsetSeconds": -0.321,
+      "secondsUntilExpiry": 89.679
+    }
+  },
+  "keycloakRefresh": {
+    "alice": {
+      "nonceAbsentAllowed": true,
+      "nonceMatchesWhenPresent": true,
+      "subjectPreserved": true,
+      "issuerAudiencePreserved": true
+    },
+    "bob": {
+      "nonceAbsentAllowed": true,
+      "nonceMatchesWhenPresent": true,
+      "subjectPreserved": true,
+      "issuerAudiencePreserved": true
+    }
+  },
+  "keycloakSuccessfulRefreshEvents": 2,
+  "consoleRefreshEvidence": {
+    "waitSeconds": 95,
+    "idTokenSeconds": 90,
+    "keycloakEventsBefore": 2,
+    "keycloakEventsAfter": 3
+  },
+  "consoleAcceptance": "passed: binding/replay, simultaneous users, permissions, preferences/tasks, local logout, observed refresh",
+  "cleanup": "passed"
+}
