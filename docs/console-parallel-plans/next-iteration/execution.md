@@ -76,3 +76,9 @@ OC `a7ebefb03f8669cb93eb927a96f320a6e20229d4` 与 OtterIO `f2bdc23403ee0c4b35f9c
 - [修复后的设置与协议](../../console-d247968-final-settings-protocols.md)：设置四入口各21项首次通过，range/diagnostics/真实OIDC STS均通过、无skip或PermissionError。
 
 CLI/Console程序仍是同一clean source a7ebefb0；新Darwin/Linux服务端精确source均d2479684、vcs.modified=false，摘要随报告保存。f2的既有写入/版本/功能/OIDC报告保持其真实来源，不改成d247验收。d247真实Keycloak浏览器single/dual复验中。
+
+## 本轮开发收尾
+
+最终 OC a7ebefb0 + OtterIO d2479684 的真实 Keycloak 浏览器顺序复验全部首次通过：single TLS 13项协议+11项 Chromium，dual 独立CA TLS 14项协议+11项 Chromium；两套清理通过。刷新事件均2次，固定150秒到期401，双CA错误AdminCA拒绝，外部WebIdentity空native parent兼容保持。[原始报告说明](../../console-oidc-browser-acceptance.md)保存实际来源/程序摘要/夹具与临时浏览器证书处理边界。
+
+任务01/02/03状态 verified 仅指开发验收；28项正式发行替代矩阵仍未认证。任务04/05/06进入后续审查，不假称已发布或删除。完整后续分工、证据和迁移门禁见[交接文件](handoff.md)。原checkout、生产部署、旧Web默认与资源均保持；所有本轮提交均在隔离分支，未推送。
