@@ -57,7 +57,8 @@ func canonicalETag(etag string) string {
 }
 
 func validETag(etag string) bool {
-	return etag != "" && len(etag) <= 512 && !strings.ContainsAny(etag, "\"\\\x00\r\n")
+	_, ok := consoleapi.FormatEntityTag(etag)
+	return ok
 }
 
 func versionMatches(requested, actual string) bool {
