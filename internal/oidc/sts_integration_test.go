@@ -216,11 +216,51 @@ func (o *observingTransport) RoundTrip(r *http.Request) (*http.Response, error) 
 		var x struct {
 			XMLName xml.Name
 			Error   struct {
-				Code string `xml:"Code"`
+				Code    string `xml:"Code"`
+				Message string `xml:"Message"`
 			} `xml:"Error"`
 		}
 		_ = xml.Unmarshal(b, &x)
-		o.t.Logf("STS response status=%d root=%s namespace=%s code=%s", res.StatusCode, x.XMLName.Local, x.XMLName.Space, x.Error.Code)
+		o.t.Logf("STS response status=%d root=%s namespace=%s code=%s errorClass=%s", res.StatusCode, x.XMLName.Local, x.XMLName.Space, x.Error.Code, classifySTSErrorMessage(x.Error.Message))
 	}
 	return res, nil
+}
+
+// Classify a fixed set of server errors without exporting raw error messages.
+func classifySTSErrorMessage(message string) string {
+	switch {
+	case message == "":
+		return "none"
+	case strings.Contains(message, "before issued"):
+		return "issued-in-future"
+	case strings.Contains(message, "expired"):
+		return "expired"
+	case strings.Contains(message, "policy claim missing"):
+		return "policy-missing-or-not-loaded"
+	case strings.Contains(message, "verification error"):
+		return "signature-verification"
+	case strings.Contains(message, "invalid kid"):
+		return "invalid-kid"
+	case strings.Contains(message, "Invalid kid"):
+		return "invalid-kid"
+	case strings.Contains(message, "x509:"):
+		return "jwks-certificate"
+	case strings.Contains(message, "invalid number of segments"):
+		return "malformed-jwt"
+	case strings.Contains(message, "Session policy"):
+		return "session-policy"
+	case strings.Contains(message, "duration"):
+		return "duration"
+	case strings.Contains(message, "key is of invalid type"):
+		return "signing-key-type"
+	default:
+		return "unclassified"
+	}
+}
+func TestSTSErrorClassificationNeverExportsMessage(t *testing.T) {
+	for _, test := range []struct{ message, class string }{{"policy claim missing from the JWT token, credentials will not be generated", "policy-missing-or-not-loaded"}, {"Token used before issued", "issued-in-future"}, {"Get https://private-token.example: x509: certificate signed by unknown authority", "jwks-certificate"}, {"private-token secret-value", "unclassified"}} {
+		if classifySTSErrorMessage(test.message) != test.class {
+			t.Fatal("incorrect structural classification")
+		}
+	}
 }
