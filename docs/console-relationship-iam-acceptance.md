@@ -8,6 +8,16 @@ The successful positive runs cover administrator secret rotation of self/other u
 
 These reports predate explicit `processCleanup` instrumentation in the shared wrapper. The cleanup finally paths returned without secondary errors, but these reports do not assert a recorded cleanup status. The later browser callback landing-page change is a separate runtime and is not certified by these native reports.
 
+## Same-build browser-callback core rerun
+
+The [final-at-this-round positive report](console-relationship-final-core-results.json) and [legacy report](console-relationship-final-core-legacy-results.json) run clean Console `4f32ddba0e5a69fd9c6bf4646fdff99889c6ffca`, SHA-256 `595e6f5f60442f862a2eb22c68f2e4b969413f433015f0e8b9c74669fee52d9d` ([independent binding](console-relationship-final-core-identity.json)). CLI and server/legacy sources remain exactly those above. Supported single/dual HTTPS each pass 22 groups; legacy each passes 12. Both helper-owned native writer/readonly processes and the shared wrapper process cleanup explicitly report `passed` in every scenario. This records bounded process and fixture-resource cleanup, not an instrumented claim about the outer temporary-directory context.
+
+The strengthened secret-rotation tests restore the exact original credentials before either original browser requests again. Both old cookies remain 401, proving explicit Console retirement rather than simply observing upstream secret mismatch. New-secret login succeeds before the restoration; unrelated sessions continue.
+
+An [intermediate fixture-rate-limit result](console-relationship-login-rate-limit-failed.json) hit the production 30-logins-per-minute ceiling at the unnecessary 31st final login. The redundant login was removed; positive new-secret login and the stronger original-cookie non-revival proof remain. No rate limiter was disabled, spoofed or relaxed. The complete fixture subsequently passed unchanged production limits.
+
+The new coupled parent-user lifecycle protocol identified by later review is outside this round's certified positive actions. User disable/enable/delete with child identities must be separately tested against its forthcoming contract/binaries; this report does not claim that coverage.
+
 ## Retained failures
 
 The [first fixture failure](console-relationship-fixture-policy-failed.json) occurs while importing a fixture policy: the policy parser forbids combining admin and S3 actions in one statement. The harness was corrected to use separate statements. This is a harness error, not a production IAM defect.

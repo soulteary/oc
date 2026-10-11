@@ -1,0 +1,10 @@
+{
+  "console": {
+    "sha256": "595e6f5f60442f862a2eb22c68f2e4b969413f433015f0e8b9c74669fee52d9d",
+    "declaredSource": "4f32ddba0e5a69fd9c6bf4646fdff99889c6ffca",
+    "binaryVCSRevision": "4f32ddba0e5a69fd9c6bf4646fdff99889c6ffca",
+    "binaryVCSModified": false,
+    "platform": "darwin/arm64"
+  },
+  "otherPrograms": "console-relationship-program-identities.json; same immutable CLI/server/legacy-server files and recorded actual hashes"
+}
