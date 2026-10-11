@@ -4,6 +4,12 @@ The actual matrix is `docs/console-capability-matrix.json` (28 capabilities); th
 
 At this handoff, OIDC Chromium/protocol evidence binds Console 4f32ddba and server ff6e66f. New native user lifecycle work is targeting b8404f29 Console with a newer server; final same-asset OIDC rerun is pending. Historical feature/settings/write reports do not certify b8404f29. Most harnesses emit descriptive check strings, whereas the parity gate requires named checks such as parity-Upload. Treat the following strings as stable harness anchors for a future validated evidence adapter, not fabricated gate results.
 
+## Current fixed development pair
+
+The current programs are OC `a7ebefb03f8669cb93eb927a96f320a6e20229d4` and OtterIO `f2bdc23403ee0c4b35f9ce4092c68b80074349e1`. [Storage evidence](console-protected-pair-storage.md) now covers all four HTTP/TLS profiles for writes (88 checks), settings (84), and version-copy (52). [Feature evidence](console-protected-pair-features.json) covers 68 checks across the same profiles, including ZIP fidelity, special keys, sharing and version pages. These supersede the corresponding “final suite missing” statements in the historical mapping below for this development pair only.
+
+Range and diagnostics passed before the [protocol wrapper failed](console-protected-pair-protocols-wrapper-failed.json) with PermissionError; the independent real STS test returned 400 InvalidParameterValue. Root cause is under investigation. Single-TLS real Keycloak Chromium acceptance passed; dual-TLS first failure is preserved and investigation continues. Final native supported/legacy reports are pending. No failed run, default skipped Go integration test, or development binary is release certification.
+
 ## Capability mapping
 
 - legacy-ServerInfo: native/OIDC `/api/session` proves session response only. Settings anchor `P3 bounded complete document reads, exact revision/exists and credential-free own identity` does not cover host/runtime server diagnostics. Missing final diagnostics checks and approved permission/scope decision.

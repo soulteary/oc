@@ -40,7 +40,7 @@
       "owner": "identity",
       "status": "integrated",
       "dependencies": [],
-      "scope": "锁内重新授权、全关系CAS和条件IAM协议已实现；服务端ff6e66f，最终运行组合复验中"
+      "scope": "锁内重新授权、全关系 CAS、用户/组/服务账号条件协议与受保护创建已实现；服务端 f2bdc234，最终运行配对复验中"
     },
     {
       "id": "03-user",
@@ -88,7 +88,7 @@
         "03-group",
         "03-service-account"
       ],
-      "scope": "28项能力矩阵与结构验收门禁；完整等价验收仍待认证/IAM实现"
+      "scope": "28 项能力矩阵与结构门禁已集成；最终配对存储 224 项、功能 68 项通过；浏览器双 TLS 和真实 STS 仍在诊断，发行门禁未满足"
     },
     {
       "id": "05",
@@ -259,6 +259,24 @@
       "path": "docs/console-relationship-legacy-fixed-results.json",
       "result": "single/dual TLS each 12 acceptance groups passed",
       "scope": "同52310833 Console与旧cbbffbd服务端；未知协议拒绝，未以此证明权限认证"
+    },
+    {
+      "task": "04",
+      "path": "docs/console-protected-pair-storage.md",
+      "result": "224 acceptance groups passed",
+      "scope": "a7ebefb0 / f2bdc234 固定开发配对；写入、设置、版本复制各四种入口，全部清理通过"
+    },
+    {
+      "task": "04",
+      "path": "docs/console-protected-pair-features.json",
+      "result": "68 acceptance groups passed",
+      "scope": "同一固定开发配对，四种 HTTP/TLS 入口；开发构建"
+    },
+    {
+      "task": "01/04",
+      "path": "docs/console-protected-pair-protocols-wrapper-failed.json",
+      "result": "failed: preparationError PermissionError",
+      "scope": "首次包装器失败保留；range 与 diagnostics 已通过，异常阶段正在诊断，不能据此声称 STS 通过"
     }
   ],
   "openDecisions": [
@@ -270,5 +288,10 @@
   "executionBaselines": {
     "oc": "1c5c3edc",
     "otterio": "8cc518b"
+  },
+  "developmentPair": {
+    "oc": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+    "otterio": "f2bdc23403ee0c4b35f9ce4092c68b80074349e1",
+    "kind": "clean module builds; not published release assets"
   }
 }

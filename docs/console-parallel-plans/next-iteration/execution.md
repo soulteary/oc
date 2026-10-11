@@ -49,3 +49,17 @@ parity获得认证核心/启动/UI独占窗口，实现OIDC安全会话、临时
 最终 IAM 夹具增加“恢复原同名同密码后旧浏览器 cookie 仍401”的检查，用于区分 Console 主动撤销与上游凭据不匹配；验收包装器独立记录临时进程清理。两者需实际复跑，不能倒填到既有报告。
 
 旧 Web 只整理删除依赖清单。本轮开发代码和临时构建不等于正式发行；跨架构、升级/回退、稳定性、真实通知周期和有限回退窗口仍是删除前置条件。
+
+## 受保护创建与最终固定开发配对
+
+OC `a7ebefb03f8669cb93eb927a96f320a6e20229d4` 与 OtterIO `f2bdc23403ee0c4b35f9ce4092c68b80074349e1` 已固定为同来源、clean BuildInfo 的开发程序。上述历史记录不覆盖这组程序；新的报告逐项独立绑定。
+
+本轮补齐用户 enable/disable/delete 的全关系条件协议；服务账号创建使用服务端锁内重新授权、父身份状态/生命周期检查与签名关系前提，防止旧请求在父用户删除重建后创建孤儿身份。旧服务端缺少新能力时拒绝，不能退回无条件创建。组和用户一次性计划同时绑定 backend、存储命名空间、actor 和 session lifetime。
+
+- [存储验收](../../console-protected-pair-storage.md)：写入 88、设置 84、版本复制 52，共 224 项通过，12 个场景清理全部通过。
+- [功能验收](../../console-protected-pair-features.json)：四种 HTTP/TLS 入口各 17 项，共 68 项通过，覆盖 ZIP 字节、特殊 key、分享与版本等。
+- 相关 Go race 回归通过；lint 0 issues；界面行为 88 项通过。默认 Go OIDC 测试不能代替真实 STS 验收。
+- [协议包装器首次失败](../../console-protected-pair-protocols-wrapper-failed.json)：Range 与 diagnostics 已通过，随后 preparationError PermissionError。独立真实 STS 测试另得到 400 InvalidParameterValue，正在定位；不能将任一失败改为通过。
+- 真实 Keycloak 单 TLS 浏览器验收已通过；双 TLS 首次失败保留，诊断与受限清理改进后复验中。最终原始报告另行集成。
+
+这是开发迭代结果。原生 IAM 最终同资产验收、真实 STS/双 TLS 浏览器收尾仍在执行。正式发行配对、跨架构、升级回退、通知周期及有限回退窗口仍未完成，旧 Web 默认和资源保持。

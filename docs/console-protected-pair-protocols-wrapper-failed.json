@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "platform": "Darwin/arm64",
+  "server": {
+    "source": "f2bdc23403ee0c4b35f9ce4092c68b80074349e1",
+    "kind": "module-build",
+    "sourceState": "clean",
+    "sourceBinding": "caller-declared; binary hash recorded separately",
+    "binarySHA256": "5937d44f4f54a7ae4c789c62e42e84e45012da1cfaed67b296af0be9ecc9eb6d"
+  },
+  "cgo": "unspecified",
+  "checkoutSHA": "local-unpublished",
+  "harnesses": {
+    "test-real-protocol-ci.py": "04ed0f48f7f0ec789109c343603351b388ba2a40c88aac7c22aff99da2030c0b",
+    "test-console-range-real.py": "c73ab929de6933ea21a83be080e949c1e8b456187ec43781abdc5a23420f8a8d",
+    "test-console-range.py": "502fdc8e784ff6d8083fa0477e1ec5b1e4dd689af0bd2b499fe89df176cd4d8d",
+    "test-console-integration.py": "0a30f19c6354749ea00daa3bab171323b652d82aa8dfa8db17576d72cb27ea91",
+    "test-console-diagnostics.py": "726759cbd61d542a02073b2a6fe55eaf7999fa8b6caa80fc2f6d52505895bb12",
+    "sts_integration_test.go": "cc79326cebaa1a2bad086b9a64cae515aa237835955762350eb454c61552dad8",
+    "diagnostics_test.go": "a30f9c0e376bddebb98542880dc5f6892660d949e9b2aa6b6895fc8744100fbf"
+  },
+  "checks": [
+    {
+      "name": "range",
+      "exitCode": 0,
+      "elapsedSeconds": 11.257,
+      "status": "passed",
+      "reason": "all-profiles-and-version-denial",
+      "profiles": [
+        {
+          "profile": "single-http",
+          "checks": 9,
+          "fixtureBytes": 1048576,
+          "sha256": "aca1cd027e979588d14b877b7b0cb8585ad9fec599eb45801992ee5382b3760f",
+          "emptyObjectChecks": 2,
+          "nullVersionStatus": 206,
+          "historicalVersionStatus": 206,
+          "restrictedCurrentStatus": 206,
+          "restrictedHistoricalStatus": 403,
+          "restrictedConditionalFullStatus": 200,
+          "restrictedIfRangeFallbackStatus": 200
+        },
+        {
+          "profile": "dual-http",
+          "checks": 9,
+          "fixtureBytes": 1048576,
+          "sha256": "aca1cd027e979588d14b877b7b0cb8585ad9fec599eb45801992ee5382b3760f",
+          "emptyObjectChecks": 2,
+          "nullVersionStatus": 206,
+          "historicalVersionStatus": 206,
+          "restrictedCurrentStatus": 206,
+          "restrictedHistoricalStatus": 403,
+          "restrictedConditionalFullStatus": 200,
+          "restrictedIfRangeFallbackStatus": 200
+        },
+        {
+          "profile": "dual-tls",
+          "checks": 9,
+          "fixtureBytes": 1048576,
+          "sha256": "aca1cd027e979588d14b877b7b0cb8585ad9fec599eb45801992ee5382b3760f",
+          "emptyObjectChecks": 2,
+          "nullVersionStatus": 206,
+          "historicalVersionStatus": 206,
+          "restrictedCurrentStatus": 206,
+          "restrictedHistoricalStatus": 403,
+          "restrictedConditionalFullStatus": 200,
+          "restrictedIfRangeFallbackStatus": 200
+        }
+      ]
+    },
+    {
+      "name": "diagnostics",
+      "exitCode": 0,
+      "elapsedSeconds": 5.694,
+      "status": "passed",
+      "reason": "named-test-ran-and-passed",
+      "test": "TestDiagnosticsRealServer"
+    }
+  ],
+  "passed": false,
+  "clientBinarySHA256": {
+    "cli": "202d29371a0d4bc3dfc84594225ff81b5dcaddff1096dee9fc405d34a7b6af89",
+    "console": "635b4b0703129fdb2d923e8e3fcd3d65cf34a703df5b26d5e42a5de2f9b9c400"
+  },
+  "preparationError": "PermissionError"
+}
