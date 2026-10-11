@@ -73,10 +73,18 @@ func (g *Grant) Refresh(ctx context.Context) (Credentials, error) {
 	case g.refreshGate <- struct{}{}:
 		defer func() { <-g.refreshGate }()
 	case <-ctx.Done():
-		g.Close()
+		return Credentials{}, ErrRefresh
+	}
+	// select may choose an available gate even when cancellation is ready.
+	// Until state is consumed, this caller owns no exchange to invalidate.
+	if ctx.Err() != nil {
 		return Credentials{}, ErrRefresh
 	}
 	g.mu.Lock()
+	if ctx.Err() != nil {
+		g.mu.Unlock()
+		return Credentials{}, ErrRefresh
+	}
 	if g.closed || g.refresh == "" || !g.credentials.Expires.After(g.client.now()) {
 		g.closed = true
 		g.refresh = ""

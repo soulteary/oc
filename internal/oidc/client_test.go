@@ -520,3 +520,96 @@ func TestSlowJWKSFailureSharedWithoutRefetch(t *testing.T) {
 		t.Fatal("waiters retried slow failing fetch", count.Load())
 	}
 }
+
+func TestQueuedRefreshCancellationPreservesActiveExchange(t *testing.T) {
+	f := newFixture(t)
+	c := f.client(t)
+	a := f.begin(t, c)
+	g, err := c.Complete(context.Background(), binding, a.State, "code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := g.Credentials()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	base := c.http.Transport
+	var tokenCalls atomic.Int32
+	c.http.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/token" {
+			tokenCalls.Add(1)
+			close(entered)
+			<-release
+			if r.Context().Err() != nil {
+				t.Error("queued cancellation canceled active request")
+			}
+		}
+		return base.RoundTrip(r)
+	})
+	active := make(chan error, 1)
+	go func() { _, err := g.Refresh(context.Background()); active <- err }()
+	<-entered
+	ctx, cancel := context.WithCancel(context.Background())
+	queued := make(chan error, 1)
+	go func() { _, err := g.Refresh(ctx); queued <- err }()
+	cancel()
+	if err := <-queued; err != ErrRefresh {
+		t.Fatal("queued refresh result", err)
+	}
+	during, err := g.Credentials()
+	if err != nil || during != before {
+		close(release)
+		t.Fatal("queued cancellation modified valid credentials", err)
+	}
+	if tokenCalls.Load() != 1 {
+		close(release)
+		t.Fatal("canceled queued caller started a request", tokenCalls.Load())
+	}
+	close(release)
+	if err := <-active; err != nil {
+		t.Fatal("active refresh failed after queued cancellation", err)
+	}
+	if _, err := g.Credentials(); err != nil {
+		t.Fatal("active grant was closed", err)
+	}
+	if tokenCalls.Load() != 1 {
+		t.Fatal("queued request escaped cancellation")
+	}
+}
+
+func TestCanceledRefreshWithAvailableGateDoesNotConsumeState(t *testing.T) {
+	f := newFixture(t)
+	c := f.client(t)
+	a := f.begin(t, c)
+	g, err := c.Complete(context.Background(), binding, a.State, "code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := g.Credentials()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := c.http.Transport
+	var calls atomic.Int32
+	c.http.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) { calls.Add(1); return base.RoundTrip(r) })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// Both select arms are ready. Every possible selection must preserve state.
+	for range 32 {
+		if _, err := g.Refresh(ctx); err != ErrRefresh {
+			t.Fatal(err)
+		}
+	}
+	after, err := g.Credentials()
+	if err != nil || before != after {
+		t.Fatal("pre-exchange cancellation changed grant", err)
+	}
+	if calls.Load() != 0 {
+		t.Fatal("canceled caller reached upstream", calls.Load())
+	}
+	if _, err := g.Refresh(context.Background()); err != nil {
+		t.Fatal("refresh token consumed by canceled caller", err)
+	}
+}

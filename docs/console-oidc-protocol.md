@@ -68,8 +68,13 @@ current hard expiry. Its network deadline and final commit check also respect
 that old expiry; an exchange cannot revive a grant after it expires. A rotated
 refresh token replaces the old one. A confirmed
 success without a replacement retains the prior refresh token, as OAuth permits.
-An unsupported refresh, missing ID token, transport failure, rejection or
-uncertain response closes the grant and requires a new login. It never silently
+Cancellation while waiting for the refresh gate, or before consuming refresh
+state after acquiring it, returns `ErrRefresh` without closing the grant or
+canceling another caller's active exchange. No upstream request starts for that
+caller. Once an exchange consumes the refresh token, unsupported refresh,
+missing ID token, transport failure, rejection or uncertain response closes
+the grant and requires a new login. A caller receiving `ErrRefresh` must check
+grant validity rather than assume a queued cancellation revoked the grant. It never silently
 falls back to startup/root credentials. 04 must revoke the associated browser
 session, prevent stale client use and release owned clients on this failure.
 `Close()` marks closed and cancels any in-flight refresh immediately; no late
@@ -96,7 +101,9 @@ On 2026-10-11, this worktree built unmodified OtterIO source
 `b3afa6c80b854023b038310aaa7353fe9921f68a4f8ad6ecb2f541953840224a`.
 A second run used the verified published OtterIO artifact from
 [RELEASE.2026-10-10T16-38-05Z](https://github.com/soulteary/otterio/releases/tag/RELEASE.2026-10-10T16-38-05Z),
-with the same source commit and binary SHA256
+whose build metadata reports the same base revision with `vcs.modified=true`;
+that revision does not establish an exact clean-source build. Its measured binary
+SHA256
 `48b673ad0e03723eeeedb2ab5773569093b426d8fa04e132d17183ac7afb6f9c`.
 A controlled temporary TLS IdP with each actual temporary TLS server passed:
 
