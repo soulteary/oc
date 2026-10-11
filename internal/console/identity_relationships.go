@@ -1,7 +1,10 @@
 // Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
 package console
 
-import "time"
+import (
+	"github.com/soulteary/mc/internal/consoleapi"
+	"time"
+)
 
 // A relation is authoritative only for its bound target, revision and lifetime.
 // Unknown and stale snapshots must never be interpreted as an empty impact set.
@@ -37,4 +40,18 @@ func (snapshot identityRelationshipSnapshot) impact(target, revision string, now
 		}
 	}
 	return result, nil
+}
+
+// relationshipImpactFromSnapshot accepts only a target-bound response from
+// an owned production client. It does not turn an OIDC subject into an IAM key.
+func relationshipImpactFromSnapshot(snapshot consoleapi.IAMRelationships, storageTarget string, now time.Time) ([]identityScope, error) {
+	if snapshot.State != "known" || snapshot.StorageTarget != storageTarget || snapshot.AffectedAccessKeys == nil {
+		return nil, errUnknownIdentityScope
+	}
+	scopes := make([]identityScope, 0, len(snapshot.AffectedAccessKeys))
+	for _, key := range snapshot.AffectedAccessKeys {
+		scopes = append(scopes, nativeUserScope(key))
+	}
+	relation := identityRelationshipSnapshot{target: snapshot.StorageTarget, revision: snapshot.Revision, expires: snapshot.ExpiresAt, scopes: scopes, state: identityRelationshipKnown}
+	return relation.impact(storageTarget, snapshot.Revision, now)
 }
