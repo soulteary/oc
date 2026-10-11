@@ -1,6 +1,6 @@
 // Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
 
-// oc-console provides local alias access or independent native IAM login over HTTPS.
+// oc-console provides local alias access or independent native IAM/OIDC login over HTTPS.
 package main
 
 import (
@@ -58,7 +58,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags.StringVar(&opts.s3CA, "s3-ca", "", "S3 PEM CA file, replacing certs/CAs custom trust")
 	flags.StringVar(&opts.adminURL, "admin-url", "", "independent OtterIO management root URL")
 	flags.StringVar(&opts.adminCA, "admin-ca", "", "independent management PEM CA file")
-	flags.BoolVar(&opts.allowWrites, "allow-writes", false, "enable confirmed storage writes/settings; local mode permits IAM changes, native mode permits own-secret rotation, IAM creation and user activation")
+	flags.BoolVar(&opts.allowWrites, "allow-writes", false, "enable confirmed storage writes/settings and protocol-protected native IAM changes; OIDC IAM remains read-only")
 	flags.BoolVar(&opts.allowSharing, "allow-sharing", false, "enable explicitly requested time-limited download links")
 	flags.StringVar(&opts.shareURL, "share-url", "", "S3 root URL reachable by download-link recipients")
 	flags.StringVar(&opts.archiveDir, "archive-dir", "", "temporary directory for complete ZIP downloads (default system temporary directory)")
@@ -66,7 +66,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags.Int64Var(&opts.maxUploadSize, "max-upload-size", 1<<30, "maximum file size in bytes (1 to 5368709120)")
 	showVersion := flags.Bool("version", false, "print version and exit")
 	flags.Usage = func() {
-		fmt.Fprintln(errorOutput, "Usage: oc-console --alias NAME [options]\n       oc-console --auth-mode native --s3-url URL --public-url URL --tls-cert FILE --tls-key FILE [options]\n\nA storage console, read-only by default. Native and OIDC modes require HTTPS and independent user sessions.")
+		fmt.Fprintln(errorOutput, "Usage: oc-console --alias NAME [options]\n       oc-console --auth-mode native --s3-url URL --public-url URL --tls-cert FILE --tls-key FILE [options]\n       oc-console --auth-mode oidc --oidc-issuer URL --oidc-client-id ID --s3-url URL --public-url URL --tls-cert FILE --tls-key FILE [options]\n\nA storage console, read-only by default. Native and OIDC modes require HTTPS and independent user sessions.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
