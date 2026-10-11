@@ -49,7 +49,7 @@ func (s *Server) createNativeServiceAccount(w http.ResponseWriter, r *http.Reque
 			found = true
 		}
 	}
-	if !found || !sameOwnedIAMUserBackend(sess.runtime.backend, owned) || sess.runtime.lifetime != lifetime || sess.runtime.identity != actorIdentity || sess.nativeUser != actorUser || sess.ctx.Err() != nil || backend.IAMStorageTarget() != namespace || !time.Now().Before(relation.ExpiresAt) {
+	if !found || !sameOwnedIAMUserBackend(sess.runtime.backend, owned) || sess.runtime.lifetime != lifetime || sess.runtime.identity != actorIdentity || sess.nativeUser != actorUser || sess.ctx == nil || sess.ctx.Err() != nil || backend.IAMStorageTarget() != namespace || !time.Now().Before(relation.ExpiresAt) {
 		writeError(w, 409, "identity_plan_invalid", "Reload the parent before creating this service account.")
 		return
 	}

@@ -27,7 +27,7 @@ func (b *nativeServiceCreationTestBackend) IAMCreateRelationshipServiceAccount(_
 	return consoleapi.IAMActionResult{Outcome: "confirmed", Credentials: &consoleapi.IAMCredentials{AccessKey: "created-child", SecretKey: "test-generated-secret"}}, b.failure
 }
 func TestNativeServiceCreationRequiresFreshOwnedCapability(t *testing.T) {
-	for _, scenario := range []string{"confirmed", "denied", "unknown", "missing-capability", "expired", "actor-changed", "namespace-changed", "missing-parent"} {
+	for _, scenario := range []string{"confirmed", "denied", "unknown", "missing-capability", "expired", "actor-changed", "namespace-changed", "missing-parent", "context-nil", "context-canceled", "lifetime-changed", "backend-changed", "user-changed"} {
 		t.Run(scenario, func(t *testing.T) {
 			s := nativeRotationFixture(t, func(context.Context, string) error { return nil }, nil)
 			alice, _ := nativeSignIn(t, s, "alice")
@@ -37,7 +37,8 @@ func TestNativeServiceCreationRequiresFreshOwnedCapability(t *testing.T) {
 			backend := &nativeServiceCreationTestBackend{userMutationPlanTestBackend: base}
 			actor.runtime.backend = backend
 			originalIdentity := actor.runtime.identity
-			defer func() { actor.runtime.identity = originalIdentity }()
+			originalRuntime, originalUser, originalCtx := actor.runtime, actor.nativeUser, actor.ctx
+			defer func() { actor.runtime = originalRuntime; actor.nativeUser = originalUser; actor.ctx = originalCtx }()
 			switch scenario {
 			case "denied":
 				backend.failure = &consoleapi.Error{Status: 403, Code: "iam_action_denied"}
@@ -51,6 +52,16 @@ func TestNativeServiceCreationRequiresFreshOwnedCapability(t *testing.T) {
 				backend.onQuery = func() { actor.runtime.identity = "changed" }
 			case "namespace-changed":
 				backend.onQuery = func() { base.target = "foreign" }
+			case "context-nil":
+				backend.onQuery = func() { actor.ctx = nil }
+			case "context-canceled":
+				backend.onQuery = func() { ctx, cancel := context.WithCancel(originalCtx); cancel(); actor.ctx = ctx }
+			case "lifetime-changed":
+				backend.onQuery = func() { actor.runtime.lifetime = &backendLifetime{} }
+			case "backend-changed":
+				backend.onQuery = func() { actor.runtime.backend = base }
+			case "user-changed":
+				backend.onQuery = func() { actor.nativeUser = "bob" }
 			case "missing-parent":
 				base.relation.AffectedAccessKeys = []string{"service-child"}
 			}
@@ -73,7 +84,10 @@ func TestNativeServiceCreationRequiresFreshOwnedCapability(t *testing.T) {
 			if !wantDispatch && w.Code < 400 {
 				t.Fatal("stale creation confirmed")
 			}
+			actor.runtime = originalRuntime
 			actor.runtime.identity = originalIdentity
+			actor.nativeUser = originalUser
+			actor.ctx = originalCtx
 			if nativeSessionStatus(s, alice) != 200 || len(s.writeSlots) != 0 {
 				t.Fatal("creation invalidated existing identity or leaked write slot")
 			}
