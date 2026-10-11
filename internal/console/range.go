@@ -104,11 +104,6 @@ func notModifiedSince(value string, modified time.Time) bool {
 	return err == nil && !modified.IsZero() && !modified.Truncate(time.Second).After(date)
 }
 
-func ifRangeDateMatches(value string, modified time.Time) bool {
-	date, err := http.ParseTime(value)
-	return err == nil && !modified.IsZero() && modified.Truncate(time.Second).Equal(date)
-}
-
 // downloadRange must be called only inside the existing authenticated download
 // route, with its request lease, joined cancellation and download slot held.
 // It intentionally does not register a public route or obtain another identity.
@@ -159,11 +154,14 @@ func (s *Server) downloadRange(w http.ResponseWriter, r *http.Request, ctx conte
 		return rangeHeaders(w, ctx, 304)
 	}
 	if r.Method == http.MethodHead {
+		setDownloadHeaders(w, ref.Key)
 		w.Header().Set("Content-Length", strconv.FormatInt(info.Size, 10))
 		return rangeHeaders(w, ctx, 200)
 	}
 	value := strings.Join(r.Header.Values("Range"), ",")
-	if condition := r.Header.Get("If-Range"); value != "" && condition != "" && condition != tag && !ifRangeDateMatches(condition, info.Modified) {
+	// This backend cannot establish that an HTTP date is a strong validator.
+	// Only an exact strong entity tag permits a partial If-Range response.
+	if condition := r.Header.Get("If-Range"); value != "" && condition != "" && condition != tag {
 		value = ""
 	}
 	if value == "" {

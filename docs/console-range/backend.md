@@ -18,8 +18,9 @@ The helper supports one closed/open-ended/suffix range. Malformed, multiple,
 empty-object and unsatisfiable ranges receive 416 with `bytes */length`. HEAD
 ignores Range and reports the full metadata length. If-Match and valid
 If-Unmodified-Since precede If-None-Match/If-Modified-Since. If-Range uses strong
-ETag equality or exact last-modified date equality; mismatch falls back to a
-full pinned GET. Invalid conditional dates are ignored. Request cancellation,
+ETag equality; dates and mismatches fall back to a full pinned GET because
+the backend cannot prove one-second timestamps are strong validators. Invalid
+If-Modified-Since and If-Unmodified-Since dates are ignored. Request cancellation,
 upstream idle bounds, deadlines, final flush and truncation handling reuse the
 existing download implementation through an unwrap-capable response adapter.
 

@@ -897,18 +897,7 @@ func (s *Server) downloadUsing(w http.ResponseWriter, ctx context.Context, key s
 		writeError(w, http.StatusRequestTimeout, "request_canceled", "The request was canceled.")
 		return false
 	}
-	filename := key[strings.LastIndex(key, "/")+1:]
-	filename = strings.Map(func(char rune) rune {
-		if char < 32 || char == 127 {
-			return -1
-		}
-		return char
-	}, filename)
-	if filename == "" || filename == "." || filename == ".." {
-		filename = "download"
-	}
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
+	setDownloadHeaders(w, key)
 	if object.Size >= 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(object.Size, 10))
 	}
@@ -1009,4 +998,19 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 	writePayload(w, status, payload)
+}
+
+func setDownloadHeaders(w http.ResponseWriter, key string) {
+	filename := key[strings.LastIndex(key, "/")+1:]
+	filename = strings.Map(func(char rune) rune {
+		if char < 32 || char == 127 {
+			return -1
+		}
+		return char
+	}, filename)
+	if filename == "" || filename == "." || filename == ".." {
+		filename = "download"
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 }

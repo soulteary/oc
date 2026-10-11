@@ -67,7 +67,7 @@ func TestRangeHTTPConditions(t *testing.T) {
 		{"GET", "Range", "bytes=2-4", 206, "234", 1}, {"GET", "Range", "bytes=-2", 206, "89", 1}, {"GET", "Range", "bytes=10-", 416, "", 0},
 		{"HEAD", "Range", "bytes=2-4", 200, "", 0}, {"GET", "If-None-Match", "W/\"etag\"", 304, "", 0}, {"GET", "If-Match", "W/\"etag\"", 412, "", 0},
 		{"GET", "If-Unmodified-Since", "Wed, 01 Jan 2025 00:00:00 GMT", 412, "", 0}, {"GET", "If-Modified-Since", "Thu, 01 Oct 2026 00:00:00 GMT", 304, "", 0},
-		{"GET", "If-Range", "\"different\"", 200, "0123456789", 1}, {"GET", "If-Range", "\"etag\"", 206, "234", 1},
+		{"GET", "If-Range", "Thu, 01 Oct 2026 00:00:00 GMT", 200, "0123456789", 1}, {"GET", "If-Range", "\"different\"", 200, "0123456789", 1}, {"GET", "If-Range", "\"etag\"", 206, "234", 1},
 	} {
 		t.Run(tc.header+tc.value, func(t *testing.T) {
 			f := &rangeFake{size: 10}
@@ -231,5 +231,32 @@ func TestRepeatedRangeFieldsRejected(t *testing.T) {
 	s.downloadRange(w, r, r.Context(), sess, consoleapi.ObjectRef{Bucket: "bucket", Key: "key"})
 	if w.Code != 416 {
 		t.Fatalf("got %d want 416", w.Code)
+	}
+}
+
+func TestHeadMatchesDownloadRepresentationHeaders(t *testing.T) {
+	var get http.Header
+	for _, method := range []string{"GET", "HEAD"} {
+		f := &rangeFake{size: 10, etag: "etag"}
+		s := &Server{streamIdle: time.Second}
+		sess := &session{runtime: sessionRuntime{backend: f}}
+		r := httptest.NewRequest(method, "/", nil)
+		w := httptest.NewRecorder()
+		s.downloadRange(w, r, r.Context(), sess, consoleapi.ObjectRef{Bucket: "bucket", Key: "dir/文件.txt"})
+		if w.Code != 200 {
+			t.Fatal(w.Code)
+		}
+		if method == "GET" {
+			get = w.Header().Clone()
+		} else {
+			for _, name := range []string{"Content-Type", "Content-Disposition", "Content-Length", "ETag", "Last-Modified"} {
+				if get.Get(name) == "" || w.Header().Get(name) != get.Get(name) {
+					t.Fatalf("%s GET=%q HEAD=%q", name, get.Get(name), w.Header().Get(name))
+				}
+			}
+			if w.Body.Len() != 0 || f.opens != 0 {
+				t.Fatal("HEAD opened body")
+			}
+		}
 	}
 }
