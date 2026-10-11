@@ -2465,7 +2465,8 @@
     }
     if (bindingAction()) addIAMField("policies", "Complete policy bindings (one policy name per line; empty removes all bindings)", { multiline: true, required: false });
     let help = "Confirm the exact target before applying. Changes are never retried automatically. Policy binding changes require a fresh read and support for safe concurrent updates.";
-    if (action === "user.delete") help += " Remove listed service accounts and group memberships first. Current membership is checked again before deletion. Deletion revokes temporary credentials and direct policy bindings, and may revoke service credentials or memberships created concurrently.";
+    if (nativeLogin && action === "user.delete") help += " Deletion also removes this user’s service accounts, temporary credentials, group memberships and direct policy bindings. Affected sessions require a fresh login. This action requires the server’s conditional relationship protocol.";
+    if (!nativeLogin && action === "user.delete") help += " Remove listed service accounts and group memberships first. Current membership is checked again before deletion. Deletion revokes temporary credentials and direct policy bindings, and may revoke service credentials or memberships created concurrently.";
     if (action === "group.delete") help += " Only an empty group can be deleted.";
     if (action === "service-account.create") help += " Confirm the parent user's access key. Supply an access key when you supply a secret key; leave both blank to generate a credential. Save the returned credential before closing.";
     if (action.endsWith("rotate")) help += " Existing clients must update their credentials after the change.";

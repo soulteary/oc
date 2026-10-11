@@ -13,7 +13,7 @@ import (
 	"github.com/soulteary/mc/internal/consoleapi"
 )
 
-func TestNativeIAMActionsUseOwnPermissionsAndDoNotStopSessions(t *testing.T) {
+func TestNativeIAMCreationUsesOwnPermissionsAndDoesNotStopSessions(t *testing.T) {
 	for _, uncertain := range []bool{false, true} {
 		t.Run(fmt.Sprint(uncertain), func(t *testing.T) {
 			s, err := New(Config{Alias: "storage", BaseURL: nativeOrigin, AllowWrites: true, NativeLogin: func(_ context.Context, c NativeCredentials) (NativeConnection, error) {
@@ -25,7 +25,7 @@ func TestNativeIAMActionsUseOwnPermissionsAndDoNotStopSessions(t *testing.T) {
 					if uncertain {
 						return consoleapi.IAMActionResult{}, &consoleapi.Error{Status: 502, Code: "outcome_unknown"}
 					}
-					return consoleapi.IAMActionResult{Outcome: "confirmed", RestartRequired: args.Action == "user.enable"}, nil
+					return consoleapi.IAMActionResult{Outcome: "confirmed"}, nil
 				}}
 				return NativeConnection{Backend: b, Cleanup: func() {}, Verify: func(context.Context) error { return nil }, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(user)))}, nil
 			}})
@@ -35,7 +35,7 @@ func TestNativeIAMActionsUseOwnPermissionsAndDoNotStopSessions(t *testing.T) {
 			t.Cleanup(func() { drainOwnedClients(t, s) })
 			alice, ar := nativeSignIn(t, s, "alice")
 			bob, br := nativeSignIn(t, s, "bob")
-			for _, body := range []string{`{"action":"user.enable","user":"alice","confirmTarget":"alice"}`, `{"action":"user.create","user":"created-user","confirmTarget":"created-user"}`, `{"action":"group.create","group":"created-group","confirmTarget":"created-group"}`, `{"action":"service-account.create","user":"alice","confirmTarget":"alice"}`} {
+			for _, body := range []string{`{"action":"user.create","user":"created-user","confirmTarget":"created-user"}`, `{"action":"group.create","group":"created-group","confirmTarget":"created-group"}`, `{"action":"service-account.create","user":"alice","confirmTarget":"alice"}`} {
 				for _, tc := range []struct {
 					user        string
 					cookieReply sessionReply

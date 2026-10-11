@@ -157,12 +157,17 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		s.executeIAMGroupMutation(w, r, sess, plan)
 		return
 	}
-	if s.nativeLogin != nil && (args.Action == "user.disable" || args.Action == "user.delete") {
-		s.retireNativeUser(w, r, sess, backend, args)
+	if s.nativeLogin != nil && validPreparedUserAction(args) {
+		plan, err := prepareIAMUserMutation(r.Context(), sess, args)
+		if err != nil {
+			s.writeNativeRelationshipPlanError(w, err)
+			return
+		}
+		s.executeIAMUserMutation(w, r, sess, plan)
 		return
 	}
 	// Local IAM edits can invalidate the shared identity and reserve every
-	// write slot. Native creation and account activation use one ordinary slot;
+	// write slot. Native creation uses one ordinary slot;
 	// conditional creation must not replace existing identities.
 	rotate := s.nativeLogin == nil
 	if !s.startSettingsWrite(w, sess, rotate) {
@@ -198,11 +203,6 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 			RestartRequired bool   `json:"restartRequired"`
 		}{"outcome_unknown", "The IAM change may have completed. Verify it with an administrative client, then restart OC before continuing.", true})
 		return
-	}
-	if s.nativeLogin != nil && args.Action == "user.enable" && result.Outcome == "confirmed" {
-		// Enabling an account does not change its credentials. The local SDK
-		// conservatively marks self-target actions as requiring restart.
-		result.RestartRequired = false
 	}
 	if s.nativeLogin != nil && (result.RestartRequired || result.Outcome != "confirmed") {
 		writeError(w, 502, "outcome_unknown", "The IAM operation was not safely confirmed. Verify the exact target before making another request.")

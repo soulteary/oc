@@ -4,12 +4,13 @@ package console
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/soulteary/mc/internal/consoleapi"
 )
@@ -20,7 +21,7 @@ func nativeDisableFixture(t *testing.T, action func(context.Context, consoleapi.
 		if login != nil {
 			login(c.AccessKey)
 		}
-		b := &fakeIAMBackend{fakeMutationBackend: &fakeMutationBackend{fakeBackend: &fakeBackend{}}, action: action}
+		b := &nativeUserLifecycleTestBackend{fakeIAMBackend: &fakeIAMBackend{fakeMutationBackend: &fakeMutationBackend{fakeBackend: &fakeBackend{}}, action: action}}
 		return NativeConnection{Backend: b, Cleanup: func() {}, Verify: func(context.Context) error { return nil }, Identity: fmt.Sprintf("%x", sha256.Sum256([]byte(c.AccessKey)))}, nil
 	}})
 	if err != nil {
@@ -86,23 +87,8 @@ func TestNativeUserRetirementRetiresExactTargetOnConfirmedOrUncertainOutcome(t *
 					if w.Code != want {
 						t.Fatalf("status %d: %s", w.Code, w.Body.String())
 					}
-					if action == "user.delete" && (outcome == "missing" || outcome == "self-missing") {
-						var body struct {
-							Code          string `json:"code"`
-							LoginRequired bool   `json:"loginRequired"`
-						}
-						if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Code != "iam_not_found" || body.LoginRequired != (outcome == "self-missing") {
-							t.Fatalf("unexpected absent-target response: %s", w.Body.String())
-						}
-						// The fixture accepts the identical credentials again, as if
-						// the account were recreated before an old cookie is used.
-						fresh, _ := nativeSignIn(t, s, "alice")
-						if nativeSessionStatus(s, fresh) != 200 {
-							t.Fatal("fresh login rejected after recreation")
-						}
-					}
 					targetStatus := 401
-					if outcome == "denied" || outcome == "conflict" || outcome == "service-conflict" || (action == "user.disable" && (outcome == "missing" || outcome == "self-missing")) {
+					if outcome == "denied" || outcome == "conflict" || outcome == "service-conflict" || (outcome == "missing" || outcome == "self-missing") {
 						targetStatus = 200
 					}
 					for _, cookie := range []*http.Cookie{alice, other} {
@@ -162,18 +148,11 @@ func TestNativeUserRetirementQuiescesWritesAndGatesOnlyTarget(t *testing.T) {
 	}
 }
 func TestNativeUserRetirementRejectsPendingLoginEvenAfterAccountIsEnabledAgain(t *testing.T) {
-	for _, action := range []string{"user.disable", "user.delete", "missing-delete"} {
+	for _, action := range []string{"user.disable", "user.delete"} {
 		t.Run(action, func(t *testing.T) {
-			missing := action == "missing-delete"
-			if missing {
-				action = "user.delete"
-			}
 			entered, release := make(chan struct{}), make(chan struct{})
 			pending := false
 			s := nativeDisableFixture(t, func(context.Context, consoleapi.IAMActionRequest) (consoleapi.IAMActionResult, error) {
-				if missing {
-					return consoleapi.IAMActionResult{}, &consoleapi.Error{Status: 404, Code: "iam_not_found"}
-				}
 				return consoleapi.IAMActionResult{Outcome: "confirmed"}, nil
 			}, func(user string) {
 				if user == "alice" && pending {
@@ -190,11 +169,7 @@ func TestNativeUserRetirementRejectsPendingLoginEvenAfterAccountIsEnabledAgain(t
 				done <- w.Code
 			}()
 			<-entered
-			want := 200
-			if missing {
-				want = 404
-			}
-			if nativeUserChange(s, bob, br, action, "alice").Code != want {
+			if nativeUserChange(s, bob, br, action, "alice").Code != 200 {
 				t.Fatal("disable failed")
 			}
 			close(release)
@@ -209,18 +184,11 @@ func TestNativeUserRetirementRejectsPendingLoginEvenAfterAccountIsEnabledAgain(t
 }
 
 func TestNativeSelfRetirementRetiresAfterAcknowledgementEvenWhenFlushFails(t *testing.T) {
-	for _, action := range []string{"user.disable", "user.delete", "missing-delete"} {
+	for _, action := range []string{"user.disable", "user.delete"} {
 		t.Run(action, func(t *testing.T) {
-			missing := action == "missing-delete"
-			if missing {
-				action = "user.delete"
-			}
 			for _, broken := range []bool{false, true} {
 				t.Run(fmt.Sprint(broken), func(t *testing.T) {
 					s := nativeDisableFixture(t, func(context.Context, consoleapi.IAMActionRequest) (consoleapi.IAMActionResult, error) {
-						if missing {
-							return consoleapi.IAMActionResult{}, &consoleapi.Error{Status: 404, Code: "iam_not_found"}
-						}
 						return consoleapi.IAMActionResult{Outcome: "confirmed", RestartRequired: true}, nil
 					}, nil)
 					alice, ar := nativeSignIn(t, s, "alice")
@@ -268,4 +236,18 @@ func (w *disableFlushWriter) FlushError() error {
 	}
 	w.ResponseRecorder.Flush()
 	return nil
+}
+
+// This fixture exercises the real dispatcher through its conditional interface.
+// A 404 is a conclusive zero-write response and does not retire the captured set.
+type nativeUserLifecycleTestBackend struct{ *fakeIAMBackend }
+
+func (b *nativeUserLifecycleTestBackend) IAMStorageTarget() string { return "test-storage" }
+func (b *nativeUserLifecycleTestBackend) IAMRelationships(_ context.Context, kind, target string) (consoleapi.IAMRelationships, error) {
+	return consoleapi.IAMRelationships{Kind: kind, Target: target, State: "known", CoupledUsers: true, StorageTarget: b.IAMStorageTarget(), Revision: strings.Repeat("a", 64), ExpiresAt: time.Now().Add(30 * time.Second), AffectedAccessKeys: []string{target}}, nil
+}
+func (b *nativeUserLifecycleTestBackend) IAMMutateRelationshipUser(ctx context.Context, args consoleapi.IAMActionRequest, r consoleapi.IAMRelationships) (consoleapi.IAMUserMutationResult, error) {
+	result, err := b.IAMAction(ctx, args)
+	status := map[string]string{"user.enable": "enabled", "user.disable": "disabled", "user.delete": "deleted"}[args.Action]
+	return consoleapi.IAMUserMutationResult{Outcome: result.Outcome, User: consoleapi.IAMUserMutationState{AccessKey: args.User, Status: status}, Impact: r}, err
 }
