@@ -306,6 +306,15 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(self.transfer_evidence['transferAttempts'][0]['status'], 'failed')
         self.assertEqual(self.transfer_evidence['transferAttempts'][0]['failureReason'], 'transfer-timeout')
 
+    def test_transfer_timeout_without_sigquit_still_fails(self):
+        with patch.object(stability.signal, 'SIGQUIT', None, create=True):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                self.invoke_sampled_transfer(timeout=True)
+        attempt = self.transfer_evidence['transferAttempts'][0]
+        self.assertEqual(attempt['status'], 'failed')
+        self.assertEqual(attempt['failureReason'], 'transfer-timeout')
+        self.assertEqual(attempt['timeoutStackFunctions'], [])
+
     def test_transfer_exit_peak_closes_short_process_sampling_race(self):
         outcome = self.invoke_sampled_transfer(rss_kib=None, exit_rss_kib=2048)
         self.assertEqual(outcome['sampledPeakRSSMiB'], 0)

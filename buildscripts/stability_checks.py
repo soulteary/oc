@@ -183,12 +183,15 @@ def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence
             attempt['failureReason'] = 'transfer-timeout'
             # Preserve the timeout as failure. SIGQUIT gathers Go frame names
             # before killing this owned fixture; it never retries the transfer.
-            try:
-                child.send_signal(signal.SIGQUIT)
-                _, diagnostic = child.communicate(timeout=5)
-                attempt['timeoutStackFunctions'] = timeout_stack_functions(diagnostic)
-            except (OSError, subprocess.TimeoutExpired):
-                attempt['timeoutStackFunctions'] = []
+            attempt['timeoutStackFunctions'] = []
+            quit_signal = getattr(signal, 'SIGQUIT', None)
+            if quit_signal is not None:
+                try:
+                    child.send_signal(quit_signal)
+                    _, diagnostic = child.communicate(timeout=5)
+                    attempt['timeoutStackFunctions'] = timeout_stack_functions(diagnostic)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
             raise
         finally:
             if child.poll() is None:
