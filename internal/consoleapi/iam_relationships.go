@@ -13,16 +13,17 @@ type IAMRelationshipsBackend interface {
 }
 
 type IAMRelationships struct {
-	CoupledUserSecret  bool      `json:"coupledUserSecret"`
-	CoupledGroups      bool      `json:"coupledGroups"`
-	CoupledBindings    bool      `json:"coupledBindings"`
-	Kind               string    `json:"kind"`
-	Target             string    `json:"target"`
-	State              string    `json:"state"`
-	Revision           string    `json:"revision"`
-	ExpiresAt          time.Time `json:"expiresAt"`
-	NativeParent       string    `json:"nativeParent,omitempty"`
-	AffectedAccessKeys []string  `json:"affectedAccessKeys"`
+	CoupledServiceAccounts bool      `json:"coupledServiceAccounts"`
+	CoupledUserSecret      bool      `json:"coupledUserSecret"`
+	CoupledGroups          bool      `json:"coupledGroups"`
+	CoupledBindings        bool      `json:"coupledBindings"`
+	Kind                   string    `json:"kind"`
+	Target                 string    `json:"target"`
+	State                  string    `json:"state"`
+	Revision               string    `json:"revision"`
+	ExpiresAt              time.Time `json:"expiresAt"`
+	NativeParent           string    `json:"nativeParent,omitempty"`
+	AffectedAccessKeys     []string  `json:"affectedAccessKeys"`
 	// StorageTarget is bound by the owned client, never accepted from the server
 	// response or browser. It isolates identical access keys on different stores.
 	StorageTarget string `json:"-"`
