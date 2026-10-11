@@ -243,19 +243,31 @@ func TestIAMLostAndMalformedAcknowledgementsNeverRetryOrLeakSecrets(t *testing.T
 
 func TestIAMCreationRequiresNativeCapabilityAndNeverUpserts(t *testing.T) {
 	for _, kind := range []string{"user", "group"} {
-		for _, mode := range []string{"supported", "legacy", "race"} {
+		modes := []string{"supported", "legacy", "race", "denied"}
+		if kind == "group" {
+			modes = append(modes, "caller-member")
+		}
+		for _, mode := range modes {
 			t.Run(kind+"/"+mode, func(t *testing.T) {
+				member := "alice"
+				if mode == "caller-member" {
+					member = "selected-access"
+				}
 				var writes atomic.Int32
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if iamDiscovery(w, r) {
 						return
 					}
 					if strings.HasSuffix(r.URL.Path, "/list-users") {
-						iamEncrypted(t, w, map[string]madmin.UserInfo{})
+						t.Error("conditional creation required user-list permission")
+						w.WriteHeader(403)
+						fmt.Fprint(w, `{"Code":"AccessDenied"}`)
 						return
 					}
 					if strings.HasSuffix(r.URL.Path, "/groups") {
-						fmt.Fprint(w, `[]`)
+						t.Error("conditional creation required group-list permission")
+						w.WriteHeader(403)
+						fmt.Fprint(w, `{"Code":"AccessDenied"}`)
 						return
 					}
 					if r.URL.Path != "/otterio/admin/v3/iam-create" {
@@ -276,6 +288,11 @@ func TestIAMCreationRequiresNativeCapabilityAndNeverUpserts(t *testing.T) {
 						return
 					}
 					writes.Add(1)
+					if mode == "denied" {
+						w.WriteHeader(403)
+						fmt.Fprint(w, `{"Code":"AccessDenied"}`)
+						return
+					}
 					data, err := madmin.DecryptData(iamTestSecret, r.Body)
 					if err != nil {
 						t.Error(err)
@@ -285,7 +302,7 @@ func TestIAMCreationRequiresNativeCapabilityAndNeverUpserts(t *testing.T) {
 						SecretKey string   `json:"secretKey"`
 						Members   []string `json:"members"`
 					}
-					if json.Unmarshal(data, &body) != nil || (kind == "user" && len(body.SecretKey) != 40) || (kind == "group" && (body.SecretKey != "" || len(body.Members) != 1 || body.Members[0] != "alice")) {
+					if json.Unmarshal(data, &body) != nil || (kind == "user" && len(body.SecretKey) != 40) || (kind == "group" && (body.SecretKey != "" || len(body.Members) != 1 || body.Members[0] != member)) {
 						t.Error("create encrypted payload changed")
 					}
 					if mode == "race" {
@@ -303,10 +320,15 @@ func TestIAMCreationRequiresNativeCapabilityAndNeverUpserts(t *testing.T) {
 					args.User = "new-target"
 				} else {
 					args.Group = "new-target"
-					args.Members = []string{"alice"}
+					args.Members = []string{member}
 				}
 				result, err := c.IAMAction(context.Background(), args)
 				switch mode {
+				case "denied":
+					assertAPIError(t, err, 403, "AccessDenied")
+					if result.Credentials != nil || writes.Load() != 1 {
+						t.Fatal("denied create disclosed credential or replayed")
+					}
 				case "legacy":
 					assertAPIError(t, err, 501, "iam_create_unsupported")
 					if writes.Load() != 0 {
@@ -320,6 +342,9 @@ func TestIAMCreationRequiresNativeCapabilityAndNeverUpserts(t *testing.T) {
 				default:
 					if err != nil || writes.Load() != 1 {
 						t.Fatalf("creation: %v %v", result, err)
+					}
+					if result.RestartRequired != (mode == "caller-member") {
+						t.Fatal("conditional creation changed local caller retirement")
 					}
 					if kind == "user" && (result.Credentials == nil || result.Credentials.AccessKey != "new-target" || len(result.Credentials.SecretKey) != 40) {
 						t.Fatal("generated secret not returned once")

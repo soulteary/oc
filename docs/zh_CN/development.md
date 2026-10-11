@@ -120,7 +120,7 @@ python3 buildscripts/test-core-integration.py \
 
 ## 复现可选控制台协议环境
 
-固定服务端源码仍为 `6f6d0835ddff68020f1491c403b958fade22841f`，尚未包含 P3。OtterIO 当前源码 HEAD 已包含 P3，必须单独记录身份；下面导出补丁只应用于固定 pin，不能再应用到该开发工作区。`requiredServerPatches: []` 仍描述未补丁核心基线。
+历史协议 fixture 使用 `6f6d0835ddff68020f1491c403b958fade22841f`，尚未包含 P3。`compatibility.json` 中的当前服务端 pin 已包含 P3，并单独验收；下面的导出补丁只应用于历史 fixture，不能再应用到当前 pin。`requiredServerPatches: []` 描述当前未应用补丁的核心基线。
 
 当前验收用四份独立源码副本和程序：
 
@@ -253,7 +253,7 @@ python3 buildscripts/test-lifecycle-transition-integration.py \
 
 ## 理解 CI 的覆盖范围
 
-Go 工作流在 Linux、macOS、Windows 上运行单元、竞态、控制台前端和辅助程序测试；Linux 另有 lint、交叉编译，Linux/macOS 运行 vet。Linux/macOS 服务端矩阵分别启用和关闭 cgo：先对未应用补丁的固定服务端检查核心与 CLI 操作、控制台浏览、设置安全降级和对象写入，随后独立构建基础设置/对象服务端、base + versions + IAM 五功能服务端、base + storage + hardening 运行时服务端和完整组合回归服务端。两个五功能组合均实际检查CopyObject与UploadPartCopy的版本授权；两个生命周期组合调用相同独立归档端harness，分别保存报告。上传步骤在失败后仍执行，保留此前已经生成的报告。
+Go 工作流在 Linux、macOS、Windows 上运行单元、竞态、控制台前端和辅助程序测试；Linux 另有 lint、交叉编译，Linux/macOS 运行 vet。Linux/macOS 服务端矩阵分别启用和关闭 cgo，对未应用补丁的当前 pin 分别运行核心与 CLI、控制台浏览/对象写入、受保护设置/自身密钥轮换、存储功能/版本复制验收。当前功能场景使用 `--features --features-iam-create-unsupported --version-copy`：存储功能必须通过，缺失的 IAM 条件创建协议必须明确拒绝，且不能创建目标。报告记录完整 IAM 修改及条件绑定尚未验收，不表示已经完整替代旧 Web。历史降级、基础设置/对象、base + versions + IAM 五功能、base + storage + hardening 运行时和完整组合 fixture 仍独立保留；两个生命周期组合调用独立归档端 harness 并分别保存报告。上传步骤在失败后仍执行，保留此前已经生成的报告。
 
 独立的 [CLI 兼容工作流](../../.github/workflows/cli-compat.yml)在 Linux、macOS、Windows 上分别构建固定基线与候选程序，比较命令契约。Go 工作流还检查发行边界、编译依赖清单和可达漏洞。[CodeQL](../../.github/workflows/codeql.yml)另行构建 Go 程序进行分析。
 

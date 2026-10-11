@@ -123,7 +123,7 @@ func mainAdminPolicyUpdate(ctx *cli.Command) error {
 	}
 
 	updatedPolicies, e := updateCannedPolicies(existingPolicies, policiesToAdd)
-	if err != nil {
+	if e != nil {
 		fatalIf(probe.NewError(e).Trace(args...), "Unable to update the policy")
 	}
 

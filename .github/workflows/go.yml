@@ -219,6 +219,20 @@ jobs:
             --server "$RUNNER_TEMP/otterio" --writes \
             --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
             --output "$RUNNER_TEMP/console-current-integration.json"
+      - name: Verify protected settings on the current pinned server
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio" --settings \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --output "$RUNNER_TEMP/console-current-settings-integration.json"
+      - name: Verify current storage features and the missing IAM create-only boundary
+        run: |
+          python3 buildscripts/test-console-integration.py \
+            --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
+            --server "$RUNNER_TEMP/otterio" --features --features-iam-create-unsupported --version-copy \
+            --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
+            --output "$RUNNER_TEMP/console-current-features-integration.json"
       - name: Prepare the fixed legacy console protocol fixture
         env:
           GOTOOLCHAIN: local
@@ -412,6 +426,8 @@ jobs:
             ${{ runner.temp }}/core-integration.json
             ${{ runner.temp }}/core-evidence/
             ${{ runner.temp }}/console-current-integration.json
+            ${{ runner.temp }}/console-current-settings-integration.json
+            ${{ runner.temp }}/console-current-features-integration.json
             ${{ runner.temp }}/console-integration.json
             ${{ runner.temp }}/console-write-integration.json
             ${{ runner.temp }}/console-base-settings-integration.json

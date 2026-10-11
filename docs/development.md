@@ -120,7 +120,7 @@ The exact server regression tests and the Linux/macOS cgo matrix live in the [Go
 
 ## Reproduce the optional console protocol fixture
 
-The pinned source remains `6f6d0835ddff68020f1491c403b958fade22841f`; it does not include P3. Current OtterIO source HEAD already includes P3 and must be identified separately. The exported patches below target the fixed pin, not that developer checkout. `requiredServerPatches: []` continues to describe the unpatched core baseline.
+The historical protocol fixture uses `6f6d0835ddff68020f1491c403b958fade22841f`, without P3. The current server pin in `compatibility.json` already includes P3 and is tested separately; do not reapply these exported patches to it. `requiredServerPatches: []` describes the unpatched current core baseline.
 
 Current fixtures use four independent source copies and binaries:
 
@@ -253,7 +253,7 @@ The console scenarios are `single-http`, `dual-http` and `dual-tls`; lifecycle e
 
 ## Understand the CI scope
 
-The Go workflow runs platform unit/race tests and console frontend/helper regressions on Linux, macOS and Windows, Linux lint/cross-compilation, and vet on Linux/macOS. Its Linux/macOS integration matrix uses cgo both disabled and enabled. It first tests the unpatched pinned server for core/CLI operations, console browsing, safe settings fallback and object writes. It then independently builds the base settings/write server, the base/version/IAM five-feature server, the base/storage/hardening runtime server, and the full composition regression server. Version-copy checks exercise actual CopyObject and UploadPartCopy requests in both feature compositions. Both lifecycle compositions also run the same independent-tier harness and archive separate reports. The upload step runs after a failure and preserves the reports generated before that point.
+The Go workflow runs platform unit/race tests and console frontend/helper regressions on Linux, macOS and Windows, Linux lint/cross-compilation, and vet on Linux/macOS. Its Linux/macOS integration matrix uses cgo both disabled and enabled. It tests the unpatched current pinned server for core/CLI operations, console browsing/object writes, protected settings/own-secret rotation, and storage features/version copy in separate profiles. The current feature profile uses `--features --features-iam-create-unsupported --version-copy`: storage features must pass, while missing conditional IAM creation must be explicitly refused without creating a target. It records that full IAM mutation/binding acceptance was not exercised; this is not a claim of complete Web replacement. The workflow retains the fixed legacy fallback, base settings/write, base/version/IAM five-feature, base/storage/hardening runtime, and full composition regression fixtures independently. Both lifecycle compositions run the independent-tier harness and archive separate reports. The upload step runs after a failure and preserves the reports generated before that point.
 
 The separate [CLI compatibility workflow](../.github/workflows/cli-compat.yml) builds a fixed baseline and the candidate on Linux, macOS and Windows and compares their command contracts. The Go workflow also checks release boundaries, compiled-module inventory and reachable vulnerabilities. [CodeQL](../.github/workflows/codeql.yml) builds the Go code separately for analysis.
 

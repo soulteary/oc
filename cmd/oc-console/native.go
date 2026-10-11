@@ -47,7 +47,7 @@ func nativeClientConfig(opts options) (storageclient.Config, error) {
 		return cfg, errors.New("--address must be a literal IP and port")
 	}
 	number, err := strconv.Atoi(port)
-	if err != nil || number < 0 || number > 65535 {
+	if err != nil || number < 1 || number > 65535 {
 		return cfg, errors.New("invalid native listen port")
 	}
 	s3, err := clienttransport.ValidateAdminEndpoint(opts.s3URL)

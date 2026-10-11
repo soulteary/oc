@@ -304,19 +304,18 @@ func (c *Client) IAMAction(ctx context.Context, args consoleapi.IAMActionRequest
 	}
 	// Preflight checks are reads, never permission grants. Every mutation is
 	// independently authorized by the storage server using the same identity.
+	// Conditional creation checks existence atomically on the server and needs
+	// only the create permission. Listing all identities must not gate it.
 	var userInfo madmin.UserInfo
 	var groupInfo *madmin.GroupDesc
-	if strings.HasPrefix(args.Action, "user.") {
+	if strings.HasPrefix(args.Action, "user.") && args.Action != "user.create" {
 		users, listErr := admin.ListUsers(ctx)
 		if listErr != nil {
 			return result, iamError(listErr)
 		}
 		var exists bool
 		userInfo, exists = users[args.User]
-		if args.Action == "user.create" && exists {
-			return result, iamConflict("user_exists", "This user already exists. Choose another access key.")
-		}
-		if args.Action != "user.create" && !exists {
+		if !exists {
 			return result, &consoleapi.Error{Status: 404, Code: "iam_not_found", Message: "Only a listed native IAM user can be changed here."}
 		}
 		result.RestartRequired = args.User == credential.AccessKeyID
@@ -340,7 +339,7 @@ func (c *Client) IAMAction(ctx context.Context, args consoleapi.IAMActionRequest
 			}
 		}
 	}
-	if strings.HasPrefix(args.Action, "group.") {
+	if strings.HasPrefix(args.Action, "group.") && args.Action != "group.create" {
 		groups, listErr := admin.ListGroups(ctx)
 		if listErr != nil {
 			return result, iamError(listErr)
@@ -349,10 +348,7 @@ func (c *Client) IAMAction(ctx context.Context, args consoleapi.IAMActionRequest
 		for _, group := range groups {
 			exists = exists || group == args.Group
 		}
-		if args.Action == "group.create" && exists {
-			return result, iamConflict("group_exists", "This group already exists. Choose another name.")
-		}
-		if args.Action != "group.create" && !exists {
+		if !exists {
 			return result, &consoleapi.Error{Status: 404, Code: "iam_not_found", Message: "The selected group no longer exists."}
 		}
 		if exists {
@@ -367,9 +363,11 @@ func (c *Client) IAMAction(ctx context.Context, args consoleapi.IAMActionRequest
 				return result, iamConflict("group_not_empty", "Remove every member before deleting this group.")
 			}
 		}
-		for _, member := range args.Members {
-			result.RestartRequired = result.RestartRequired || member == credential.AccessKeyID
-		}
+	}
+	// Keep local-mode retirement for creation that changes the caller's group
+	// membership, even though creation no longer lists existing identities.
+	for _, member := range args.Members {
+		result.RestartRequired = result.RestartRequired || member == credential.AccessKeyID
 	}
 	if strings.HasPrefix(args.Action, "service-account.") && args.Action != "service-account.create" {
 		info, infoErr := admin.InfoServiceAccount(ctx, args.AccessKey)

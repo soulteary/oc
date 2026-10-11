@@ -26,6 +26,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 from local_http import local_urlopen
+from console_acceptance_protocol import legacy_route_disabled
 
 
 def free_port():
@@ -284,11 +285,7 @@ def scenario(args, name, preview=False, record=None):
                         raise RuntimeError(f'legacy Web route unexpectedly available: {method} {path}: {response.status}')
                 except urllib.error.HTTPError as error:
                     payload = error.read()
-                    try:
-                        protocol_error = ET.fromstring(payload).findtext('Code')
-                    except ET.ParseError:
-                        protocol_error = None
-                    if error.code != 404 and (error.code not in (400, 403) or not protocol_error):
+                    if not legacy_route_disabled(error.code, payload):
                         raise RuntimeError(f'legacy Web route expected storage protocol rejection: {method} {path}: {error.code}') from None
             checks.append('browser off rejects legacy assets, RPC, upload, download and ZIP routes')
             bucket = 'console-fixture'
@@ -414,7 +411,7 @@ def scenario(args, name, preview=False, record=None):
                 record['featureMetrics'] = verify_features(
                     root, bucket, cli, request, session, viewer, start_console, browser, stop,
                     credentials, endpoint, access, secret, context, signed_request, put_object,
-                    checks, legacy=args.features_legacy)
+                    checks, legacy=args.features_legacy, iam_create_unsupported=args.features_iam_create_unsupported)
             request('/api/logout', 'POST', expected=403)
             request('/api/logout', 'POST', expected=204, headers={'X-CSRF-Token': session['csrfToken']})
             request('/api/session', expected=401)
@@ -455,6 +452,7 @@ def main():
     parser.add_argument('--writes', action='store_true', help='also test opt-in uploads and deletes on disposable four-disk storage')
     parser.add_argument('--features', action='store_true', help='test bucket/history/sharing/ZIP/IAM features on disposable four-disk storage')
     parser.add_argument('--features-legacy', action='store_true', help='with --features, verify protected features refuse the unpatched server')
+    parser.add_argument('--features-iam-create-unsupported', action='store_true', help='with --features, require storage features to work and verify explicit refusal of missing IAM create-only protocol')
     parser.add_argument('--version-copy', action='store_true', help='verify source version authorization and copied bytes for CopyObject and UploadPartCopy')
     parser.add_argument('--settings-base', action='store_true', help='with --settings, verify the base protocol refuses lifecycle runtime features')
     settings_group = parser.add_mutually_exclusive_group()
@@ -463,6 +461,8 @@ def main():
     args = parser.parse_args()
     if args.features_legacy and not args.features:
         parser.error('--features-legacy requires --features')
+    if args.features_iam_create_unsupported and (not args.features or args.features_legacy):
+        parser.error('--features-iam-create-unsupported requires --features without --features-legacy')
     if args.settings_base and not args.settings:
         parser.error('--settings-base requires --settings')
     names = (args.scenarios or ('single-tls,dual-tls' if args.native else 'single-http,dual-http,dual-tls')).split(',')
@@ -477,6 +477,8 @@ def main():
     report['scope'] = 'read-only-and-writes' if args.writes else ('read-only-and-protected-settings' if args.settings else 'read-only')
     if args.features:
         report['scope'] = 'console-features-legacy-fallback' if args.features_legacy else 'console-five-features'
+        if args.features_iam_create_unsupported:
+            report['scope'] = 'console-storage-features-and-iam-create-refusal'
     if args.settings or args.settings_legacy:
         report['settingsProfile'] = 'legacy-read-only-fallback' if args.settings_legacy else ('v1-base-protected-settings' if args.settings_base else 'v1-protected-settings')
     if args.native:
@@ -485,6 +487,7 @@ def main():
         report['scope'] += '-and-version-copy'
     report['storage'] = 'single-node-four-disk-erasure' if args.writes or args.settings or args.features or args.version_copy or args.native else 'filesystem'
     harness_paths = [Path(__file__), Path(__file__).with_name('console_write_acceptance.py'),
+                     Path(__file__).with_name('console_acceptance_protocol.py'),
                      Path(__file__).with_name('local_http.py')]
     if args.settings or args.settings_legacy:
         settings_path = Path(__file__).with_name('console_settings_acceptance.py')

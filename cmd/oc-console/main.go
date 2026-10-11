@@ -53,7 +53,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags.StringVar(&opts.s3CA, "s3-ca", "", "S3 PEM CA file, replacing certs/CAs custom trust")
 	flags.StringVar(&opts.adminURL, "admin-url", "", "independent OtterIO management root URL")
 	flags.StringVar(&opts.adminCA, "admin-ca", "", "independent management PEM CA file")
-	flags.BoolVar(&opts.allowWrites, "allow-writes", false, "enable explicitly confirmed object writes, bucket management/settings and IAM changes")
+	flags.BoolVar(&opts.allowWrites, "allow-writes", false, "enable confirmed storage writes/settings; local mode permits IAM changes, native mode permits own-secret rotation, IAM creation and user activation")
 	flags.BoolVar(&opts.allowSharing, "allow-sharing", false, "enable explicitly requested time-limited download links")
 	flags.StringVar(&opts.shareURL, "share-url", "", "S3 root URL reachable by download-link recipients")
 	flags.StringVar(&opts.archiveDir, "archive-dir", "", "temporary directory for complete ZIP downloads (default system temporary directory)")
