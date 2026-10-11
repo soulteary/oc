@@ -45,6 +45,8 @@ type identityMutation struct {
 }
 
 func (s *Server) beginIdentityMutation(w http.ResponseWriter, sess *session, impact identityImpact) *identityMutation {
+	// The executor owns the same immutable snapshot used to validate and gate.
+	impact.scopes = append([]identityScope(nil), impact.scopes...)
 	if !impact.valid() {
 		writeError(w, 409, "identity_impact_unknown", "The affected identity cannot be established safely.")
 		return nil
