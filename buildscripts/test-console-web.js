@@ -1811,8 +1811,8 @@ test("native writable sessions expose creation and account status changes but re
   await h.ready();
   await h.fire("open-iam");
   assert.equal(h.element("iam-action-form").hidden, false);
-  assert.deepEqual(h.element("iam-action").children.map(o=>o.value),["user.create", "user.enable", "user.disable"]);
-  h.element("iam-action").value="user.delete";
+  assert.deepEqual(h.element("iam-action").children.map(o=>o.value),["user.create", "user.enable", "user.disable", "user.delete"]);
+  h.element("iam-action").value="user.rotate";
   await h.fire("iam-action-form", "submit", { force: true });
   assert.equal(h.calls.filter(call => call.url === "/api/iam/actions").length, 0);
   assert.equal(h.element("workspace").hidden, false);
@@ -1861,13 +1861,27 @@ test("native IAM account activation keeps the console available after confirmati
  assert.equal(h.element("workspace").hidden,false);assert.equal(h.element("iam-confirm").value,"");
 });
 
-test("native account disable returns self to login and keeps other-user changes available", async () => {
- for (const self of [false,true]) for (const uncertain of [false,true]) {
+test("native account retirement returns self to login and keeps other-user changes available", async () => {
+ for (const action of ["user.disable","user.delete"]) for (const self of [false,true]) for (const uncertain of [false,true]) {
   const h=createHarness({native:true,readOnly:false,capabilities:fullCapabilities});
   h.route("POST","/api/iam/actions",()=>uncertain ? response({code:"outcome_unknown",loginRequired:self},502) : response({outcome:"confirmed",restartRequired:false,loginRequired:self}));
   await h.ready();await h.fire("open-iam");
-  h.element("iam-action").value="user.disable";await h.fire("iam-action","change");
+  h.element("iam-action").value=action;await h.fire("iam-action","change");
   iamField(h,"user").value="disabled-user";h.element("iam-confirm").value="disabled-user";
+  await h.fire("iam-action-form","submit");
+  assert.equal(h.element("workspace").hidden,self);
+  assert.equal(h.element("login-submit").disabled,false);
+  assert.equal(h.calls.filter(c=>c.url==="/api/iam/actions").length,1);
+ }
+});
+
+test("native deletion of an absent account returns self to login without replay", async () => {
+ for (const self of [false,true]) {
+  const h=createHarness({native:true,readOnly:false,capabilities:fullCapabilities});
+  h.route("POST","/api/iam/actions",()=>response({code:"iam_not_found",message:"Account absent",loginRequired:self},404));
+  await h.ready();await h.fire("open-iam");
+  h.element("iam-action").value="user.delete";await h.fire("iam-action","change");
+  iamField(h,"user").value="deleted-user";h.element("iam-confirm").value="deleted-user";
   await h.fire("iam-action-form","submit");
   assert.equal(h.element("workspace").hidden,self);
   assert.equal(h.element("login-submit").disabled,false);

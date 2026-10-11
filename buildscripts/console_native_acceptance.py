@@ -169,6 +169,16 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             second_created('/api/session', expected=401)
             created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
             checks.append('native user disable requires manager permission, revokes all target sessions before any follow-up request, and later enable permits only a fresh login')
+            delete_user = {'action': 'user.delete', 'user': new_user, 'confirmTarget': new_user}
+            alice('/api/iam/actions', 'POST', delete_user, expected=403, headers=alice_headers)
+            manager('/api/iam/actions', 'POST', delete_user, expected=409, headers=manager_headers)
+            created_browser('/api/session')  # service-account preflight preserves the session
+            cli('admin', 'group', 'add', 'store', new_group, new_user)
+            blocked = json.loads(manager('/api/iam/actions', 'POST', delete_user, expected=409, headers=manager_headers)[0])
+            assert blocked['code'] == 'user_has_groups'
+            created_browser('/api/session')
+            cli('admin', 'group', 'remove', 'store', new_group, new_user)
+            checks.append('native user deletion rejects unauthorized operators and users with groups/service accounts without revoking target sessions')
             alice('/api/session')
             bob('/api/session')
             # Service-account cleanup must use its actual manager identity;
@@ -181,6 +191,16 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             cli('admin', 'user', 'svcacct', 'rm', 'native-manager', service_key)
             del config['aliases']['native-manager']
             fixture_config.write_text(json.dumps(config))
+            second_created('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
+            deleted = json.loads(manager('/api/iam/actions', 'POST', delete_user, headers=manager_headers)[0])
+            assert deleted['outcome'] == 'confirmed' and not deleted['restartRequired'] and not deleted['loginRequired']
+            # Recreate the name AND secret before either old browser requests
+            # identity again. Only explicit retirement keeps both cookies dead.
+            cli('admin', 'user', 'add', 'store', new_user, new_secret)
+            created_browser('/api/session', expected=401)
+            second_created('/api/session', expected=401)
+            created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
+            checks.append('native user deletion retires all target sessions; recreating the identical username/secret cannot revive old cookies and requires fresh login')
             cli('admin', 'user', 'remove', 'store', new_user)
             cli('admin', 'group', 'remove', 'store', new_group)
             self_disabled = json.loads(manager('/api/iam/actions', 'POST', {'action': 'user.disable', 'user': manager_access, 'confirmTarget': manager_access}, headers=manager_headers)[0])
@@ -191,7 +211,14 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             alice('/api/session')
             bob('/api/session')
             checks.append('native self-disable acknowledges before retiring own session, keeps shared console available and requires fresh login after administrative activation')
-            cli('admin', 'user', 'remove', 'store', manager_access)
+            self_deleted = json.loads(manager('/api/iam/actions', 'POST', {'action': 'user.delete', 'user': manager_access, 'confirmTarget': manager_access}, headers={'X-CSRF-Token': json.loads(manager('/api/session')[0])['csrfToken']})[0])
+            assert self_deleted['outcome'] == 'confirmed' and self_deleted['loginRequired'] and not self_deleted['restartRequired']
+            manager('/api/session', expected=401)
+            rejected('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret}, expected=401)
+            alice('/api/session')
+            bob('/api/session')
+            checks.append('native self-deletion acknowledges before ending own session, rejects deleted credentials and leaves other users available')
+
             checks.append('native manager creates new IAM user/group/service credential with own permissions; unauthorized create, existing-user replacement rejected; other identity edits remain gated; other sessions continue')
             alice('/api/logout', 'POST', expected=403)
             alice('/api/logout', 'POST', expected=204, headers=alice_headers)
@@ -220,6 +247,6 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             cli('admin', 'policy', 'remove', 'store', 'console-native-exact-object')
             assert not any(value in log_path.read_text() for value in credentials)
             checks.append('native process shutdown drains clients and startup/preferences disclose no credentials')
-            return {'users': 3, 'iamCreation': 'native user/group/service-account; permission and duplicate-target checks verified', 'browserTLS': 'verified', 'storageTLS': 'verified', 'rootLogin': 'denied', 'writes': 'explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; user disable and exact-target session retirement verified; unsupported IAM mutations disabled'}
+            return {'users': 3, 'iamCreation': 'native user/group/service-account; permission and duplicate-target checks verified', 'browserTLS': 'verified', 'storageTLS': 'verified', 'rootLogin': 'denied', 'writes': 'explicit opt-in; per-user bucket create/delete verified; self-secret rotation verified; user disable/delete and exact-target session retirement verified; unsupported IAM mutations disabled'}
         finally:
             stop(process)

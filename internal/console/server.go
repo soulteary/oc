@@ -124,11 +124,8 @@ type Server struct {
 	closed             bool
 	rotating           bool
 	nativeRotating     map[string]bool
-	nativeEpoch        uint64
-	nativeRevoked      map[string]uint64
-	nativeLogins       int
+	revocations        identityRevocations
 	nativeUserChanging map[string]bool
-	nativeUserRevoked  map[string]uint64
 	sessions           map[[32]byte]*session
 	loginWindow        time.Time
 	loginCount         int
@@ -218,7 +215,7 @@ func New(cfg Config) (*Server, error) {
 	life, stopLife := context.WithCancel(context.Background())
 	settings, _ := cfg.Backend.(consoleapi.SettingsBackend)
 	return &Server{
-		nativeUserChanging: make(map[string]bool), nativeUserRevoked: make(map[string]uint64), nativeRotating: make(map[string]bool), nativeRevoked: make(map[string]uint64), nativeLogin: cfg.NativeLogin, dataDir: cfg.DataDir, userPreferences: make(map[string]*principalPreferences), preferences: preferences, backend: cfg.Backend, backendFactory: cfg.BackendFactory, allowWrites: cfg.AllowWrites, alias: cfg.Alias, origin: u.Scheme + "://" + u.Host,
+		nativeUserChanging: make(map[string]bool), nativeRotating: make(map[string]bool), nativeLogin: cfg.NativeLogin, dataDir: cfg.DataDir, userPreferences: make(map[string]*principalPreferences), preferences: preferences, backend: cfg.Backend, backendFactory: cfg.BackendFactory, allowWrites: cfg.AllowWrites, alias: cfg.Alias, origin: u.Scheme + "://" + u.Host,
 		host: u.Host, code: sha256.Sum256([]byte(cfg.LoginCode)), ttl: cfg.SessionTTL,
 		assets: web.FS(), sessions: make(map[[32]byte]*session),
 		apiSlots: make(chan struct{}, 8), downloads: make(chan struct{}, 2),
@@ -330,6 +327,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+	if r.URL.Path == "/api/diagnostics/server" {
+		s.serveDiagnostics(w, r)
+		return
 	}
 	if s.isJobRoute(r.URL.Path) {
 		s.serveJobs(w, r)
@@ -623,16 +624,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 409, "credential_change_pending", "This account is being changed. Wait for the result before signing in again.")
 			return
 		}
-		epoch = s.nativeEpoch
-		s.nativeLogins++
+		epoch = s.revocations.begin()
 		s.mu.Unlock()
 		defer func() {
 			s.mu.Lock()
-			s.nativeLogins--
-			if s.nativeLogins == 0 {
-				clear(s.nativeRevoked)
-				clear(s.nativeUserRevoked)
-			}
+			s.revocations.finish()
 			s.mu.Unlock()
 		}()
 	}
@@ -670,7 +666,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if native {
-		if s.nativeRotating[runtime.identity] || s.nativeRevoked[runtime.identity] > epoch || s.nativeUserChanging[args.AccessKey] || s.nativeUserRevoked[args.AccessKey] > epoch {
+		if s.nativeRotating[runtime.identity] || s.revocations.changedSince(nativePrincipalScope(runtime.identity), epoch) || s.nativeUserChanging[args.AccessKey] || s.revocations.changedSince(nativeUserScope(args.AccessKey), epoch) {
 			s.mu.Unlock()
 			cancel()
 			runtime.retire()

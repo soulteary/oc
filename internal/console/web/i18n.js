@@ -10,6 +10,9 @@
  ["Sign in with your native IAM user. Root, service accounts and temporary credentials are not accepted.", "请使用原生 IAM 用户登录。不接受 root、服务账户和临时凭据。"],
  ["Your session has expired or changed. Sign in again with your IAM credentials.", "会话已过期或发生变更，请使用自己的 IAM 凭据重新登录。"],
  ["You are logged out. Sign in again with your IAM credentials.", "已退出登录，请使用自己的 IAM 凭据重新登录。"],
+ ["Your account was deleted. Contact an administrator before signing in again.", "你的账户已被删除。再次登录前，请联系管理员。"],
+ ["Your account has been deleted. Sign in with an existing account. This request was not repeated.", "你的账户已被删除，请使用现有账户登录。此请求未重复提交。"],
+ ["Your account may have been disabled or deleted. Verify its status with an administrator before signing in again. This request was not repeated.", "你的账户可能已被禁用或删除。再次登录前，请联系管理员确认账户状态。此请求未重复提交。"],
  ["Sign in with an enabled native IAM user and its current secret.", "请使用已启用的原生 IAM 用户及其当前 Secret Key 登录。"],
  ["Unable to verify a storage connection. Check server support and try signing in again.", "无法验证存储连接，请检查服务器是否支持身份验证后重新登录。"],
 
