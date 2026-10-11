@@ -293,7 +293,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
             time.sleep(min(.5, pacing_end - time.monotonic()))
         checks.append('additional lifecycle phase respects native login rate-limit window with bounded 61-second pacing')
         cli('admin', 'policy', 'set', 'store', 'consoleAdmin', 'user=' + names['target'])
-        target, target_second = login('target'), login('target')
+        target('/api/session');target_second('/api/session')
         created = action(manager, {'action': 'service-account.create', 'user': names['target'], 'confirmTarget': names['target']})
         child = created['credentials']
         credentials.extend([child['accessKey'], child['secretKey']])
