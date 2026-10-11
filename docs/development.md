@@ -266,3 +266,22 @@ For an intentional dependency change, review `go.mod` and `go.sum` together, upd
 Update command help and the English/Chinese user guides for changed flags, defaults, output or data behavior. Link migration requirements from [migration](migration.md), operational caveats from [administration](administration.md), and diagnostics from [troubleshooting](troubleshooting.md). The `oc-phase-*` documents retain design and verification history; the task guides are the user-facing starting point.
 
 The [release guide](releasing.md) explains timestamp tags, archive contents, immutable multi-platform images and `latest` promotion. Release helper tests are suitable for a local PR check. Actual publication requires maintainer credentials, reviewed notes and successful main CI for the exact commit; it is not part of the development loop. [Maintainer guidance](MAINTAINERS.md) covers review and publication responsibilities.
+
+### Console upload timing gate
+
+Write acceptance measures five fixed blocks of 65 MiB uploads. Each block
+contains a CLI-first pair followed by a Console-first pair. Each pair compares
+adjacent elapsed times, including CLI startup and Console job registration and
+acknowledgement. The block ratio is the geometric mean of its two paired
+Console/CLI throughput ratios; the gate uses the median of the five block
+ratios. This gives both orders equal weight when a preceding upload affects the
+next transfer. The earlier five alternating pairs weighted CLI-first three
+times and Console-first twice.
+
+The existing budgets remain Console throughput >= 5 MiB/s and the balanced
+Console/CLI ratio >= 0.5. All ten pairs, their raw median, the five block ratios,
+byte counts, SHA256 verification and RSS samples remain in the report. There
+are no adaptive retries or discarded observations. The old failed CI samples
+remain failed evidence; their missing reverse-order observations cannot be
+reconstructed. This timing gate measures the disposable same-host fixture,
+not production upload throughput.

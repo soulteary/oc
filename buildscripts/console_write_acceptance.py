@@ -13,7 +13,8 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 
 
-UPLOAD_TRIAL_COUNT = 5
+UPLOAD_BLOCK_COUNT = 5
+UPLOAD_TRIAL_COUNT = 2 * UPLOAD_BLOCK_COUNT
 MINIMUM_UPLOAD_MIB_PER_SECOND = 5
 MINIMUM_CONSOLE_TO_CLI_RATIO = 0.5
 
@@ -28,26 +29,35 @@ def verify_transfer_payload(payload, expected_size, expected_sha256):
 
 
 def summarize_upload_trials(trials, object_size_mib):
-    """Compare each same-host pair before taking the fixed sample's median."""
+    """Give both upload orders equal weight in every fixed measurement block."""
     if len(trials) != UPLOAD_TRIAL_COUNT:
         raise ValueError(f'expected exactly {UPLOAD_TRIAL_COUNT} paired upload trials')
     cli_rates, console_rates, ratios = [], [], []
-    for trial in trials:
+    for index, trial in enumerate(trials):
+        expected_order = ['cli', 'console'] if index % 2 == 0 else ['console', 'cli']
+        if trial.get('order') != expected_order:
+            raise ValueError('each upload block must contain both orders in sequence')
         cli_seconds, console_seconds = trial['cliUploadSeconds'], trial['consoleUploadSeconds']
         if any(not math.isfinite(value) or value <= 0 for value in (cli_seconds, console_seconds)):
             raise ValueError('upload trial times must be finite and positive')
         cli_rates.append(object_size_mib / cli_seconds)
         console_rates.append(object_size_mib / console_seconds)
         ratios.append(cli_seconds / console_seconds)
+    # Position effects multiply elapsed times. The geometric mean of the two
+    # reversed-order ratios cancels that factor; neither observation is dropped.
+    balanced_ratios = [math.sqrt(ratios[index]) * math.sqrt(ratios[index + 1])
+                       for index in range(0, UPLOAD_TRIAL_COUNT, 2)]
     return {'cliMiBPerSecond': statistics.median(cli_rates),
             'consoleMiBPerSecond': statistics.median(console_rates),
             'pairedConsoleToCLIRatios': ratios,
-            'medianConsoleToCLIRatio': statistics.median(ratios)}
+            'medianConsoleToCLIRatio': statistics.median(ratios),
+            'counterbalancedConsoleToCLIRatios': balanced_ratios,
+            'medianCounterbalancedConsoleToCLIRatio': statistics.median(balanced_ratios)}
 
 
 def require_upload_budget(summary):
     assert (summary['consoleMiBPerSecond'] >= MINIMUM_UPLOAD_MIB_PER_SECOND and
-            summary['medianConsoleToCLIRatio'] >= MINIMUM_CONSOLE_TO_CLI_RATIO), summary
+            summary['medianCounterbalancedConsoleToCLIRatio'] >= MINIMUM_CONSOLE_TO_CLI_RATIO), summary
 
 
 def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_session,
@@ -364,9 +374,10 @@ def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_sess
                        query=urllib.parse.urlencode({'uploadId': foreign_id}))
     checks.append('slow multipart cancellation within 5s, owned cleanup and unrelated-upload preservation')
 
-    # Use a fixed five same-size pairs, alternating which path goes first. Keep
-    # every observation; compare each adjacent pair before taking the median,
-    # so changing host load cannot pair unrelated CLI and console observations.
+    # Use five fixed blocks, each with CLI/console then console/CLI pairs.
+    # Compare adjacent uploads, then combine the reversed orders within each
+    # block before taking its median. Five alternating pairs would overweight
+    # CLI-first measurements (three versus two) when order affects timings.
     # Never add trials after a failure, discard samples, or use the best result.
     # Include browser job registration and final acknowledgement in each time.
     large = b'0123456789abcdef' * (65 * 1024 * 1024 // 16)
@@ -396,7 +407,7 @@ def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_sess
     try:
         for trial in range(UPLOAD_TRIAL_COUNT):
             order = ['cli', 'console'] if trial % 2 == 0 else ['console', 'cli']
-            sample = {'trial': trial + 1, 'order': order}
+            sample = {'trial': trial + 1, 'block': trial // 2 + 1, 'order': order}
             upload_trials.append(sample)
             keys = {'cli': f'write/cli-reference-{trial}.bin', 'console': f'write/performance-single-{trial}.bin'}
             for path in order:
@@ -448,8 +459,9 @@ def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_sess
         sample_stop.set()
         sampler.join(timeout=3)
         # Preserve measured evidence even when a transfer or sampler fails.
-        metrics.update({**timings, **throughput, 'throughputAggregation': 'median-of-five-counterbalanced-paired-ratios',
+        metrics.update({**timings, **throughput, 'throughputAggregation': 'median-of-five-reversed-order-block-geometric-means',
                         'pairedUploadTrials': upload_trials, 'uploadTrialCount': UPLOAD_TRIAL_COUNT,
+                        'uploadBlockCount': UPLOAD_BLOCK_COUNT,
                         'expectedTransferSHA256': large_sha256,
                         'cliUploadTrialsSeconds': cli_seconds, 'consoleUploadTrialsSeconds': console_seconds,
                         'downloadTrialsSeconds': download_seconds, 'samplerErrors': sampler_errors,
@@ -475,7 +487,7 @@ def verify_writes(root, bucket, cli, base, request, session, viewer, viewer_sess
                           ('console upload', console_seconds), ('verification download', download_seconds)):
         assert all(value <= 120 for value in values), f'{phase} exceeds 120 seconds: {values}'
     require_upload_budget(throughput)
-    checks.append('65MiB SHA256 fidelity per CLI/console trial, two concurrent uploads, sampled RSS and fixed five-pair median throughput budget')
+    checks.append('65MiB SHA256 fidelity per CLI/console trial, two concurrent uploads, sampled RSS and fixed five reversed-order block throughput budget')
     jobs = job('/api/jobs')['jobs']
     assert len(jobs) <= 16 and all('confirmToken' not in item for item in jobs)
 

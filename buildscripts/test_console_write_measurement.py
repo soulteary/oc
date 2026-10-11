@@ -8,8 +8,10 @@ import console_write_acceptance as acceptance
 
 
 def trials(cli_seconds, console_seconds):
-    return [{'cliUploadSeconds': cli, 'consoleUploadSeconds': console}
-            for cli, console in zip(cli_seconds, console_seconds)]
+    pairs = [(cli, console) for cli, console in zip(cli_seconds, console_seconds)]
+    return [{'cliUploadSeconds': cli, 'consoleUploadSeconds': console,
+             'order': ['cli', 'console'] if index % 2 == 0 else ['console', 'cli']}
+            for index, (cli, console) in enumerate(pair for pair in pairs for _ in range(2))]
 
 
 class ConsoleWriteMeasurementTests(unittest.TestCase):
@@ -31,7 +33,7 @@ class ConsoleWriteMeasurementTests(unittest.TestCase):
         console = [0.19, 0.19, 2, 1.9, 1.9]
         self.assertLess(statistics.median(cli) / statistics.median(console), 0.5)
         summary = acceptance.summarize_upload_trials(trials(cli, console), 65)
-        self.assertEqual(summary['pairedConsoleToCLIRatios'], [c / b for c, b in zip(cli, console)])
+        self.assertEqual(summary['pairedConsoleToCLIRatios'], [c / b for c, b in zip(cli, console) for _ in range(2)])
         self.assertGreater(summary['medianConsoleToCLIRatio'], 0.5)
         acceptance.require_upload_budget(summary)
 
@@ -41,7 +43,7 @@ class ConsoleWriteMeasurementTests(unittest.TestCase):
         self.assertGreater(statistics.median(cli) / statistics.median(console), 0.5)
         summary = acceptance.summarize_upload_trials(trials(cli, console), 65)
         self.assertEqual(summary['medianConsoleToCLIRatio'], 0.4)
-        self.assertEqual(len(summary['pairedConsoleToCLIRatios']), 5)
+        self.assertEqual(len(summary['pairedConsoleToCLIRatios']), 10)
         with self.assertRaises(AssertionError):
             acceptance.require_upload_budget(summary)
 
@@ -65,6 +67,28 @@ class ConsoleWriteMeasurementTests(unittest.TestCase):
                 sample[2][path] = invalid
                 with self.subTest(path=path, invalid=invalid), self.assertRaises(ValueError):
                     acceptance.summarize_upload_trials(sample, 65)
+
+    def test_reversed_orders_cancel_position_bias_without_changing_budget(self):
+        sample = trials([1] * 5, [2] * 5)
+        for index, trial in enumerate(sample):
+            # The second upload takes twice as long regardless of its path.
+            trial['cliUploadSeconds'] *= 2 if index % 2 else 1
+            trial['consoleUploadSeconds'] *= 1 if index % 2 else 2
+        summary = acceptance.summarize_upload_trials(sample, 65)
+        self.assertEqual(summary['pairedConsoleToCLIRatios'], [0.25, 1.0] * 5)
+        self.assertEqual(summary['counterbalancedConsoleToCLIRatios'], [0.5] * 5)
+        acceptance.require_upload_budget(summary)
+        for trial in sample:
+            trial['consoleUploadSeconds'] *= 1.000001
+        with self.assertRaises(AssertionError):
+            acceptance.require_upload_budget(acceptance.summarize_upload_trials(sample, 65))
+
+    def test_missing_or_unbalanced_orders_are_rejected(self):
+        for order in (None, ['cli', 'console'], ['cli', 'cli']):
+            sample = trials([1] * 5, [2] * 5)
+            sample[1]['order'] = order
+            with self.subTest(order=order), self.assertRaises(ValueError):
+                acceptance.summarize_upload_trials(sample, 65)
 
     def test_hash_and_size_are_verified_for_each_transfer(self):
         payload = b'paired upload verification'
