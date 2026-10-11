@@ -1,5 +1,5 @@
 {
-  "dateUTC": "2026-10-11T10:14:48.128696+00:00",
+  "dateUTC": "2026-10-11T11:08:46.039330+00:00",
   "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
   "serverSource": "8cc518b31ac8b69c8f855e19b4bd027f44275c47",
   "sdkPin": "v0.0.0-20261009091443-bcc238bc4c2c",
@@ -1306,22 +1306,22 @@
       ],
       "settingsMetrics": {
         "profile": "v1-protected-settings",
-        "rotationShutdownSeconds": 0.04484183294698596
+        "rotationShutdownSeconds": 0.08683641604147851
       },
       "writeMetrics": {
-        "singleUploadSeconds": 0.20943441591225564,
-        "singleDownloadSeconds": 0.1603023330681026,
-        "twoConcurrentUploadSeconds": 0.21520737512037158,
-        "cliMiBPerSecond": 427.87389934856384,
-        "consoleMiBPerSecond": 310.3596881003183,
+        "singleUploadSeconds": 0.2450499169062823,
+        "singleDownloadSeconds": 0.2201136250514537,
+        "twoConcurrentUploadSeconds": 0.3561492918524891,
+        "cliMiBPerSecond": 372.6916422817945,
+        "consoleMiBPerSecond": 265.25207933393756,
         "pairedConsoleToCLIRatios": [
-          0.6356543103819992,
-          0.6325867014218296,
-          0.6780117745520231,
-          0.751376139115561,
-          0.6131968415667547
+          1.0528633655019037,
+          0.4697945699376965,
+          0.45016472966754434,
+          0.7117199562349692,
+          0.8639041331405299
         ],
-        "medianConsoleToCLIRatio": 0.6356543103819992,
+        "medianConsoleToCLIRatio": 0.7117199562349692,
         "throughputAggregation": "median-of-five-counterbalanced-paired-ratios",
         "pairedUploadTrials": [
           {
@@ -1330,12 +1330,12 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.17947458405978978,
-            "consoleUploadSeconds": 0.28234620788134634,
-            "consoleToCLIRatio": 0.6356543103819992,
-            "cliVerificationDownloadSeconds": 0.20986783388070762,
+            "cliUploadSeconds": 0.24374629207886755,
+            "consoleUploadSeconds": 0.231508000055328,
+            "consoleToCLIRatio": 1.0528633655019037,
+            "cliVerificationDownloadSeconds": 0.21468487498350441,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.18205287517048419,
+            "consoleVerificationDownloadSeconds": 0.2201136250514537,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1344,12 +1344,12 @@
               "console",
               "cli"
             ],
-            "consoleUploadSeconds": 0.2433019580785185,
-            "cliUploadSeconds": 0.1539095831103623,
-            "consoleToCLIRatio": 0.6325867014218296,
-            "consoleVerificationDownloadSeconds": 0.1870384169742465,
+            "consoleUploadSeconds": 0.3285019169561565,
+            "cliUploadSeconds": 0.15432841680012643,
+            "consoleToCLIRatio": 0.4697945699376965,
+            "consoleVerificationDownloadSeconds": 0.33277079090476036,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "cliVerificationDownloadSeconds": 0.16374895791523159,
+            "cliVerificationDownloadSeconds": 0.21503695892170072,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1358,12 +1358,12 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.14199899998493493,
-            "consoleUploadSeconds": 0.20943441591225564,
-            "consoleToCLIRatio": 0.6780117745520231,
-            "cliVerificationDownloadSeconds": 0.1455614580772817,
+            "cliUploadSeconds": 0.16682754107750952,
+            "consoleUploadSeconds": 0.3705922078806907,
+            "consoleToCLIRatio": 0.45016472966754434,
+            "cliVerificationDownloadSeconds": 0.2947704999241978,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.14651283412240446,
+            "consoleVerificationDownloadSeconds": 0.23905349988490343,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1372,12 +1372,12 @@
               "console",
               "cli"
             ],
-            "consoleUploadSeconds": 0.20218091714195907,
-            "cliUploadSeconds": 0.15191391692496836,
-            "consoleToCLIRatio": 0.751376139115561,
-            "consoleVerificationDownloadSeconds": 0.1603023330681026,
+            "consoleUploadSeconds": 0.2450499169062823,
+            "cliUploadSeconds": 0.17440691613592207,
+            "consoleToCLIRatio": 0.7117199562349692,
+            "consoleVerificationDownloadSeconds": 0.21743983286432922,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "cliVerificationDownloadSeconds": 0.17128004203550518,
+            "cliVerificationDownloadSeconds": 0.20767779205925763,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1386,49 +1386,49 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.12689125002361834,
-            "consoleUploadSeconds": 0.2069339589215815,
-            "consoleToCLIRatio": 0.6131968415667547,
-            "cliVerificationDownloadSeconds": 0.14668970787897706,
+            "cliUploadSeconds": 0.18000850011594594,
+            "consoleUploadSeconds": 0.20836629113182425,
+            "consoleToCLIRatio": 0.8639041331405299,
+            "cliVerificationDownloadSeconds": 0.1967322500422597,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.1392030417919159,
+            "consoleVerificationDownloadSeconds": 0.20383158279582858,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           }
         ],
         "uploadTrialCount": 5,
         "expectedTransferSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
         "cliUploadTrialsSeconds": [
-          0.17947458405978978,
-          0.1539095831103623,
-          0.14199899998493493,
-          0.15191391692496836,
-          0.12689125002361834
+          0.24374629207886755,
+          0.15432841680012643,
+          0.16682754107750952,
+          0.17440691613592207,
+          0.18000850011594594
         ],
         "consoleUploadTrialsSeconds": [
-          0.28234620788134634,
-          0.2433019580785185,
-          0.20943441591225564,
-          0.20218091714195907,
-          0.2069339589215815
+          0.231508000055328,
+          0.3285019169561565,
+          0.3705922078806907,
+          0.2450499169062823,
+          0.20836629113182425
         ],
         "downloadTrialsSeconds": [
-          0.18205287517048419,
-          0.1870384169742465,
-          0.14651283412240446,
-          0.1603023330681026,
-          0.1392030417919159
+          0.2201136250514537,
+          0.33277079090476036,
+          0.23905349988490343,
+          0.21743983286432922,
+          0.20383158279582858
         ],
         "samplerErrors": [],
-        "rssSampleCount": 36,
+        "rssSampleCount": 43,
         "rssSampleIntervalSeconds": 0.1,
-        "cancellationSeconds": 0.05352762481197715,
+        "cancellationSeconds": 0.04518895805813372,
         "objectSizeMiB": 65,
         "maximumWriteConcurrency": 2,
         "minimumConsoleToCLIRatio": 0.5,
         "minimumUploadMiBPerSecond": 5,
-        "peakConsoleRSSMiB": 100.109375,
-        "cliUploadSeconds": 0.15191391692496836,
-        "activeWriteShutdownSeconds": 0.008734958013519645
+        "peakConsoleRSSMiB": 113.515625,
+        "cliUploadSeconds": 0.17440691613592207,
+        "activeWriteShutdownSeconds": 0.00798283307813108
       }
     },
     {
@@ -1471,22 +1471,22 @@
       ],
       "settingsMetrics": {
         "profile": "v1-protected-settings",
-        "rotationShutdownSeconds": 0.11402012500911951
+        "rotationShutdownSeconds": 0.06474658288061619
       },
       "writeMetrics": {
-        "singleUploadSeconds": 0.2052031671628356,
-        "singleDownloadSeconds": 0.19318808312527835,
-        "twoConcurrentUploadSeconds": 0.20363687491044402,
-        "cliMiBPerSecond": 481.49856997155916,
-        "consoleMiBPerSecond": 316.7592435277586,
+        "singleUploadSeconds": 0.19773995806463063,
+        "singleDownloadSeconds": 0.14974404103122652,
+        "twoConcurrentUploadSeconds": 0.4019400409888476,
+        "cliMiBPerSecond": 410.83552273016585,
+        "consoleMiBPerSecond": 328.7145432626974,
         "pairedConsoleToCLIRatios": [
-          0.6329613173105781,
-          0.733399737167904,
-          0.3566412966666877,
-          0.6171078869645492,
-          0.6784242225809448
+          0.716716959959158,
+          0.8059423862411599,
+          0.6045637867620144,
+          0.8681378513623944,
+          0.873041173296291
         ],
-        "medianConsoleToCLIRatio": 0.6329613173105781,
+        "medianConsoleToCLIRatio": 0.8059423862411599,
         "throughputAggregation": "median-of-five-counterbalanced-paired-ratios",
         "pairedUploadTrials": [
           {
@@ -1495,12 +1495,12 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.1298856670036912,
-            "consoleUploadSeconds": 0.2052031671628356,
-            "consoleToCLIRatio": 0.6329613173105781,
-            "cliVerificationDownloadSeconds": 0.18470045807771385,
+            "cliUploadSeconds": 0.14229083294048905,
+            "consoleUploadSeconds": 0.19853141601197422,
+            "consoleToCLIRatio": 0.716716959959158,
+            "cliVerificationDownloadSeconds": 0.12732266611419618,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.17931224987842143,
+            "consoleVerificationDownloadSeconds": 0.11622445890679955,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1509,12 +1509,12 @@
               "console",
               "cli"
             ],
-            "consoleUploadSeconds": 0.18406770820729434,
-            "cliUploadSeconds": 0.13499520882032812,
-            "consoleToCLIRatio": 0.733399737167904,
-            "consoleVerificationDownloadSeconds": 0.2528634159825742,
+            "consoleUploadSeconds": 0.19324866705574095,
+            "cliUploadSeconds": 0.15574729186482728,
+            "consoleToCLIRatio": 0.8059423862411599,
+            "consoleVerificationDownloadSeconds": 0.15857874997891486,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "cliVerificationDownloadSeconds": 0.24265979207120836,
+            "cliVerificationDownloadSeconds": 0.1515968341846019,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1523,12 +1523,12 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.20734487497247756,
-            "consoleUploadSeconds": 0.5813821251504123,
-            "consoleToCLIRatio": 0.3566412966666877,
-            "cliVerificationDownloadSeconds": 0.2601925421040505,
+            "cliUploadSeconds": 0.15821416699327528,
+            "consoleUploadSeconds": 0.26169970887713134,
+            "consoleToCLIRatio": 0.6045637867620144,
+            "cliVerificationDownloadSeconds": 0.14709895802661777,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.22222641692496836,
+            "consoleVerificationDownloadSeconds": 0.14974404103122652,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1537,12 +1537,12 @@
               "console",
               "cli"
             ],
-            "consoleUploadSeconds": 0.22978775016963482,
-            "cliUploadSeconds": 0.14180383295752108,
-            "consoleToCLIRatio": 0.6171078869645492,
-            "consoleVerificationDownloadSeconds": 0.19132933299988508,
+            "consoleUploadSeconds": 0.197425875114277,
+            "cliUploadSeconds": 0.17139287502504885,
+            "consoleToCLIRatio": 0.8681378513623944,
+            "consoleVerificationDownloadSeconds": 0.14692474994808435,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "cliVerificationDownloadSeconds": 0.18314683390781283,
+            "cliVerificationDownloadSeconds": 0.20189141714945436,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1551,49 +1551,49 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.12147850007750094,
-            "consoleUploadSeconds": 0.17905979184433818,
-            "consoleToCLIRatio": 0.6784242225809448,
-            "cliVerificationDownloadSeconds": 0.19622341683134437,
+            "cliUploadSeconds": 0.1726351249963045,
+            "consoleUploadSeconds": 0.19773995806463063,
+            "consoleToCLIRatio": 0.873041173296291,
+            "cliVerificationDownloadSeconds": 0.1608870830386877,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.19318808312527835,
+            "consoleVerificationDownloadSeconds": 0.1674187919124961,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           }
         ],
         "uploadTrialCount": 5,
         "expectedTransferSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
         "cliUploadTrialsSeconds": [
-          0.1298856670036912,
-          0.13499520882032812,
-          0.20734487497247756,
-          0.14180383295752108,
-          0.12147850007750094
+          0.14229083294048905,
+          0.15574729186482728,
+          0.15821416699327528,
+          0.17139287502504885,
+          0.1726351249963045
         ],
         "consoleUploadTrialsSeconds": [
-          0.2052031671628356,
-          0.18406770820729434,
-          0.5813821251504123,
-          0.22978775016963482,
-          0.17905979184433818
+          0.19853141601197422,
+          0.19324866705574095,
+          0.26169970887713134,
+          0.197425875114277,
+          0.19773995806463063
         ],
         "downloadTrialsSeconds": [
-          0.17931224987842143,
-          0.2528634159825742,
-          0.22222641692496836,
-          0.19132933299988508,
-          0.19318808312527835
+          0.11622445890679955,
+          0.15857874997891486,
+          0.14974404103122652,
+          0.14692474994808435,
+          0.1674187919124961
         ],
         "samplerErrors": [],
-        "rssSampleCount": 40,
+        "rssSampleCount": 35,
         "rssSampleIntervalSeconds": 0.1,
-        "cancellationSeconds": 0.056179042207077146,
+        "cancellationSeconds": 0.05457108304835856,
         "objectSizeMiB": 65,
         "maximumWriteConcurrency": 2,
         "minimumConsoleToCLIRatio": 0.5,
         "minimumUploadMiBPerSecond": 5,
-        "peakConsoleRSSMiB": 101.5,
-        "cliUploadSeconds": 0.13499520882032812,
-        "activeWriteShutdownSeconds": 0.008163624908775091
+        "peakConsoleRSSMiB": 99.5625,
+        "cliUploadSeconds": 0.15821416699327528,
+        "activeWriteShutdownSeconds": 0.008707208093255758
       }
     },
     {
@@ -1636,22 +1636,22 @@
       ],
       "settingsMetrics": {
         "profile": "v1-protected-settings",
-        "rotationShutdownSeconds": 0.11402912484481931
+        "rotationShutdownSeconds": 0.05806504189968109
       },
       "writeMetrics": {
-        "singleUploadSeconds": 0.24804749991744757,
-        "singleDownloadSeconds": 0.29062499990686774,
-        "twoConcurrentUploadSeconds": 0.21912858285941184,
-        "cliMiBPerSecond": 443.5897429321657,
-        "consoleMiBPerSecond": 262.0465839068428,
+        "singleUploadSeconds": 0.18905650009401143,
+        "singleDownloadSeconds": 0.27566208387725055,
+        "twoConcurrentUploadSeconds": 0.23341145808808506,
+        "cliMiBPerSecond": 558.3408987309537,
+        "consoleMiBPerSecond": 343.81256379800584,
         "pairedConsoleToCLIRatios": [
-          0.5228882080549226,
-          0.4980318062059952,
-          0.673597694923276,
-          0.6548710435639395,
-          0.6869787390509584
+          0.6299135760064999,
+          0.602254958399451,
+          0.8122218513208561,
+          0.7584875412825296,
+          0.6156544571360987
         ],
-        "medianConsoleToCLIRatio": 0.6548710435639395,
+        "medianConsoleToCLIRatio": 0.6299135760064999,
         "throughputAggregation": "median-of-five-counterbalanced-paired-ratios",
         "pairedUploadTrials": [
           {
@@ -1660,12 +1660,12 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.14094270789064467,
-            "consoleUploadSeconds": 0.26954654115252197,
-            "consoleToCLIRatio": 0.5228882080549226,
-            "cliVerificationDownloadSeconds": 0.39301762520335615,
+            "cliUploadSeconds": 0.11532116588205099,
+            "consoleUploadSeconds": 0.18307458399794996,
+            "consoleToCLIRatio": 0.6299135760064999,
+            "cliVerificationDownloadSeconds": 0.2582083330489695,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.3671805411577225,
+            "consoleVerificationDownloadSeconds": 0.27566208387725055,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1674,12 +1674,12 @@
               "console",
               "cli"
             ],
-            "consoleUploadSeconds": 0.2757286250125617,
-            "cliUploadSeconds": 0.13732162513770163,
-            "consoleToCLIRatio": 0.4980318062059952,
-            "consoleVerificationDownloadSeconds": 0.2794375841040164,
+            "consoleUploadSeconds": 0.1764333751052618,
+            "cliUploadSeconds": 0.10625787498429418,
+            "consoleToCLIRatio": 0.602254958399451,
+            "consoleVerificationDownloadSeconds": 0.2460572081618011,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "cliVerificationDownloadSeconds": 0.292006874922663,
+            "cliVerificationDownloadSeconds": 0.22585395793430507,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1688,12 +1688,12 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.1546010000165552,
-            "consoleUploadSeconds": 0.2295153341256082,
-            "consoleToCLIRatio": 0.673597694923276,
-            "cliVerificationDownloadSeconds": 0.27822666708379984,
+            "cliUploadSeconds": 0.18643320794217288,
+            "consoleUploadSeconds": 0.2295348341576755,
+            "consoleToCLIRatio": 0.8122218513208561,
+            "cliVerificationDownloadSeconds": 0.3022782909683883,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.29062499990686774,
+            "consoleVerificationDownloadSeconds": 0.2923161250073463,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1702,12 +1702,12 @@
               "console",
               "cli"
             ],
-            "consoleUploadSeconds": 0.24804749991744757,
-            "cliUploadSeconds": 0.1624391251243651,
-            "consoleToCLIRatio": 0.6548710435639395,
-            "consoleVerificationDownloadSeconds": 0.3347777919843793,
+            "consoleUploadSeconds": 0.18905650009401143,
+            "cliUploadSeconds": 0.14339699991978705,
+            "consoleToCLIRatio": 0.7584875412825296,
+            "consoleVerificationDownloadSeconds": 0.32423583418130875,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "cliVerificationDownloadSeconds": 0.35466795903630555,
+            "cliVerificationDownloadSeconds": 0.2591208340600133,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1716,49 +1716,49 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.14653179212473333,
-            "consoleUploadSeconds": 0.21329887490719557,
-            "consoleToCLIRatio": 0.6869787390509584,
-            "cliVerificationDownloadSeconds": 0.23910375009290874,
+            "cliUploadSeconds": 0.1164163330104202,
+            "consoleUploadSeconds": 0.18909362494014204,
+            "consoleToCLIRatio": 0.6156544571360987,
+            "cliVerificationDownloadSeconds": 0.2305158751551062,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.2308566658757627,
+            "consoleVerificationDownloadSeconds": 0.22715458390302956,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           }
         ],
         "uploadTrialCount": 5,
         "expectedTransferSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
         "cliUploadTrialsSeconds": [
-          0.14094270789064467,
-          0.13732162513770163,
-          0.1546010000165552,
-          0.1624391251243651,
-          0.14653179212473333
+          0.11532116588205099,
+          0.10625787498429418,
+          0.18643320794217288,
+          0.14339699991978705,
+          0.1164163330104202
         ],
         "consoleUploadTrialsSeconds": [
-          0.26954654115252197,
-          0.2757286250125617,
-          0.2295153341256082,
-          0.24804749991744757,
-          0.21329887490719557
+          0.18307458399794996,
+          0.1764333751052618,
+          0.2295348341576755,
+          0.18905650009401143,
+          0.18909362494014204
         ],
         "downloadTrialsSeconds": [
-          0.3671805411577225,
-          0.2794375841040164,
-          0.29062499990686774,
-          0.3347777919843793,
-          0.2308566658757627
+          0.27566208387725055,
+          0.2460572081618011,
+          0.2923161250073463,
+          0.32423583418130875,
+          0.22715458390302956
         ],
         "samplerErrors": [],
-        "rssSampleCount": 50,
+        "rssSampleCount": 44,
         "rssSampleIntervalSeconds": 0.1,
-        "cancellationSeconds": 0.05500699998810887,
+        "cancellationSeconds": 0.05629729200154543,
         "objectSizeMiB": 65,
         "maximumWriteConcurrency": 2,
         "minimumConsoleToCLIRatio": 0.5,
         "minimumUploadMiBPerSecond": 5,
-        "peakConsoleRSSMiB": 112.859375,
-        "cliUploadSeconds": 0.14653179212473333,
-        "activeWriteShutdownSeconds": 0.008810665924102068
+        "peakConsoleRSSMiB": 113.40625,
+        "cliUploadSeconds": 0.1164163330104202,
+        "activeWriteShutdownSeconds": 0.008725916966795921
       }
     },
     {
@@ -1801,22 +1801,22 @@
       ],
       "settingsMetrics": {
         "profile": "v1-protected-settings",
-        "rotationShutdownSeconds": 0.07310204114764929
+        "rotationShutdownSeconds": 0.05777445808053017
       },
       "writeMetrics": {
-        "singleUploadSeconds": 0.3054132079705596,
-        "singleDownloadSeconds": 0.32261983305215836,
-        "twoConcurrentUploadSeconds": 0.300741707906127,
-        "cliMiBPerSecond": 357.93189850134894,
-        "consoleMiBPerSecond": 212.82642107038703,
+        "singleUploadSeconds": 0.18833208410069346,
+        "singleDownloadSeconds": 0.27209783298894763,
+        "twoConcurrentUploadSeconds": 0.2444855000358075,
+        "cliMiBPerSecond": 523.9428420259699,
+        "consoleMiBPerSecond": 345.13503267582996,
         "pairedConsoleToCLIRatios": [
-          0.5180321898445647,
-          0.7953012100731602,
-          0.11310476617904207,
-          0.5946003191151318,
-          0.5653369233815154
+          0.6831903162546711,
+          0.7119385464295357,
+          0.6478967757870856,
+          0.5828966294572898,
+          0.6858665823730683
         ],
-        "medianConsoleToCLIRatio": 0.5653369233815154,
+        "medianConsoleToCLIRatio": 0.6831903162546711,
         "throughputAggregation": "median-of-five-counterbalanced-paired-ratios",
         "pairedUploadTrials": [
           {
@@ -1825,12 +1825,12 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.12846708297729492,
-            "consoleUploadSeconds": 0.24799054092727602,
-            "consoleToCLIRatio": 0.5180321898445647,
-            "cliVerificationDownloadSeconds": 0.25239904201589525,
+            "cliUploadSeconds": 0.12405933393165469,
+            "consoleUploadSeconds": 0.1815882499795407,
+            "consoleToCLIRatio": 0.6831903162546711,
+            "cliVerificationDownloadSeconds": 0.27719233301468194,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.2947803749702871,
+            "consoleVerificationDownloadSeconds": 0.27209783298894763,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1839,12 +1839,12 @@
               "console",
               "cli"
             ],
-            "consoleUploadSeconds": 0.28183320886455476,
-            "cliUploadSeconds": 0.2241422920487821,
-            "consoleToCLIRatio": 0.7953012100731602,
-            "consoleVerificationDownloadSeconds": 0.30716679082252085,
+            "consoleUploadSeconds": 0.18379541696049273,
+            "cliUploadSeconds": 0.13085104199126363,
+            "consoleToCLIRatio": 0.7119385464295357,
+            "consoleVerificationDownloadSeconds": 0.2540318330284208,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "cliVerificationDownloadSeconds": 0.33381512481719255,
+            "cliVerificationDownloadSeconds": 0.287793125025928,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1853,12 +1853,12 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.2972176659386605,
-            "consoleUploadSeconds": 2.62780849984847,
-            "consoleToCLIRatio": 0.11310476617904207,
-            "cliVerificationDownloadSeconds": 0.35763316601514816,
+            "cliUploadSeconds": 0.12201975006610155,
+            "consoleUploadSeconds": 0.18833208410069346,
+            "consoleToCLIRatio": 0.6478967757870856,
+            "cliVerificationDownloadSeconds": 0.2884334169793874,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.32261983305215836,
+            "consoleVerificationDownloadSeconds": 0.28812333405949175,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1867,12 +1867,12 @@
               "console",
               "cli"
             ],
-            "consoleUploadSeconds": 0.3054132079705596,
-            "cliUploadSeconds": 0.18159879092127085,
-            "consoleToCLIRatio": 0.5946003191151318,
-            "consoleVerificationDownloadSeconds": 0.381457791198045,
+            "consoleUploadSeconds": 0.20485729188658297,
+            "cliUploadSeconds": 0.11941062496043742,
+            "consoleToCLIRatio": 0.5828966294572898,
+            "consoleVerificationDownloadSeconds": 0.2595672500319779,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "cliVerificationDownloadSeconds": 0.3168274168856442,
+            "cliVerificationDownloadSeconds": 0.2992106669116765,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           },
           {
@@ -1881,60 +1881,60 @@
               "cli",
               "console"
             ],
-            "cliUploadSeconds": 0.17266416689381003,
-            "consoleUploadSeconds": 0.3054181670304388,
-            "consoleToCLIRatio": 0.5653369233815154,
-            "cliVerificationDownloadSeconds": 0.29985404084436595,
+            "cliUploadSeconds": 0.14127308409661055,
+            "consoleUploadSeconds": 0.2059775001835078,
+            "consoleToCLIRatio": 0.6858665823730683,
+            "cliVerificationDownloadSeconds": 0.32313725003041327,
             "cliSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
-            "consoleVerificationDownloadSeconds": 0.3244998340960592,
+            "consoleVerificationDownloadSeconds": 0.3243262921459973,
             "consoleSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1"
           }
         ],
         "uploadTrialCount": 5,
         "expectedTransferSHA256": "d65bd5ff14b9582efe215c7d59fd50dcfe87e3ebdf35a387aa02c1f44d6723b1",
         "cliUploadTrialsSeconds": [
-          0.12846708297729492,
-          0.2241422920487821,
-          0.2972176659386605,
-          0.18159879092127085,
-          0.17266416689381003
+          0.12405933393165469,
+          0.13085104199126363,
+          0.12201975006610155,
+          0.11941062496043742,
+          0.14127308409661055
         ],
         "consoleUploadTrialsSeconds": [
-          0.24799054092727602,
-          0.28183320886455476,
-          2.62780849984847,
-          0.3054132079705596,
-          0.3054181670304388
+          0.1815882499795407,
+          0.18379541696049273,
+          0.18833208410069346,
+          0.20485729188658297,
+          0.2059775001835078
         ],
         "downloadTrialsSeconds": [
-          0.2947803749702871,
-          0.30716679082252085,
-          0.32261983305215836,
-          0.381457791198045,
-          0.3244998340960592
+          0.27209783298894763,
+          0.2540318330284208,
+          0.28812333405949175,
+          0.2595672500319779,
+          0.3243262921459973
         ],
         "samplerErrors": [],
-        "rssSampleCount": 67,
+        "rssSampleCount": 46,
         "rssSampleIntervalSeconds": 0.1,
-        "cancellationSeconds": 0.056242666905745864,
+        "cancellationSeconds": 0.05612495890818536,
         "objectSizeMiB": 65,
         "maximumWriteConcurrency": 2,
         "minimumConsoleToCLIRatio": 0.5,
         "minimumUploadMiBPerSecond": 5,
-        "peakConsoleRSSMiB": 112.625,
-        "cliUploadSeconds": 0.18159879092127085,
-        "activeWriteShutdownSeconds": 0.008597415871918201
+        "peakConsoleRSSMiB": 113.46875,
+        "cliUploadSeconds": 0.12405933393165469,
+        "activeWriteShutdownSeconds": 0.008813166990876198
       }
     }
   ],
   "status": "passed",
-  "scope": "read-only-and-writes",
+  "scope": "read-only-and-writes-and-protected-settings",
   "settingsProfile": "v1-protected-settings",
   "storage": "single-node-four-disk-erasure",
   "harnesses": [
     {
       "name": "test-console-integration.py",
-      "sha256": "6ddc2ea8e39f5e9cc45e29f7841caa3f7797b8d2503ce123bd13892fd6a67371"
+      "sha256": "3e1e49d4d4554504803248586b2a22c6a5dce7373afb090d488212fa1b4647a8"
     },
     {
       "name": "console_write_acceptance.py",

@@ -6,7 +6,7 @@
 
 - OC `RELEASE.2026-10-10T11-42-18Z`，源码 `ee1846d587a6548db4e595d653ca4f54baea2b1a`。
 - OtterIO `RELEASE.2026-10-10T16-38-05Z`，发行资产内嵌的基础 VCS 修订为 `8cc518b31ac8b69c8f855e19b4bd027f44275c47`；构建标记 `vcs.modified=true`，该哈希不能证明发行资产的确切全部源码。
-- macOS arm64；验收程序来自 OC 集成基线 `0a162c82`。
+- macOS arm64；验收程序来自 OC 集成基线 `0a162c82`；本次重生成设置报告包含联合 `--writes --settings` 的 scope 分类修正。
 - 下载 OC 压缩包 SHA-256 `013b08e1c0d66f33202b8fe8e0705d95e0caa0358511ad924bae5b08ab00ca22`，服务端二进制 SHA-256 `48b673ad0e03723eeeedb2ab5773569093b426d8fa04e132d17183ac7afb6f9c`，均与发行校验文件一致。解包后的二进制信息与摘要见机器报告。
 
 服务端两份机器报告的来源分类均为 `verified-base-vcs-revision`。本次没有取得发行构建的源码差异或完整归档；验收结果绑定上述正式发行二进制摘要。复现时应使用同一发行资产并核对 SHA-256，不能将干净检出该基础提交后的构建视为相同被测对象。OC/oc-console 的构建标记为 `vcs.modified=false`。
@@ -15,7 +15,7 @@
 
 `single-http`、`dual-http`、`single-tls`、`dual-tls` 四种组合分别完成：
 
-- 写入与设置：每种 33 组，共 132 组，见 [设置报告](release-pair-settings-results.json)。
+- 写入与设置：每种 33 组，共 132 组，机器分类为 `read-only-and-writes-and-protected-settings`，见 [设置报告](release-pair-settings-results.json)。
 - 存储功能与版本复制：每种 19 组，共 76 组，见 [功能报告](release-pair-features-results.json)。正式服务尚不支持条件 IAM 创建，该路径使用 `--features-iam-create-unsupported` 验证显式拒绝，不能计为 IAM 创建成功。
 
 验收调用 `buildscripts/test-console-integration.py`，两次均指定 `--cli`、`--console`、`--server` 指向上述发行资产，以及 `--server-source` 提供服务端的基础 VCS 修订标签；机器报告同时保留 `vcs.modified=true` 与来源分类，该参数不代表完整源码认证。设置报告使用 `--writes --settings`；功能报告使用 `--features --features-iam-create-unsupported --version-copy`；两者均指定四个场景。脚本自动创建并清理独立夹具。

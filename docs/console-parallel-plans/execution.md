@@ -33,3 +33,5 @@
 #35 拒绝缺失、空、null 或缺必要节点信息的诊断响应，并保留上游合法零值/离线节点协议。#36 无 Range 时忽略 If-Range，避免要求可选 RangeBackend。#38 尚未开始交换的排队刷新取消仅终止该调用，不关闭共享 Grant 或取消正在进行的刷新。#37 无待修正审查建议。
 
 审查修复后的四个代码分支再次组合验收：console/storageclient/consoleapi/oidc 全量 race 与 lint（0 issues）通过。诊断补充正式发行资产的管理员成功/普通 IAM 拒绝回归；OIDC 排队取消回归重复 10 次通过。原始机器报告保留，不把来源说明修正视为重新执行整套发行配对验收。
+
+后续 #34/#36 审查：联合 `--writes --settings` scope 已改为 `read-only-and-writes-and-protected-settings`，使用同一正式资产重新执行四场景 132 组并替换设置报告。#36 校验 GET 版本必须与 HEAD 观察版本一致，空/null 仅相互归一化；同 ETag 的版本变化拒绝且关闭上游响应体，10 组协议回归与全包 race/lint 通过。
