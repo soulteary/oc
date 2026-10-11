@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "platform": "Darwin/arm64",
+  "server": {
+    "source": "bcc238bc4c2cc3a21aae05b23321bfdb1b4aad05",
+    "kind": "module-build",
+    "sourceState": "clean",
+    "sourceBinding": "caller-declared; binary hash recorded separately",
+    "binarySHA256": "e8751160c5350e24fc47542a010cb47c5ae5f50eb59099050ea38a53c1ea7bf9"
+  },
+  "cgo": "unspecified",
+  "checkoutSHA": null,
+  "harnesses": {
+    "test-real-protocol-ci.py": "b900b48f0ba57dfa261460d68682e6d330172be5d4973621fba875d384468962",
+    "test-console-range-real.py": "4cf899f6a5de1ba99d7504c7f885be5a21e656e5910116511f46e76162318cbe",
+    "test-console-range.py": "502fdc8e784ff6d8083fa0477e1ec5b1e4dd689af0bd2b499fe89df176cd4d8d",
+    "test-console-integration.py": "3e1e49d4d4554504803248586b2a22c6a5dce7373afb090d488212fa1b4647a8",
+    "test-console-diagnostics.py": "726759cbd61d542a02073b2a6fe55eaf7999fa8b6caa80fc2f6d52505895bb12",
+    "sts_integration_test.go": "cc79326cebaa1a2bad086b9a64cae515aa237835955762350eb454c61552dad8",
+    "diagnostics_test.go": "a30f9c0e376bddebb98542880dc5f6892660d949e9b2aa6b6895fc8744100fbf"
+  },
+  "checks": [
+    {
+      "name": "range",
+      "exitCode": 1,
+      "elapsedSeconds": 0.962,
+      "status": "failed",
+      "reason": "command-failed",
+      "failedTests": []
+    },
+    {
+      "name": "diagnostics",
+      "exitCode": 0,
+      "elapsedSeconds": 1.748,
+      "status": "passed",
+      "reason": "named-test-ran-and-passed",
+      "test": "TestDiagnosticsRealServer"
+    },
+    {
+      "name": "oidc-sts",
+      "exitCode": 0,
+      "elapsedSeconds": 1.122,
+      "status": "passed",
+      "reason": "named-test-ran-and-passed",
+      "test": "TestOtterIOSTSIntegration"
+    }
+  ],
+  "passed": false,
+  "clientBinarySHA256": {
+    "cli": "1a840018d9cb74ae68da4083580178470aa491739d744c54c43c46e151bf96f1",
+    "console": "943b58919be2a2b2a97751cd956a66a23e7ed4c2b8a934001374b9c065ea3a5d"
+  },
+  "checkoutTree": null,
+  "checkoutState": "modified; exact historical harness tree not retained",
+  "clientSource": {
+    "cli": {
+      "commit": "ee1846d587a6548db4e595d653ca4f54baea2b1a",
+      "tree": "aeb525fae648f692b4e8108da476bba3d8c94d8c",
+      "state": "clean",
+      "kind": "release-asset",
+      "release": "RELEASE.2026-10-10T11-42-18Z"
+    },
+    "console": {
+      "baseCommit": "7d4fb7fb922a9599f8d9805651693c7c20d0a2f1",
+      "baseTree": "edeffb6a0e17edb1a7af70171b852ae92a78b7f8",
+      "tree": null,
+      "state": "modified",
+      "kind": "local-build",
+      "exactSourceRecoverable": false
+    },
+    "evidence": "Retained original binaries match clientBinarySHA256. go version -m records CLI vcs.revision=ee1846d587a6548db4e595d653ca4f54baea2b1a/vcs.modified=false and console vcs.revision=7d4fb7fb922a9599f8d9805651693c7c20d0a2f1/vcs.modified=true. Base tree is not the modified tree."
+  },
+  "acceptanceBaselineEligible": false,
+  "interpretation": "Historical failed fixture evidence only. Exact modified console and harness trees were not retained; do not infer flakiness or source equivalence from the later passing report, and do not use this artifact as task 07 source-combination certification."
+}

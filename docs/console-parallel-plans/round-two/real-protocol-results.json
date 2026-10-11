@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "platform": "Darwin/arm64",
+  "server": {
+    "source": "bcc238bc4c2cc3a21aae05b23321bfdb1b4aad05",
+    "kind": "module-build",
+    "sourceState": "clean",
+    "sourceBinding": "caller-declared; binary hash recorded separately",
+    "binarySHA256": "e8751160c5350e24fc47542a010cb47c5ae5f50eb59099050ea38a53c1ea7bf9"
+  },
+  "cgo": "unspecified",
+  "checkoutSHA": "eb46cf029de17260333ed586cdefcba21ba93ff8",
+  "harnesses": {
+    "test-real-protocol-ci.py": "04ed0f48f7f0ec789109c343603351b388ba2a40c88aac7c22aff99da2030c0b",
+    "test-console-range-real.py": "c73ab929de6933ea21a83be080e949c1e8b456187ec43781abdc5a23420f8a8d",
+    "test-console-range.py": "502fdc8e784ff6d8083fa0477e1ec5b1e4dd689af0bd2b499fe89df176cd4d8d",
+    "test-console-integration.py": "3e1e49d4d4554504803248586b2a22c6a5dce7373afb090d488212fa1b4647a8",
+    "test-console-diagnostics.py": "726759cbd61d542a02073b2a6fe55eaf7999fa8b6caa80fc2f6d52505895bb12",
+    "sts_integration_test.go": "cc79326cebaa1a2bad086b9a64cae515aa237835955762350eb454c61552dad8",
+    "diagnostics_test.go": "a30f9c0e376bddebb98542880dc5f6892660d949e9b2aa6b6895fc8744100fbf"
+  },
+  "checks": [
+    {
+      "name": "range",
+      "exitCode": 0,
+      "elapsedSeconds": 3.815,
+      "status": "passed",
+      "reason": "all-profiles-and-version-denial",
+      "profiles": [
+        {
+          "profile": "single-http",
+          "checks": 9,
+          "fixtureBytes": 1048576,
+          "sha256": "aca1cd027e979588d14b877b7b0cb8585ad9fec599eb45801992ee5382b3760f",
+          "emptyObjectChecks": 2,
+          "nullVersionStatus": 206,
+          "historicalVersionStatus": 206,
+          "restrictedCurrentStatus": 206,
+          "restrictedHistoricalStatus": 403,
+          "restrictedConditionalFullStatus": 200,
+          "restrictedIfRangeFallbackStatus": 200
+        },
+        {
+          "profile": "dual-http",
+          "checks": 9,
+          "fixtureBytes": 1048576,
+          "sha256": "aca1cd027e979588d14b877b7b0cb8585ad9fec599eb45801992ee5382b3760f",
+          "emptyObjectChecks": 2,
+          "nullVersionStatus": 206,
+          "historicalVersionStatus": 206,
+          "restrictedCurrentStatus": 206,
+          "restrictedHistoricalStatus": 403,
+          "restrictedConditionalFullStatus": 200,
+          "restrictedIfRangeFallbackStatus": 200
+        },
+        {
+          "profile": "dual-tls",
+          "checks": 9,
+          "fixtureBytes": 1048576,
+          "sha256": "aca1cd027e979588d14b877b7b0cb8585ad9fec599eb45801992ee5382b3760f",
+          "emptyObjectChecks": 2,
+          "nullVersionStatus": 206,
+          "historicalVersionStatus": 206,
+          "restrictedCurrentStatus": 206,
+          "restrictedHistoricalStatus": 403,
+          "restrictedConditionalFullStatus": 200,
+          "restrictedIfRangeFallbackStatus": 200
+        }
+      ]
+    },
+    {
+      "name": "diagnostics",
+      "exitCode": 0,
+      "elapsedSeconds": 2.649,
+      "status": "passed",
+      "reason": "named-test-ran-and-passed",
+      "test": "TestDiagnosticsRealServer"
+    },
+    {
+      "name": "oidc-sts",
+      "exitCode": 0,
+      "elapsedSeconds": 1.387,
+      "status": "passed",
+      "reason": "named-test-ran-and-passed",
+      "test": "TestOtterIOSTSIntegration"
+    }
+  ],
+  "passed": true,
+  "clientBinarySHA256": {
+    "cli": "5cc31233051099e52c0d524fafd5d803669988ee6de036afb15ffcd72925a359",
+    "console": "ece45f7ec9dd5cd070a50e31ed85cd9ab111a2dfcdeffc5b3fe342d208cab15c"
+  },
+  "checkoutTree": "82b9ea3f244ebdcae2acba2ddc04c0329e41386a",
+  "checkoutState": "clean",
+  "clientSource": {
+    "commit": "9df4ea4ec766b126d1f983a7406d114741b1e26e",
+    "tree": "d701f85cf7ccb7155208a9c4bc158c3a7825492f",
+    "state": "clean",
+    "evidence": "Both client binaries embed vcs.revision=9df4ea4ec766b126d1f983a7406d114741b1e26e and vcs.modified=false; binary SHA256 matches this report.",
+    "ref": "refs/heads/test/console-round-two-baseline"
+  }
+}
