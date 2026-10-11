@@ -597,3 +597,34 @@ func TestOIDCReadyArchiveDownloadSurvivesOldGenerationExpiry(t *testing.T) {
 		})
 	}
 }
+
+func TestOIDCCompletedArchiveOutlivesPreparingGeneration(t *testing.T) {
+	s, dir := archiveServer(t, &archiveBackend{}, 16)
+	cookie, reply := signIn(t, s)
+	root := s.sessions[sha256.Sum256([]byte(cookie.Value))]
+	manager := newOIDCGenerations(root.ctx, root.runtime, root.expires, root.expires)
+	root.oidc = &oidcSession{grant: &oidc.Grant{}, generations: manager}
+	old := manager.current
+	info := startArchive(t, s, cookie, reply.CSRFToken, `{"refs":[{"bucket":"bucket","key":"one"}]}`)
+	if ready := awaitArchive(t, s, cookie, info.ID); ready.Status != "ready" {
+		t.Fatal(ready)
+	}
+	if err := manager.refresh(context.Background(), func(context.Context) (sessionRuntime, time.Time, error) {
+		return sessionRuntime{backend: &archiveBackend{}, lifetime: &backendLifetime{cleanup: func() {}}}, root.expires, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	old.cancel()
+	s.mu.Lock()
+	task := s.archives[info.ID]
+	alive := task.ctx.Err() == nil && task.info.Status == "ready" && task.path != ""
+	s.mu.Unlock()
+	if !alive {
+		t.Fatal("completed archive inherited expired preparation credentials")
+	}
+	w := archiveRequest(s, cookie, "", http.MethodGet, "/api/archives/"+info.ID+"/download", "")
+	if w.Code != 200 {
+		t.Fatalf("download=%d %s", w.Code, w.Body.String())
+	}
+	assertArchiveClean(t, s, dir)
+}

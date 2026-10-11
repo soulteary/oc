@@ -158,7 +158,7 @@ func (s *Server) serveArchives(w http.ResponseWriter, r *http.Request) {
 		// A completed ZIP needs no old-generation storage credentials. Bind
 		// its download to the acquired session while preserving archive expiry.
 		task.cancel()
-		task.ctx, task.cancel = context.WithDeadline(sess.ctx, task.info.Expires)
+		task.ctx, task.cancel = context.WithDeadline(sess.oidc.generations.ctx, task.info.Expires)
 		task.owner = sess
 	}
 	task.info.Status = "downloading"
@@ -476,6 +476,12 @@ func (s *Server) prepareArchive(task *archiveTask, reader consoleapi.ReferenceBa
 	}
 	s.mu.Lock()
 	if task.ctx.Err() == nil && task.info.Status == "running" {
+		if task.owner.oidc != nil {
+			// Storage work has finished. Keep the ZIP for the browser session,
+			// independent of the credentials used to prepare its contents.
+			task.cancel()
+			task.ctx, task.cancel = context.WithDeadline(task.owner.oidc.generations.ctx, task.info.Expires)
+		}
 		task.info.Status = "ready"
 	} else {
 		failure = task.ctx.Err()
