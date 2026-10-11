@@ -73,7 +73,9 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
                     time.sleep(0.05)
                 else:
                     raise RuntimeError('console startup')
-                command = [sys.executable, 'buildscripts/test-console-range.py', '--console-url', fields['URL'], '--login-code', fields['Login code'], '--object-path', '/api/download?' + urllib.parse.urlencode({'bucket': 'range-fixture', 'key': key}), '--fixture', str(fixture)]
+                # URL-safe random login codes can begin with '-'. Bind the value
+                # to its option so argparse cannot interpret it as another flag.
+                command = [sys.executable, 'buildscripts/test-console-range.py', '--console-url', fields['URL'], '--login-code=' + fields['Login code'], '--object-path', '/api/download?' + urllib.parse.urlencode({'bucket': 'range-fixture', 'key': key}), '--fixture', str(fixture)]
                 phase = 'range-conditions'
                 out = subprocess.run(command, env=env, capture_output=True, text=True)
                 assert out.returncode == 0, out.stderr

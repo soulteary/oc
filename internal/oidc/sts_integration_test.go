@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -101,14 +102,27 @@ func TestOtterIOSTSIntegration(t *testing.T) {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	// Storage health becomes ready before asynchronous IAM/STS initialization.
+	// Storage health and invalid-token rejection both become ready before
+	// asynchronous IAM policy loading. A valid readonly exchange also requires
+	// the built-in policy to be present, so it is the readiness boundary needed
+	// by the authorization checks below. Credentials remain in this disposable
+	// server and are never included in the evidence log.
+	probeToken := sign(f.key, map[string]any{
+		"iss": f.server.URL, "aud": "console", "sub": "readiness",
+		"exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(),
+		"policy": "readonly",
+	})
+	probeForm := url.Values{
+		"Action": {"AssumeRoleWithWebIdentity"}, "Version": {"2011-06-15"},
+		"WebIdentityToken": {probeToken},
+	}.Encode()
 	for {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader("Action=AssumeRoleWithWebIdentity&Version=2011-06-15&WebIdentityToken=invalid"))
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(probeForm))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		res, err := f.server.Client().Do(req)
 		if err == nil {
 			_ = res.Body.Close()
-			if res.StatusCode == 400 {
+			if res.StatusCode == http.StatusOK {
 				break
 			}
 		}
