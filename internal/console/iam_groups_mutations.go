@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/soulteary/mc/internal/consoleapi"
@@ -13,7 +15,15 @@ import (
 
 // iamGroupMutationPlan captures scope before any write. No response can replace
 // this trusted retirement set, including a lost acknowledgement or expired proof.
+type iamGroupPlanUse struct {
+	mu   sync.Mutex
+	used bool
+}
 type iamGroupMutationPlan struct {
+	owner    *session
+	backend  consoleapi.IAMRelationshipGroupsBackend
+	owned    consoleapi.Backend
+	use      *iamGroupPlanUse
 	args     consoleapi.IAMActionRequest
 	relation consoleapi.IAMRelationships
 	scopes   []identityScope
@@ -27,9 +37,17 @@ func validPreparedGroupAction(args consoleapi.IAMActionRequest) bool {
 	}
 	return false
 }
-func prepareIAMGroupMutation(ctx context.Context, backend consoleapi.IAMRelationshipsBackend, args consoleapi.IAMActionRequest) (iamGroupMutationPlan, error) {
+func prepareIAMGroupMutation(ctx context.Context, sess *session, args consoleapi.IAMActionRequest) (iamGroupMutationPlan, error) {
 	var plan iamGroupMutationPlan
-	if backend == nil || !validPreparedGroupAction(args) {
+	if sess == nil || sess.oidc != nil || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || sess.ctx == nil || sess.ctx.Err() != nil || !validPreparedGroupAction(args) {
+		return plan, errUnknownIdentityScope
+	}
+	backend, ok := sess.runtime.backend.(consoleapi.IAMRelationshipsBackend)
+	if !ok {
+		return plan, errUnknownIdentityScope
+	}
+	mutationBackend, ok := sess.runtime.backend.(consoleapi.IAMRelationshipGroupsBackend)
+	if !ok {
 		return plan, errUnknownIdentityScope
 	}
 	targetBackend, ok := backend.(interface{ IAMStorageTarget() string })
@@ -100,7 +118,7 @@ func prepareIAMGroupMutation(ctx context.Context, backend consoleapi.IAMRelation
 	args.Members = append([]string{}, args.Members...)
 	args.Policies = append([]string(nil), args.Policies...)
 	relation.AffectedAccessKeys = keys
-	return iamGroupMutationPlan{args: args, relation: relation, scopes: append([]identityScope{}, scopes...), expires: expires}, nil
+	return iamGroupMutationPlan{owner: sess, backend: mutationBackend, owned: sess.runtime.backend, use: &iamGroupPlanUse{}, args: args, relation: relation, scopes: append([]identityScope{}, scopes...), expires: expires}, nil
 }
 func (plan iamGroupMutationPlan) responseMatches(result consoleapi.IAMGroupMutationResult) bool {
 	if result.Group.Members == nil || result.Group.Policies == nil {
@@ -146,7 +164,19 @@ func (plan iamGroupMutationPlan) responseMatches(result consoleapi.IAMGroupMutat
 
 // executeIAMGroupMutation is intentionally unregistered. The dispatcher may
 // call it only after native actor/write/CSRF checks and protocol capability gating.
-func (s *Server) executeIAMGroupMutation(w http.ResponseWriter, r *http.Request, sess *session, backend consoleapi.IAMRelationshipGroupsBackend, plan iamGroupMutationPlan) {
+func (s *Server) executeIAMGroupMutation(w http.ResponseWriter, r *http.Request, sess *session, plan iamGroupMutationPlan) {
+	if plan.use == nil || plan.owner != sess || sess == nil || sess.oidc != nil || !consoleapi.ValidIAMAccessKey(sess.nativeUser) || !sameOwnedIAMGroupBackend(sess.runtime.backend, plan.owned) || plan.backend == nil {
+		writeError(w, 409, "identity_plan_invalid", "Prepare a new group change in this session.")
+		return
+	}
+	plan.use.mu.Lock()
+	if plan.use.used {
+		plan.use.mu.Unlock()
+		writeError(w, 409, "identity_plan_consumed", "Prepare a new group change.")
+		return
+	}
+	plan.use.used = true
+	plan.use.mu.Unlock()
 	if plan.expires.IsZero() || !time.Now().Before(plan.expires) {
 		writeError(w, 409, "identity_impact_expired", "Reload group relationships before changing this group.")
 		return
@@ -158,10 +188,10 @@ func (s *Server) executeIAMGroupMutation(w http.ResponseWriter, r *http.Request,
 	revoke := false
 	finish := func() { mutation.finish(revoke) }
 	defer finish()
-	result, err := backend.IAMMutateRelationshipGroup(r.Context(), plan.args, plan.relation)
+	result, err := plan.backend.IAMMutateRelationshipGroup(r.Context(), plan.args, plan.relation)
 	if err != nil {
 		var failure *consoleapi.Error
-		if errors.As(err, &failure) && failure.Code != "outcome_unknown" {
+		if errors.As(err, &failure) && failure != nil && failure.Code != "outcome_unknown" && ((failure.Status >= 400 && failure.Status < 500) || failure.Status == 501) {
 			finish()
 			writeBackendError(w, failure)
 			return
@@ -186,4 +216,9 @@ func (s *Server) executeIAMGroupMutation(w http.ResponseWriter, r *http.Request,
 		consoleapi.IAMGroupMutationResult
 		LoginRequired bool `json:"loginRequired"`
 	}{result, loginRequired})
+}
+
+func sameOwnedIAMGroupBackend(a, b consoleapi.Backend) bool {
+	kind := reflect.TypeOf(a)
+	return kind != nil && kind.Comparable() && a == b
 }
