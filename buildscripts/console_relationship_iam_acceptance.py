@@ -5,6 +5,7 @@ from pathlib import Path
 import secrets
 import ssl
 import subprocess
+import sys
 import time
 import urllib.parse
 
@@ -39,6 +40,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
     policies, groups = [], []
     processes = []
     child = None
+    own_cleanup = {'status': 'running', 'processes': [], 'errors': []}
     config_path = root / 'config' / 'config.json'
     original_config = config_path.read_bytes()
 
@@ -62,7 +64,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         if writes:
             command.append('--allow-writes')
         process = subprocess.Popen(command, env=env, stdout=log, stderr=log)
-        processes.append((process, log))
+        processes.append((process, log, 'native-writer' if writes else 'native-readonly'))
         deadline = time.monotonic() + 15
         while 'URL: ' not in destination.read_text():
             if process.poll() is not None or time.monotonic() >= deadline:
@@ -139,7 +141,7 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
             login('target');target('/api/session');target_second('/api/session');unrelated('/api/session')
             browser(base, tls_context)('/api/login', 'POST', {'accessKey': names['target'], 'secretKey': candidate}, expected=401)
             checks.append('real legacy server missing coupled relationship capability rejects secret/binding mutations; original credentials and sessions remain valid')
-            return {'capabilityMode': 'expected-unsupported', 'unsupportedActionsPassed': ['user.rotate', 'user.policies'], 'positiveMutationCoverage': []}
+            return {'processCleanup': own_cleanup, 'capabilityMode': 'expected-unsupported', 'unsupportedActionsPassed': ['user.rotate', 'user.policies'], 'positiveMutationCoverage': []}
 
         # Real child credential exists, but native browser login intentionally accepts only IAM users.
         created = action(manager, {'action': 'service-account.create', 'user': names['target'], 'confirmTarget': names['target']})
@@ -290,34 +292,57 @@ def verify_relationship_iam(args, root, cli, browser, stop, certificate, free_po
         cli('admin', 'user', 'add', 'store', names['manager'], secrets_by_role['manager'])
         manager('/api/session', expected=401);manager_second('/api/session', expected=401)
         unrelated('/api/session');target('/api/session')
-        login('manager')
         checks.append('administrator self rotation acknowledges loginRequired; new secret works, restoring original credentials cannot revive original cookies and unrelated users remain available')
-        return {'capabilityMode': 'required-supported', 'positiveMutationCoverage': ['user.rotate-other', 'user.rotate-self', 'disabled-user.rotate', 'user.policies', 'group.policies', 'group.status-members-delete', 'service-account.status-secret-policy-delete'], 'serviceChildBrowserSessions': 'unsupported: native service login is rejected, not counted as retirement coverage', 'serviceChildSignedS3': 'parent secret rotation retains authorized read; policy narrowing retains read and denies write', 'tls': 'verified independent fixture browser and storage/Admin CA'}
+        return {'processCleanup': own_cleanup, 'capabilityMode': 'required-supported', 'positiveMutationCoverage': ['user.rotate-other', 'user.rotate-self', 'disabled-user.rotate', 'user.policies', 'group.policies', 'group.status-members-delete', 'service-account.status-secret-policy-delete'], 'serviceChildBrowserSessions': 'unsupported: native service login is rejected, not counted as retirement coverage', 'serviceChildSignedS3': 'parent secret rotation retains authorized read; policy narrowing retains read and denies write', 'tls': 'verified independent fixture browser and storage/Admin CA'}
     finally:
-        for process, log in reversed(processes):
-            stop(process)
-            log.close()
-        # Restore the fixture IAM set before other acceptance phases run.
+        primary_error = sys.exc_info()[0] is not None
+        for process, log, label in reversed(processes):
+            try:
+                stop(process)
+                if process.poll() is None:
+                    raise RuntimeError('temporary native process remains active')
+                own_cleanup['processes'].append({'component': label, 'stopped': True})
+            except Exception as error:
+                own_cleanup['errors'].append({'component': label, 'errorClass': type(error).__name__})
+            try:
+                log.close()
+            except Exception as error:
+                own_cleanup['errors'].append({'component': 'native-log', 'errorClass': type(error).__name__})
+
+        def cleanup_step(component, callback):
+            try:
+                callback()
+            except Exception as error:
+                own_cleanup['errors'].append({'component': component, 'errorClass': type(error).__name__})
+
+        # Restore each independent fixture resource even if another cleanup failed.
         if child:
             config = json.loads(original_config)
             config['aliases']['relationship-manager'] = {**config['aliases']['store'], 'accessKey': names['manager'], 'secretKey': secrets_by_role['manager']}
-            config_path.write_text(json.dumps(config))
-            config_path.chmod(0o600)
-            try:
-                cli('admin', 'user', 'svcacct', 'rm', 'relationship-manager', child['accessKey'])
-            finally:
-                config_path.write_bytes(original_config)
+            def remove_child():
+                config_path.write_text(json.dumps(config))
                 config_path.chmod(0o600)
-            cli('rm', 'store/' + bucket + '/' + prefix + '-child.txt')
+                try:
+                    cli('admin', 'user', 'svcacct', 'rm', 'relationship-manager', child['accessKey'])
+                finally:
+                    config_path.write_bytes(original_config)
+                    config_path.chmod(0o600)
+            cleanup_step('service-child', remove_child)
+            cleanup_step('child-object', lambda: cli('rm', 'store/' + bucket + '/' + prefix + '-child.txt'))
         for group in groups:
-            cli('admin', 'group', 'remove', 'store', group, names['target'])
-            cli('admin', 'group', 'remove', 'store', group)
+            cleanup_step('group-members', lambda group=group: cli('admin', 'group', 'remove', 'store', group, names['target']))
+            cleanup_step('group', lambda group=group: cli('admin', 'group', 'remove', 'store', group))
         for name in names.values():
-            cli('admin', 'user', 'remove', 'store', name)
+            cleanup_step('user', lambda name=name: cli('admin', 'user', 'remove', 'store', name))
         for policy in policies:
-            cli('admin', 'policy', 'remove', 'store', policy)
-        config_path.write_bytes(original_config)
-        config_path.chmod(0o600)
+            cleanup_step('policy', lambda policy=policy: cli('admin', 'policy', 'remove', 'store', policy))
+        cleanup_step('fixture-config', lambda: config_path.write_bytes(original_config))
+        cleanup_step('fixture-config-mode', lambda: config_path.chmod(0o600))
         for log in root.glob('relationship*console.log'):
-            if any(value and value in log.read_text() for value in credentials):
-                raise RuntimeError('relationship Console log disclosed fixture credentials')
+            def inspect_log(log=log):
+                if any(value and value in log.read_text() for value in credentials):
+                    raise RuntimeError('relationship Console log disclosed fixture credentials')
+            cleanup_step('protected-log', inspect_log)
+        own_cleanup['status'] = 'failed' if own_cleanup['errors'] else 'passed'
+        if own_cleanup['errors'] and not primary_error:
+            raise RuntimeError('temporary relationship fixture cleanup failed') from None
