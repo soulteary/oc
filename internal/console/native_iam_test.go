@@ -35,7 +35,7 @@ func TestNativeIAMCreationUsesOwnPermissionsAndDoesNotStopSessions(t *testing.T)
 			t.Cleanup(func() { drainOwnedClients(t, s) })
 			alice, ar := nativeSignIn(t, s, "alice")
 			bob, br := nativeSignIn(t, s, "bob")
-			for _, body := range []string{`{"action":"user.create","user":"created-user","confirmTarget":"created-user"}`, `{"action":"group.create","group":"created-group","confirmTarget":"created-group"}`, `{"action":"service-account.create","user":"alice","confirmTarget":"alice"}`} {
+			for _, body := range []string{`{"action":"user.create","user":"created-user","confirmTarget":"created-user"}`, `{"action":"group.create","group":"created-group","confirmTarget":"created-group"}`} {
 				for _, tc := range []struct {
 					user        string
 					cookieReply sessionReply

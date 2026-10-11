@@ -166,6 +166,11 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		s.executeIAMUserMutation(w, r, sess, plan)
 		return
 	}
+	if s.nativeLogin != nil && args.Action == "service-account.create" {
+		s.createNativeServiceAccount(w, r, sess, args)
+		args.SecretKey = ""
+		return
+	}
 	// Local IAM edits can invalidate the shared identity and reserve every
 	// write slot. Native creation uses one ordinary slot;
 	// conditional creation must not replace existing identities.
