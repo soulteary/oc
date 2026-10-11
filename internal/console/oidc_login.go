@@ -242,6 +242,15 @@ func (s *Server) watchOIDC(hash [32]byte, sess *session) {
 		manager.mu.Lock()
 		g := manager.current
 		manager.mu.Unlock()
+		// Credentials that already reach the immutable login deadline cannot
+		// be extended. Keep them usable until expiry without an IdP exchange.
+		if !g.expires.Before(manager.deadline) {
+			select {
+			case <-g.ctx.Done():
+			case <-manager.ctx.Done():
+			}
+			return
+		}
 		remaining := time.Until(g.expires)
 		advance := remaining / 3
 		if advance > 30*time.Second {

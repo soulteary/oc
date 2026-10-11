@@ -246,3 +246,33 @@ func TestOIDCInvalidCallbacksDoNotSpendLoginBudget(t *testing.T) {
 		t.Fatal("login-start rate limit removed")
 	}
 }
+
+func TestOIDCTerminalGenerationRemainsUsableUntilDeadline(t *testing.T) {
+	s := oidcTestServer(t)
+	deadline := time.Now().Add(300 * time.Millisecond)
+	runtime := sessionRuntime{backend: &fakeBackend{}, identity: "terminal", lifetime: &backendLifetime{cleanup: func() {}}}
+	manager := newOIDCGenerations(s.life, runtime, deadline, deadline)
+	sess := &session{runtime: runtime, ctx: manager.ctx, cancel: manager.cancel, expires: deadline, oidc: &oidcSession{generations: manager, grant: &oidc.Grant{}}}
+	hash := sha256.Sum256([]byte("terminal-generation"))
+	s.mu.Lock()
+	s.sessions[hash] = sess
+	s.workers.Add(1)
+	s.mu.Unlock()
+	go s.watchOIDC(hash, sess)
+	// The old watcher attempts a refresh at two thirds of this lifetime.
+	// This deliberately has no refresh-capable grant: no exchange is valid.
+	time.Sleep(240 * time.Millisecond)
+	s.mu.Lock()
+	present := s.sessions[hash] == sess
+	s.mu.Unlock()
+	if !present || manager.ctx.Err() != nil {
+		t.Fatal("terminal credentials retired before immutable expiry")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	select {
+	case <-manager.ctx.Done():
+	case <-ctx.Done():
+		t.Fatal("terminal session exceeded deadline")
+	}
+}

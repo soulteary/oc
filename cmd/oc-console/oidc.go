@@ -138,7 +138,8 @@ func runOIDC(ctx context.Context, opts options, output io.Writer) error {
 	storage, _ := url.Parse(cfg.S3URL)
 	issuerOrigin := oidcOrigin(issuer)
 	storageOrigin := oidcOrigin(storage)
-	if issuerOrigin == storageOrigin {
+	admin, _ := url.Parse(cfg.AdminURL)
+	if issuerOrigin == storageOrigin || issuerOrigin == oidcOrigin(admin) {
 		return errors.New("identity provider and storage must use separate origins")
 	}
 	secret, err := readOIDCSecret(opts.oidcSecretFile)

@@ -2,12 +2,16 @@
 package main
 
 import (
+	"context"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestOIDCSecretFile(t *testing.T) {
@@ -121,5 +125,22 @@ func TestOIDCOriginEquivalentSpellings(t *testing.T) {
 	b, _ := url.Parse("https://idp.example")
 	if oidcOrigin(a) == oidcOrigin(b) {
 		t.Fatal("different ports share trust")
+	}
+}
+
+func TestOIDCRejectsIssuerAsEitherStorageEndpoint(t *testing.T) {
+	for _, endpoint := range []string{"s3", "admin"} {
+		opts := options{authMode: "oidc", dataDir: t.TempDir(), sessionTTL: time.Minute, oidcIssuer: "https://IDP.example:443", s3URL: "https://s3.example", adminURL: "https://admin.example", publicURL: "https://console.example", address: "127.0.0.1:9090", tlsCert: "public.crt", tlsKey: "private.key"}
+		if endpoint == "s3" {
+			opts.s3URL = "https://idp.example"
+		} else {
+			opts.adminURL = "https://idp.example"
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := runOIDC(ctx, opts, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "separate origins") {
+			t.Fatalf("issuer accepted as %s endpoint: %v", endpoint, err)
+		}
 	}
 }
