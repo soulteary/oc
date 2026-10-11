@@ -96,12 +96,23 @@ func (m *oidcGenerations) refresh(ctx context.Context, build func(context.Contex
 		m.current = next
 		m.all = append(m.all, next)
 	}
+	// Publish failure atomically before waking waiters. A failed exchange must
+	// never leave a window where a waiter observes success on the old login.
+	var failedGenerations []*oidcGeneration
+	if err != nil {
+		m.closed = true
+		m.cancel()
+		failedGenerations = append([]*oidcGeneration(nil), m.all...)
+	}
 	m.flight = nil
 	close(flight)
 	m.mu.Unlock()
 	if err != nil {
+		for _, g := range failedGenerations {
+			g.cancel()
+			g.runtime.retire()
+		}
 		candidate.retire()
-		m.close()
 		return err
 	}
 	old.runtime.retire()

@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -138,4 +139,67 @@ func TestOIDCGenerationRefreshCannotExtendFixedDeadline(t *testing.T) {
 	if _, err := m.acquire(); err == nil {
 		t.Fatal("expired session accepted operation")
 	}
+}
+
+func TestOIDCFailedRefreshPublishesFailureBeforeWakingWaiters(t *testing.T) {
+	m := newOIDCGenerations(context.Background(), sessionRuntime{}, time.Now().Add(time.Minute), time.Now().Add(time.Minute))
+	candidate := sessionRuntime{lifetime: &backendLifetime{}}
+	// Deliberately block candidate retirement after exchange completion. Failure
+	// must already be authoritative before any cleanup can finish.
+	candidate.lifetime.mu.Lock()
+	started, finish, done := make(chan struct{}), make(chan struct{}), make(chan error)
+	go func() {
+		done <- m.refresh(context.Background(), func(context.Context) (sessionRuntime, time.Time, error) {
+			close(started)
+			<-finish
+			return candidate, time.Time{}, errOIDCSession
+		})
+	}()
+	<-started
+	m.mu.Lock()
+	flight := m.flight
+	m.mu.Unlock()
+	waiterCtx := &refreshWaitObserver{Context: context.Background(), observed: make(chan struct{})}
+	waiter := make(chan error)
+	go func() {
+		waiter <- m.refresh(waiterCtx, func(context.Context) (sessionRuntime, time.Time, error) {
+			t.Error("waiter started a second exchange")
+			return sessionRuntime{}, time.Time{}, errOIDCSession
+		})
+	}()
+	<-waiterCtx.observed
+	close(finish)
+	<-flight
+	if err := <-waiter; err == nil {
+		candidate.lifetime.mu.Unlock()
+		<-done
+		t.Fatal("failed exchange waiter returned success")
+	}
+	m.mu.Lock()
+	closed := m.closed
+	m.mu.Unlock()
+	if !closed {
+		candidate.lifetime.mu.Unlock()
+		<-done
+		t.Fatal("waiters woke before failure became authoritative")
+	}
+	if _, err := m.acquire(); err == nil {
+		t.Fatal("old credentials accepted after refresh failure")
+	}
+	candidate.lifetime.mu.Unlock()
+	if err := <-done; err == nil {
+		t.Fatal("failed refresh succeeded")
+	}
+}
+
+// Done observation provides a deterministic barrier at the flight wait select.
+type refreshWaitObserver struct {
+	context.Context
+	observed chan struct{}
+	once     sync.Once
+}
+
+func (c *refreshWaitObserver) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.observed) })
+	return c.Context.Done()
 }

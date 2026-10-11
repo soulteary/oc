@@ -776,7 +776,7 @@ func (s *Server) removeSessionLocked(token [32]byte, sess *session) {
 
 func (s *Server) authenticate(r *http.Request) (*session, [32]byte) {
 	if pinned, ok := r.Context().Value(oidcRequestKey{}).(oidcRequestSession); ok {
-		if pinned.sess.ctx.Err() != nil {
+		if pinned.sess.ctx.Err() != nil || !time.Now().Before(pinned.sess.expires) {
 			return nil, pinned.hash
 		}
 		return pinned.sess, pinned.hash

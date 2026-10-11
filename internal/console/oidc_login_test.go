@@ -144,7 +144,18 @@ func TestOIDCRefreshAndLogoutKeepOtherUserIsolated(t *testing.T) {
 	s.removeSessionLocked(firstHash, first)
 	s.mu.Unlock()
 	if second.ctx.Err() != nil {
-		t.Fatal("other user's session cancelled")
+		t.Fatal("other user's session canceled")
 	}
 	probe(bToken, "second")
+}
+
+func TestOIDCPinnedRequestRejectsAbsoluteExpiryBeforeTimerRuns(t *testing.T) {
+	s := oidcTestServer(t)
+	// An uncanceled context models a deadline timer awaiting scheduler time.
+	sess := &session{ctx: context.Background(), expires: time.Now().Add(-time.Second)}
+	r := oidcRequest("/api/session")
+	r = r.WithContext(context.WithValue(r.Context(), oidcRequestKey{}, oidcRequestSession{sess: sess}))
+	if authenticated, _ := s.authenticate(r); authenticated != nil {
+		t.Fatal("pinned request bypassed absolute credential expiry")
+	}
 }
