@@ -4,11 +4,13 @@ package storageclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/soulteary/mc/internal/consoleapi"
 	minio "github.com/soulteary/otterio-sdk/v7"
@@ -44,7 +46,7 @@ func TestRangeChecksWireResponse(t *testing.T) {
 			}))
 			defer server.Close()
 			c := testClient(t, Config{S3URL: server.URL})
-			obj, err := c.OpenRange(context.Background(), consoleapi.ObjectRef{Bucket: "bucket", Key: "中文.txt", VersionID: "null"}, consoleapi.ObjectInfo{Size: 10, ETag: "etag"}, 2, 4)
+			obj, err := c.OpenRange(context.Background(), consoleapi.ObjectRef{Bucket: "bucket", Key: "中文.txt", VersionID: "null"}, consoleapi.ObjectInfo{Modified: time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC), Size: 10, ETag: "etag"}, 2, 4)
 			if (err == nil) != tc.ok {
 				t.Fatalf("error=%v", err)
 			}
@@ -272,6 +274,52 @@ func TestPinnedFullGETPreservesOpaqueEntityTags(t *testing.T) {
 			data, err := io.ReadAll(object.Body)
 			if err != nil || string(data) != "abc" {
 				t.Fatal(err, string(data))
+			}
+		})
+	}
+}
+
+func TestRangeRejectsUnversionedModificationRace(t *testing.T) {
+	for _, full := range []bool{false, true} {
+		t.Run(fmt.Sprint(full), func(t *testing.T) {
+			closed := &atomic.Bool{}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if locationResponse(w, r) {
+					return
+				}
+				w.Header().Set("ETag", `"etag"`)
+				w.Header().Set("Last-Modified", "Fri, 09 Oct 2026 00:00:00 GMT")
+				if !full {
+					w.Header().Set("Content-Range", "bytes 2-4/10")
+					w.Header().Set("Content-Length", "3")
+					w.WriteHeader(206)
+					_, _ = w.Write([]byte("234"))
+				} else {
+					w.Header().Set("Content-Length", "10")
+					_, _ = w.Write([]byte("0123456789"))
+				}
+			}))
+			defer server.Close()
+			c := testClient(t, Config{S3URL: server.URL})
+			opts := c.s3Options
+			opts.Transport = observedRangeTransport{base: opts.Transport, closed: closed}
+			var setupErr error
+			c.s3, setupErr = minio.New(c.s3Endpoint, &opts)
+			if setupErr != nil {
+				t.Fatal(setupErr)
+			}
+			expected := consoleapi.ObjectInfo{Size: 10, ETag: "etag", Modified: time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)}
+			ref := consoleapi.ObjectRef{Bucket: "bucket", Key: "key"}
+			var object consoleapi.Object
+			var err error
+			if full {
+				object, err = c.OpenRangeFull(context.Background(), ref, expected)
+			} else {
+				object, err = c.OpenRange(context.Background(), ref, expected, 2, 4)
+			}
+			var apiErr *consoleapi.Error
+			if !errors.As(err, &apiErr) || apiErr.Code != "object_changed" || object.Body != nil || !closed.Load() {
+				t.Fatalf("err=%v body=%v closed=%v", err, object.Body, closed.Load())
 			}
 		})
 	}

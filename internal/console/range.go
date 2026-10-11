@@ -162,7 +162,7 @@ func (s *Server) downloadRange(w http.ResponseWriter, r *http.Request, ctx conte
 		w.Header().Set("Content-Length", strconv.FormatInt(info.Size, 10))
 		return rangeHeaders(w, ctx, 200)
 	}
-	value := r.Header.Get("Range")
+	value := strings.Join(r.Header.Values("Range"), ",")
 	if condition := r.Header.Get("If-Range"); value != "" && condition != "" && condition != tag && !ifRangeDateMatches(condition, info.Modified) {
 		value = ""
 	}

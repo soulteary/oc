@@ -40,7 +40,7 @@ func (c *Client) OpenRange(ctx context.Context, ref consoleapi.ObjectRef, expect
 	if ref.VersionID != "" && headers.Get("X-Otterio-Version-Authorization") != "v1" {
 		return reject(versionAuthorizationUnsupported())
 	}
-	if body == nil || info.ETag != expected.ETag || !versionMatches(ref.VersionID, info.VersionID) || !sameRangeVersion(expected.VersionID, info.VersionID) || headers.Get("X-Amz-Delete-Marker") == "true" {
+	if body == nil || info.ETag != expected.ETag || !versionMatches(ref.VersionID, info.VersionID) || !sameRangeVersion(expected.VersionID, info.VersionID) || !expected.Modified.Equal(info.LastModified) || headers.Get("X-Amz-Delete-Marker") == "true" {
 		return reject(referenceChanged())
 	}
 	length := end - start + 1
@@ -91,7 +91,7 @@ func (c *Client) OpenRangeFull(ctx context.Context, ref consoleapi.ObjectRef, ex
 	if ref.VersionID != "" && headers.Get("X-Otterio-Version-Authorization") != "v1" {
 		return reject(versionAuthorizationUnsupported())
 	}
-	if body == nil || info.ETag != expected.ETag || info.Size != expected.Size || !versionMatches(ref.VersionID, info.VersionID) || !sameRangeVersion(expected.VersionID, info.VersionID) || headers.Get("X-Amz-Delete-Marker") == "true" || headers.Get("Content-Range") != "" {
+	if body == nil || info.ETag != expected.ETag || info.Size != expected.Size || !versionMatches(ref.VersionID, info.VersionID) || !sameRangeVersion(expected.VersionID, info.VersionID) || !expected.Modified.Equal(info.LastModified) || headers.Get("X-Amz-Delete-Marker") == "true" || headers.Get("Content-Range") != "" {
 		return reject(referenceChanged())
 	}
 	return consoleapi.Object{Body: body, Size: info.Size, ETag: info.ETag, ContentType: info.ContentType, Modified: info.LastModified}, nil

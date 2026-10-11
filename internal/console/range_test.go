@@ -219,3 +219,17 @@ func TestRepeatedEntityTagFields(t *testing.T) {
 		}
 	}
 }
+
+func TestRepeatedRangeFieldsRejected(t *testing.T) {
+	f := &rangeFake{size: 10, etag: "etag"}
+	s := &Server{streamIdle: time.Second}
+	sess := &session{runtime: sessionRuntime{backend: f}}
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Add("Range", "bytes=0-0")
+	r.Header.Add("Range", "5-5")
+	w := httptest.NewRecorder()
+	s.downloadRange(w, r, r.Context(), sess, consoleapi.ObjectRef{Bucket: "bucket", Key: "key"})
+	if w.Code != 416 {
+		t.Fatalf("got %d want 416", w.Code)
+	}
+}
