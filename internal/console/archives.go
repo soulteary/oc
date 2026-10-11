@@ -154,6 +154,13 @@ func (s *Server) serveArchives(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "archive_not_ready", "The archive is unavailable or is still being prepared.")
 		return
 	}
+	if sess.oidc != nil {
+		// A completed ZIP needs no old-generation storage credentials. Bind
+		// its download to the acquired session while preserving archive expiry.
+		task.cancel()
+		task.ctx, task.cancel = context.WithDeadline(sess.ctx, task.info.Expires)
+		task.owner = sess
+	}
 	task.info.Status = "downloading"
 	filename := task.path
 	s.workers.Add(1)
@@ -292,7 +299,10 @@ func (s *Server) prepareArchive(task *archiveTask, reader consoleapi.ReferenceBa
 		if failure != nil {
 			s.finishArchive(task, "failed", archiveError(failure))
 		}
-		if task.ctx.Err() != nil {
+		s.mu.Lock()
+		canceled := task.ctx.Err() != nil
+		s.mu.Unlock()
+		if canceled {
 			s.finishArchive(task, "canceled", nil)
 		}
 		if filename != "" {
