@@ -18,7 +18,7 @@ OC main `7d4fb7fb922a9599f8d9805651693c7c20d0a2f1`，包含已合并 #34–#38 �
 - 02 拥有身份 ledger、索引及撤销模块；修改 `native_rotation.go`、`native_iam_retirement.go` 须先取得窗口。
 - 04 独占 `server.go`、`session_clients.go`、会话认证与 `cmd/oc-console` OIDC 启动配置，其他任务提交接入补丁。02 的核心接入先完成，再转交 04。
 - 03a/03b/03c 分别拥有新增用户/组/服务账号辅助模块、专属 handler 与验收脚本。共享 `internal/storageclient/iam.go`、`internal/console/iam.go` 及 `internal/consoleapi` 原有文件归 00，agent 不各自重写总 dispatcher。
-- `web/app.js`、`web/index.html`、`web/i18n.js`、全局 capabilities 和总迁移文档归 00。05 可独立开发诊断组件及测试；04/03/06 的 UI 接入也由 00 排序。
+- `web/app.js`、`web/index.html`、`web/i18n.js`、全局 capabilities 和总迁移文档归 00。第一批临时授权 05 独占 app.js/index.html/i18n.js 和专属 DOM 测试，00 不同时编辑，交付后回收；其他阶段 05 可独立开发诊断组件及测试；04/03/06 的 UI 接入也由 00 排序。
 - 06 拥有新增审计/部署模块、独立示例和压力脚本；启动/会话 hook 交 04/00。
 - 07 拥有发布管线、兼容清单、Compose pin、最终矩阵报告；08 在 OtterIO 独立分支工作。
 
