@@ -59,3 +59,27 @@ func TestIdentityExecutorAtomicBarrierAndIdempotentRelease(t *testing.T) {
 		t.Fatal("retirement was not scoped and idempotent")
 	}
 }
+
+func TestIdentityExecutorOwnsImpactSnapshot(t *testing.T) {
+	s := nativeRotationFixture(t, func(context.Context, string) error { return nil }, nil)
+	alice, _ := nativeSignIn(t, s, "alice")
+	bob, _ := nativeSignIn(t, s, "bob")
+	var sess *session
+	s.mu.Lock()
+	for _, candidate := range s.sessions {
+		if candidate.nativeUser == "alice" {
+			sess = candidate
+		}
+	}
+	s.mu.Unlock()
+	scopes := []identityScope{nativeUserScope("alice")}
+	mutation := s.beginIdentityMutation(httptest.NewRecorder(), sess, identityImpact{known: true, scopes: scopes})
+	if mutation == nil {
+		t.Fatal("reservation failed")
+	}
+	scopes[0] = nativeUserScope("bob")
+	mutation.finish(true)
+	if nativeSessionStatus(s, alice) != 401 || nativeSessionStatus(s, bob) != 200 || len(s.nativeUserChanging) != 0 || len(s.writeSlots) != 0 {
+		t.Fatal("caller mutation changed executor retirement or leaked barrier")
+	}
+}
