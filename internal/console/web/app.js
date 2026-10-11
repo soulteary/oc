@@ -2,6 +2,7 @@
 
 (() => {
   const ids = [
+    "nav-diagnostics", "diagnostics-page", "diagnostics-refresh", "diagnostics-status", "diagnostics-body",
     "rename-dialog", "rename-form", "rename-title", "rename-source", "rename-name", "rename-status", "rename-submit", "close-rename",
     "setting-versioning-option", "preferences-status", "image-preview-dialog", "image-preview-title", "close-image-preview", "image-preview-status", "image-preview", "preview-zoom-out", "preview-zoom-in", "preview-zoom-reset", "preview-zoom-label", "object-info-type", "refresh-object-info", "info-preview", "info-share",
     "nav-favorites", "favorites-page", "favorite-list", "object-info-dialog", "object-info-title", "close-object-info", "object-info-bucket", "object-info-key", "object-info-size", "object-info-modified", "object-info-etag", "object-local-link", "object-copy-status", "copy-object-link",
@@ -132,6 +133,8 @@
   let recentBuckets = [];
   function showPage(page) {
     currentPage = page;
+    elements["diagnostics-page"].hidden = page !== "diagnostics";
+    if (page !== "diagnostics") cancelRequest("diagnostics");
     elements["favorites-page"].hidden = page !== "favorites";
     renderFavorites();
     elements["overview-panel"].hidden = page !== "overview";
@@ -139,8 +142,8 @@
     elements["bucket-directory"].hidden = page !== "buckets";
     elements["bucket-detail-navigation"].hidden = page !== "objects";
     elements["task-page"].hidden = page !== "tasks";
-    setText("page-title", { overview: "概览", buckets: "存储桶列表", tasks: "任务中心", objects: "文件列表", favorites: "收藏路径" }[page]);
-    for (const name of ["overview", "buckets", "tasks", "favorites"]) {
+    setText("page-title", { overview: "概览", buckets: "存储桶列表", tasks: "任务中心", objects: "文件列表", favorites: "收藏路径", diagnostics: "服务诊断" }[page]);
+    for (const name of ["overview", "buckets", "tasks", "favorites", "diagnostics"]) {
       elements[`nav-${name}`].setAttribute("aria-current", (name === page || (name === "buckets" && page === "objects")) ? "page" : "false");
     }
   }
@@ -267,6 +270,37 @@
       if (state.epoch !== epoch || elements["object-local-link"].value !== value) return;
       elements["object-local-link"].focus(); elements["object-local-link"].select();
       setText("object-copy-status", "请复制上方已选中的链接。");
+    }
+  }
+  async function loadDiagnostics() {
+    if (!state.authenticated) return;
+    const request = beginRequest("diagnostics");
+    elements["diagnostics-body"].replaceChildren();
+    elements["diagnostics-refresh"].disabled = true;
+    setText("diagnostics-status", "Loading server diagnostics…");
+    try {
+      const snapshot = await api("/api/diagnostics/server", {}, request);
+      if (!currentRequest("diagnostics", request)) return;
+      if (!Array.isArray(snapshot?.nodes) || snapshot.nodes.length < 1 || snapshot.nodes.length > 256 || snapshot.nodes.some(node => !node || typeof node.state !== "string" || typeof node.version !== "string" || !Number.isSafeInteger(node.uptimeSeconds) || node.uptimeSeconds < 0 || !Number.isSafeInteger(node.heapBytes) || node.heapBytes < 0 || !Number.isSafeInteger(node.drives) || node.drives < 0)) throw new APIError(502, "InvalidResponse", "Invalid diagnostics snapshot");
+      snapshot.nodes.forEach((node, index) => {
+        const row = document.createElement("tr");
+        for (const value of [index + 1, node.state, node.version || "—", node.uptimeSeconds, formatSize(node.heapBytes), node.drives]) {
+          const cell = document.createElement("td"); cell.textContent = String(value); row.append(cell);
+        }
+        elements["diagnostics-body"].append(row);
+      });
+      setText("diagnostics-status", "Snapshot loaded. Refresh to request current server values.");
+    } catch (error) {
+      if (!currentRequest("diagnostics", request) || error.name === "AbortError" || expired(error)) return;
+      const messages = {
+        403: "Your storage identity lacks admin:ServerInfo permission. Other console features remain available.",
+        501: "Server diagnostics are unavailable with this backend.",
+        502: "The storage server returned an invalid diagnostics response. Try refreshing.",
+      };
+      setText("diagnostics-status", messages[error.status] || error.message);
+    } finally {
+      finishRequest("diagnostics", request);
+      elements["diagnostics-refresh"].disabled = requests.has("diagnostics") || !state.authenticated;
     }
   }
   function renderDirectory() {
@@ -493,6 +527,8 @@
     }
     const interrupted = [...tasks.values()].some(task => !task.expired && !terminalStates.has(task.job.status));
     state.epoch += 1;
+    elements["diagnostics-body"].replaceChildren();
+    setText("diagnostics-status", "");
     abortAll();
     Object.assign(state, {
       capabilities: {}, authenticated: false, readOnly: true, alias: "", csrfToken: "", buckets: [], bucket: "", prefix: "",
@@ -2917,6 +2953,8 @@
   elements["preview-zoom-out"].addEventListener("click", () => zoomPreview(previewZoom - .25));
   elements["preview-zoom-reset"].addEventListener("click", () => zoomPreview(1));
   window.addEventListener("oc-language-change", event => { if (state.authenticated) { renderOverview(); renderEntries(); renderLocation(); savePreference({ action: "language", language: event.detail }); } });
+  elements["nav-diagnostics"].addEventListener("click", () => { showPage("diagnostics"); loadDiagnostics(); });
+  elements["diagnostics-refresh"].addEventListener("click", loadDiagnostics);
   elements["nav-favorites"].addEventListener("click", () => showPage("favorites"));
   elements["close-object-info"].addEventListener("click", () => { cancelRequest("object-info"); elements["object-info-dialog"].close(); });
   elements["copy-object-link"].addEventListener("click", copyObjectLink);
