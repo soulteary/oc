@@ -474,7 +474,9 @@ def main():
               'serverSource': args.server_source, 'sdkPin': args.sdk_pin,
               'binaries': {},
               'scenarios': [], 'status': 'running'}
-    report['scope'] = 'read-only-and-writes' if args.writes else ('read-only-and-protected-settings' if args.settings else 'read-only')
+    report['scope'] = ('read-only-and-writes-and-protected-settings' if args.writes and args.settings
+                       else 'read-only-and-writes' if args.writes
+                       else 'read-only-and-protected-settings' if args.settings else 'read-only')
     if args.features:
         report['scope'] = 'console-features-legacy-fallback' if args.features_legacy else 'console-five-features'
         if args.features_iam_create_unsupported:
