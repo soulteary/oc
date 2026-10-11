@@ -208,12 +208,16 @@ class MaintenanceTests(unittest.TestCase):
 
     def test_transfer_workloads_use_fresh_targets_and_hash_every_download(self):
         evidence, checks, hash_count = self.transfer_fixture()
-        self.assertEqual(checks, 84)
-        self.assertEqual(hash_count, 28)
+        self.assertEqual(checks, 168)
+        self.assertEqual(hash_count, 56)
         self.assertEqual(len(evidence['transferMetrics']), 4)
         for metric in evidence['transferMetrics']:
-            self.assertEqual(len(metric['samplePairs']), 3)
-            for pair in [metric['warmup'], *metric['samplePairs']]:
+            self.assertEqual(len(metric['samplePairs']), 6)
+            self.assertEqual([p['order'] for p in metric['warmup']],
+                             [['measured', 'reference'], ['reference', 'measured']])
+            self.assertEqual([p['order'] for p in metric['samplePairs']].count(['measured', 'reference']), 3)
+            self.assertEqual([p['order'] for p in metric['samplePairs']].count(['reference', 'measured']), 3)
+            for pair in [*metric['warmup'], *metric['samplePairs']]:
                 self.assertEqual(len(pair['reference']['processSamples']), 1)
                 self.assertEqual(len(pair['measured']['processSamples']), metric['concurrency'])
                 self.assertAlmostEqual(pair['measured']['wallSeconds'], 0.001)
@@ -221,13 +225,13 @@ class MaintenanceTests(unittest.TestCase):
             self.assertEqual(metric['samplePairs'][1]['order'], ['reference', 'measured'])
 
     def test_transfer_warmup_reference_and_measured_corruption_fail(self):
-        for target in ('warmup', 'sample-1-reference', 'sample-2-measured'):
+        for target in ('warmup-0', 'warmup-1', 'sample-1-reference', 'sample-5-measured'):
             with self.subTest(target=target), self.assertRaisesRegex(AssertionError, 'checksum mismatch'):
                 self.transfer_fixture(corrupt=target)
 
     def test_transfer_warmup_failure_is_not_retried(self):
         with self.assertRaisesRegex(RuntimeError, 'fixture transfer failure'):
-            self.transfer_fixture(fail='warmup-reference')
+            self.transfer_fixture(fail='warmup-0-reference')
 
     def invoke_sampled_transfer(self, rss_kib=1024, exit_rss_kib=1024, timeout=False):
         class FixtureDone(Exception):

@@ -67,7 +67,7 @@ def check_transfer_samples(metric, limits):
 
 
 def transfer_performance_checks(transfer, run, source, root, expected, limits, evidence):
-    """Compare three fixed fresh-target samples with single-transfer references."""
+    """Compare six order-balanced fixed fresh-target samples with single-transfer references."""
     size = source.stat().st_size
     checks = 0
     for concurrency in (1, 4):
@@ -75,15 +75,15 @@ def transfer_performance_checks(transfer, run, source, root, expected, limits, e
         for operation in ('upload', 'download'):
             metric = {'operation': operation, 'concurrency': concurrency,
                       'objectBytes': size, 'transferredBytes': size * concurrency,
-                      'warmup': {}, 'samplePairs': []}
+                      'warmup': [], 'samplePairs': []}
             evidence['transferMetrics'].append(metric)
             metrics[operation] = metric
         # Reuse the same pool for both roles. Warmup primes its workers and the
         # CLI/server paths; every measured destination is still newly created.
         with ThreadPoolExecutor(max_workers=concurrency) as workers:
-            for iteration in range(-1, 3):
-                phase = 'warmup' if iteration == -1 else f'sample-{iteration}'
-                order = ('reference', 'measured') if iteration == 1 else ('measured', 'reference')
+            for iteration in range(-2, 6):
+                phase = f'warmup-{iteration + 2}' if iteration < 0 else f'sample-{iteration}'
+                order = ('reference', 'measured') if iteration % 2 else ('measured', 'reference')
                 targets = {
                     role: [f'test/core-check/stability-{concurrency}-{phase}-{role}-{i}'
                            for i in range(concurrency if role == 'measured' else 1)]
@@ -91,8 +91,8 @@ def transfer_performance_checks(transfer, run, source, root, expected, limits, e
                 }
                 for operation in ('upload', 'download'):
                     pair = {'order': list(order)}
-                    if iteration == -1:
-                        metrics[operation]['warmup'] = pair
+                    if iteration < 0:
+                        metrics[operation]['warmup'].append(pair)
                     else:
                         metrics[operation]['samplePairs'].append(pair)
                     for role in order:
@@ -440,7 +440,7 @@ def stability_checks(oc, config, env, root, run, files, soak_seconds=0, evidence
             child.stderr.close()
     evidence.update(checks=checks, soak=soak)
     evidence['methodology'] = ('65 MiB objects; concurrency 1 and 4 against single-transfer references; '
-                               'one paired warmup and three fixed alternating sample pairs per operation; '
+                               'two order-balanced warmups and six fixed alternating sample pairs per operation; '
                                'fresh remote keys and local files; every download hash-checked; '
                                'median paired ratios plus the real measured throughput median floor; local disposable server; '
                                'process-observed wall time includes CLI startup, excludes sampler cleanup; '
