@@ -184,6 +184,23 @@
       "task": "04",
       "result": "5 unittest groups passed",
       "scope": "门禁负例，不是完整功能替代证据"
+    },
+    {
+      "task": "02/04",
+      "path": "docs/console-next-features-results.json",
+      "result": "68 acceptance groups passed",
+      "scope": "4 HTTP/TLS entry configurations; local alias features; clean source combination, not releases"
+    },
+    {
+      "task": "02/04",
+      "path": "docs/console-next-native-results.json",
+      "result": "52 acceptance groups passed",
+      "scope": "single/dual HTTPS native sessions before OIDC integration"
+    },
+    {
+      "task": "00",
+      "result": "5 related Go packages race passed; lint 0 issues",
+      "scope": "integration b32781de, prior to OIDC session integration"
     }
   ],
   "openDecisions": [
