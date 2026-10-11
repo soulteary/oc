@@ -2,7 +2,11 @@
 
 Date: 2026-10-12 (Asia/Shanghai). The fixture uses disposable local storage, real CLI bootstrap, verified HTTPS and actual native Console sessions. It never adds root credentials to a browser session, mutates existing users or claims that unsupported service/STS browser sessions were tested.
 
-Full positive management acceptance remains incomplete until the known-denial mapping is fixed and the complete fixture is rerun.
+The [known-denial-fixed positive results](console-relationship-supported-results.json) pass 22 acceptance groups in each of single HTTPS and independent S3/Admin HTTPS/CA topologies. The [same-runtime legacy capability results](console-relationship-legacy-fixed-results.json) pass 12 groups per topology. These runs use clean Console `52310833272b25c9ef146562eb8470d4e2dafb1a`, CLI `2a5a0f2152190ae438583a219f05cac84ddd3a9b`, final positive server `ff6e66f3fbd7e57198ef5df016fdd79e5545fc7b` and negative legacy server `cbbffbd40531f101cb67c263c69010a0a1b8ed4e`. All execute `darwin/arm64`. [Independent program identities](console-relationship-program-identities.json) verify declared full commits against embedded VCS, require `modified=false` and bind actual hashes; report filenames are not source evidence.
+
+The successful positive runs cover administrator secret rotation of self/other users, disabled users remaining disabled after secret replacement, ordinary/explicit-deny/readonly/CSRF negatives, stale user/group binding revisions preserving the newer state and sessions, fresh bindings and group membership/status changes retiring only affected native users, and real child signed-S3 disable/enable/rotate/policy/delete semantics. Service policy edits are accepted for the authoritative parent and rejected for a general manager.
+
+These reports predate explicit `processCleanup` instrumentation in the shared wrapper. The cleanup finally paths returned without secondary errors, but these reports do not assert a recorded cleanup status. The later browser callback landing-page change is a separate runtime and is not certified by these native reports.
 
 ## Retained failures
 
@@ -12,7 +16,7 @@ The [real known-denial failure](console-relationship-known-denial-failed.json) u
 
 ## Scope
 
-Native login accepts enabled IAM users; service/STS browser login is rejected. Required positive checks separately exercise a real service child with signed S3 requests: parent secret rotation does not imply upstream service-credential revocation; parent policy narrowing must restrict child permissions. Service disable/enable, old/new secret use, policy intersection and deletion are required checks independent of browser session lifecycle checks.
+Native login accepts enabled IAM users; service/STS browser login is rejected. The passing positive checks separately exercise a real service child with signed S3 requests: parent secret rotation does not imply upstream service-credential revocation; parent policy narrowing must restrict child permissions. Service disable/enable, old/new secret use, policy intersection and deletion are checks independent of browser session lifecycle checks.
 
 Service policy changes are submitted by the authoritative native parent with an explicit policy granting the required management actions and bucket read access. A general manager with UpdateServiceAccount and data permissions must still receive 403 when editing another parent's child policy. No root Console session is used.
 
