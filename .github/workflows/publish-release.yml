@@ -50,7 +50,7 @@ jobs:
         run: test "$GITHUB_REF" = refs/heads/main
       - uses: actions/checkout@v7.0.1
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: docker/setup-buildx-action@v4.4.1
       - name: Login to GHCR for existing image verification

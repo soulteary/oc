@@ -168,6 +168,11 @@ not rebuild, replace assets or request promotion. Publish OC before the accepted
 OtterIO partner. A JSON hash plus official workflow checks is an evidence binding,
 not a new asset signature or certification of every platform/deployment.
 
+Publication is restricted to a `main` dispatch, but its helper checkout is the
+exact dispatch commit, `${{ github.sha }}`, rather than the moving `main` branch.
+Waiting for the shared publication/promotion lock does not adopt later helper
+changes. Dispatch a new run if a newer reviewed helper is required.
+
 ### Inspect public artifacts and recover
 
 Download all thirteen files into one directory and run:

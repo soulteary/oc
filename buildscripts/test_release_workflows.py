@@ -174,8 +174,15 @@ def boundary_errors(workflows):
     gate = 'run: test "$GITHUB_REF" = refs/heads/main'
     if gate not in publish or publish.index(gate) > publish.index('uses: actions/checkout@'):
         errors.append('publication must refuse non-main before checkout')
-    if not re.search(r'uses: actions/checkout@[^\n]+\n\s+with:\n\s+ref: main\n', publish):
-        errors.append('publication helper must come from main')
+    checkouts = [step for step in steps(publish, 'publish')
+                 if step_field(step, 'uses').startswith('actions/checkout@')]
+    if len(checkouts) != 1:
+        errors.append('publication helper must use one exact dispatched main commit checkout')
+    else:
+        checkout = section(checkouts[0], 'with', 8)
+        if (not re.search(r'^          ref: \$\{\{ github\.sha \}\}$', checkout, re.MULTILINE) or
+                re.search(r'^          repository:', checkout, re.MULTILINE)):
+            errors.append('publication helper must use the exact dispatched main commit')
     command = ('python3 buildscripts/release-stage.py publish',
                '--repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG"',
                '--acceptance-run-id "$ACCEPTANCE_RUN_ID"',
@@ -259,7 +266,23 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
                            'run: true', 'refuse non-main')
 
     def test_publication_cannot_load_a_tag_controlled_helper(self):
-        self.reject_change('publish-release.yml', 'ref: main', 'ref: ${{ inputs.tag }}', 'come from main')
+        self.reject_change('publish-release.yml', 'ref: ${{ github.sha }}',
+                           'ref: ${{ inputs.tag }}', 'exact dispatched main commit')
+
+    def test_publication_cannot_follow_main_while_waiting_in_the_queue(self):
+        self.reject_change('publish-release.yml', 'ref: ${{ github.sha }}',
+                           'ref: main', 'exact dispatched main commit')
+
+    def test_publication_cannot_replace_the_dispatch_source_with_another_checkout(self):
+        self.workflows['publish-release.yml'] += ('\n      - uses: actions/checkout@v7.0.1\n'
+                                                  '        with:\n          ref: main\n')
+        self.assertIn('publication helper must use one exact dispatched main commit checkout',
+                      boundary_errors(self.workflows))
+
+    def test_publication_cannot_use_another_repositorys_helper(self):
+        self.reject_change('publish-release.yml', '          ref: ${{ github.sha }}',
+                           '          repository: untrusted/other\n          ref: ${{ github.sha }}',
+                           'exact dispatched main commit')
 
     def test_publication_cannot_drop_the_trusted_attestation_hash(self):
         self.reject_change('publish-release.yml', '--attestation-sha256 "$ATTESTATION_SHA256"',

@@ -202,7 +202,7 @@ class OfficialFixture:
 
     def make_reports(self):
         self.pair = {'schemaVersion': 1, 'passed': True, 'requiredProfiles': list(stage.PROFILES),
-                     'programs': self.identities(), 'harnesses': {'buildscripts/test-console-migration-pair.py': stage.sha256(ROOT / 'buildscripts/test-console-migration-pair.py')},
+                     'programs': self.identities(), 'harnesses': {name: stage.sha256(ROOT / name) for name in ('buildscripts/test-console-migration-pair.py', 'buildscripts/console_pair_evidence.py')},
                      'checks': []}
         for profile in stage.PROFILES:
             child = self.protocol() if profile == 'real-protocol' else self.oidc(profile.endswith('-dual')) if profile.startswith('oidc-browser-') else self.integration(profile)
@@ -562,6 +562,44 @@ class ReleaseStageTests(unittest.TestCase):
 
     def test_pair_validator_must_match_trusted_acceptance_workflow_source(self):
         self.fixture.pair['harnesses']['buildscripts/test-console-migration-pair.py'] = '0' * 64
+        self.fixture.refresh_evidence()
+        self.reject()
+
+    def test_downloaded_historical_python_is_fingerprinted_but_never_executed(self):
+        filename = 'buildscripts/test-console-migration-pair.py'
+        payload = b"raise AssertionError('downloaded Python must never execute with publication credentials')\n"
+        self.fixture.api_changes[f'repos/{OC}/contents/{filename}?ref={RUN_HEAD}'] = {
+            'encoding': 'base64', 'content': base64.b64encode(payload).decode()}
+        self.fixture.pair['harnesses'][filename] = hashed(payload)
+        self.fixture.refresh_evidence()
+        self.fixture.publish()
+        self.assertEqual(len(self.fixture.edits), 1)
+
+    def test_official_schema_must_match_local_reviewed_code_without_execution(self):
+        filename = 'buildscripts/console_pair_evidence.py'
+        payload = b"raise AssertionError('unreviewed schema must never execute')\n"
+        self.fixture.api_changes[f'repos/{OC}/contents/{filename}?ref={RUN_HEAD}'] = {
+            'encoding': 'base64', 'content': base64.b64encode(payload).decode()}
+        self.fixture.pair['harnesses'][filename] = hashed(payload)
+        self.fixture.refresh_evidence()
+        self.reject()
+
+    def test_secondary_registry_must_share_the_exercised_digest(self):
+        directory = self.fixture.directories[OC]
+        manifest = json.loads((directory / 'release-manifest.json').read_text())
+        manifest['images'].append({'repository': 'soulteary/oc', 'digest': manifest['images'][0]['digest']})
+        write_json(directory / 'release-manifest.json', manifest)
+        self.fixture.refresh_checksums(OC)
+        accepted = stage.inventory(directory, OC, TAGS[OC])
+        self.assertEqual(len(accepted['images']), 2)
+        manifest['images'][1]['digest'] = 'sha256:' + 'f' * 64
+        write_json(directory / 'release-manifest.json', manifest)
+        self.fixture.refresh_checksums(OC)
+        with self.assertRaisesRegex(ValueError, 'registry mirror'):
+            stage.inventory(directory, OC, TAGS[OC])
+        with self.assertRaisesRegex(ValueError, 'registry mirror'):
+            stage.verify_images({'images': manifest['images']})
+        self.fixture.attestation['releases'][OC]['images'] = manifest['images']
         self.fixture.refresh_evidence()
         self.reject()
 

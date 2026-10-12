@@ -88,7 +88,10 @@ from the selected OC archive. The current OtterIO draft build regenerates its
 checksum file after recording registry identities: its seven entries cover the
 six executables **and** `release-manifest.json`. The eight-asset inventory is
 unchanged. Check immutable image repository/digest pairs and executable contents
-against the selected packages.
+against the selected packages. Runtime checks execute the primary GHCR image;
+every optional registry mirror must have the same immutable manifest digest.
+A mirror with different contents is rejected even if its own version tag matches
+its recorded digest. Mirror runtime is not separately executed.
 
 OtterIO's actual draft body contains both the tagged root release notes and the
 full tagged English migration announcement, with relative links bound to that
@@ -165,6 +168,13 @@ rechecks the current assets and fixed-image identities; a changed or missing
 accepted file must fail closed. A successful run and JSON hash are a binding to
 that workflow's evidence, not a Cosign/Sigstore signature or a guarantee for all
 deployments.
+
+Both publishers require a `main` dispatch and check out its exact
+`${{ github.sha }}`. A queued job does not switch to a later `main` helper. The
+publisher runs its locally reviewed validation code from that dispatch commit;
+remote Python source is checked by hash and is not imported or executed as
+validation code. The official acceptance run's recorded source and report hashes
+remain evidence bindings, distinct from the publisher's trusted local code.
 
 The operator must review the approved release body and
 [English migration announcement](https://github.com/soulteary/otterio/blob/main/docs/releases/console-migration-announcement.en.md)

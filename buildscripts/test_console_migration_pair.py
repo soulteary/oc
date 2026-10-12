@@ -280,6 +280,11 @@ class CandidateEvidenceTests(unittest.TestCase):
                                          '--oc-source', OC_SOURCE, '--output', str(output)]), 0)
             report = json.loads(output.read_text())
             self.assertTrue(report['passed'])
+            self.assertIs(h.validate_integration, h.EVIDENCE.validate_integration)
+            self.assertIs(h.validate_protocol, h.EVIDENCE.validate_protocol)
+            self.assertIs(h.validate_oidc, h.EVIDENCE.validate_oidc)
+            self.assertEqual(report['harnesses']['buildscripts/console_pair_evidence.py'],
+                             h.sha256(h.ROOT / 'buildscripts/console_pair_evidence.py'))
             self.assertEqual([row['name'] for row in report['checks']], h.PROFILES)
             for row in report['checks']:
                 self.assertEqual(row['reportSHA256'], h.sha256(output.with_name(row['report'])))
