@@ -1,0 +1,189 @@
+{
+  "userAgentScope": "Python HTTPS cookie-jar protocol client; browser rendering/SameSite not evaluated",
+  "storageTopology": "single HTTPS S3/Admin listener",
+  "certificateTopology": "shared temporary CA and loopback certificate",
+  "dateUTC": "2026-10-12T19:12:23.901734+00:00",
+  "status": "passed",
+  "checks": [
+    "actual Keycloak discovery satisfies fixed HTTPS origin RS256/code/S256/client_secret_basic profile",
+    "isolated two-user distinct bucket/prefix policies and real objects created",
+    "alice: real code/PKCE login STS permits own prefix and denies other prefix/user bucket",
+    "alice: real code/PKCE login and refresh STS credentials allow own prefix and deny other prefix/user bucket",
+    "bob: real code/PKCE login STS permits own prefix and denies other prefix/user bucket",
+    "bob: real code/PKCE login and refresh STS credentials allow own prefix and deny other prefix/user bucket",
+    "alice: production Console binding/replay rejection, isolated object permissions and scoped Admin account",
+    "bob: production Console binding/replay rejection, isolated object permissions and scoped Admin account",
+    "simultaneously active Alice/Bob preferences and archive tasks remain isolated",
+    "Alice logout rejects old cookie while Bob continues authorized reads",
+    "Bob survives initial ID token expiry; additional actual Keycloak refresh events observed",
+    "Bob saved pre-expiry cookie is rejected after fixed TTL despite successful refresh",
+    "Console protected log contains no fixture password, root credential or client secret"
+  ],
+  "scope": "isolated HTTPS Keycloak + real OtterIO STS",
+  "harnessSha256": "1185de90e85dd607bce6d02d864e16f4689b8e5da159072bf9e70981c4a0e8b9",
+  "programs": {
+    "server": {
+      "sha256": "3211bf73d63cbd3f77ecdf9a70bb732980fb4448b3309b489bf59cfe2175c81e",
+      "declaredSource": "c3b3665154264993fa06a28e95ab25fdd03d7c0c",
+      "binaryVCSRevision": "c3b3665154264993fa06a28e95ab25fdd03d7c0c",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    },
+    "oc": {
+      "sha256": "5d05584f8b92def0ecdf10e734b2303a4d61718eeea10622fb6a6f31a5e7d30f",
+      "declaredSource": "26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27",
+      "binaryVCSRevision": "26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    },
+    "console": {
+      "sha256": "18264a02aaa459aeeb40b4b229c2fc4404425d05c3ab365b07b338ca1c833a07",
+      "declaredSource": "26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27",
+      "binaryVCSRevision": "26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    }
+  },
+  "browserSiteTopology": "localhost IdP and 127.0.0.1 Console (different sites)",
+  "certificateIdentities": {
+    "primaryCAsha256": "8205fe8a776f56d1205d3591eda3f5c5d708af4798225aab954012b7b66caaee",
+    "adminCAsha256": "8205fe8a776f56d1205d3591eda3f5c5d708af4798225aab954012b7b66caaee"
+  },
+  "keycloak": {
+    "version": "26.8.0",
+    "image": "quay.io/keycloak/keycloak@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+    "platform": "linux/arm64",
+    "profile": "confidential/client_secret_basic; RS256; code; mandatory PKCE S256; HTTPS; offline_access"
+  },
+  "discoveryProfile": {
+    "id_token_signing_alg_values_supported": [
+      "PS384",
+      "RS384",
+      "EdDSA",
+      "ES384",
+      "HS256",
+      "HS512",
+      "ES256",
+      "RS256",
+      "HS384",
+      "ES512",
+      "PS256",
+      "PS512",
+      "RS512"
+    ],
+    "response_types_supported": [
+      "code",
+      "none",
+      "id_token",
+      "token",
+      "id_token token",
+      "code id_token",
+      "code token",
+      "code id_token token"
+    ],
+    "code_challenge_methods_supported": [
+      "plain",
+      "S256"
+    ],
+    "token_endpoint_auth_methods_supported": [
+      "private_key_jwt",
+      "client_secret_basic",
+      "client_secret_post",
+      "tls_client_auth",
+      "client_secret_jwt"
+    ]
+  },
+  "initialTokenClock": {
+    "alice": {
+      "issuedAtOffsetSeconds": -0.951,
+      "secondsUntilExpiry": 89.049
+    },
+    "bob": {
+      "issuedAtOffsetSeconds": -0.145,
+      "secondsUntilExpiry": 89.855
+    }
+  },
+  "keycloakRefresh": {
+    "alice": {
+      "nonceAbsentAllowed": true,
+      "nonceMatchesWhenPresent": true,
+      "subjectPreserved": true,
+      "issuerAudiencePreserved": true
+    },
+    "bob": {
+      "nonceAbsentAllowed": true,
+      "nonceMatchesWhenPresent": true,
+      "subjectPreserved": true,
+      "issuerAudiencePreserved": true
+    }
+  },
+  "keycloakSuccessfulRefreshEvents": 2,
+  "browserAcceptance": {
+    "schemaVersion": 1,
+    "status": "passed",
+    "browser": "141.0.7390.37",
+    "persistentProfile": false,
+    "certificateTrust": "temporary-context-only",
+    "checks": [
+      {
+        "name": "different_sites",
+        "status": "passed"
+      },
+      {
+        "name": "alice_binding_cookie_flags",
+        "status": "passed"
+      },
+      {
+        "name": "alice_cross_site_top_level_callback_binding",
+        "status": "passed"
+      },
+      {
+        "name": "alice_ui_session",
+        "status": "passed"
+      },
+      {
+        "name": "bob_binding_cookie_flags",
+        "status": "passed"
+      },
+      {
+        "name": "bob_cross_site_top_level_callback_binding",
+        "status": "passed"
+      },
+      {
+        "name": "bob_ui_session",
+        "status": "passed"
+      },
+      {
+        "name": "alice_ui_logout",
+        "status": "passed"
+      },
+      {
+        "name": "bob_logout_isolation",
+        "status": "passed"
+      },
+      {
+        "name": "bob_session_after_initial_token_expiry",
+        "status": "passed"
+      },
+      {
+        "name": "fixed_deadline_401",
+        "status": "passed"
+      }
+    ],
+    "successfulRefreshEventsDelta": 2
+  },
+  "browserHook": {
+    "name": "console_oidc_browser_acceptance.py",
+    "sha256": "fb692511b2ad386218744b708eb9a2c73884c33db4e8b5482c7ffdd465e0a048",
+    "runnerSha256": "fb6cf6ace853fa39c21dad6ea71aaf746458fd1ada6e3d2ee9dc9ae4128be9b1"
+  },
+  "consoleRefreshEvidence": {
+    "waitSeconds": 95.0,
+    "idTokenSeconds": 90,
+    "keycloakEventsBefore": 4,
+    "keycloakEventsAfter": 5
+  },
+  "consoleFixedExpiryReference": "Bob successful protocol callback completion plus configured TTL and 5s observation margin",
+  "consoleAcceptance": "passed: binding/replay, simultaneous users, permissions, preferences/tasks, local logout, observed refresh",
+  "cleanup": "passed"
+}

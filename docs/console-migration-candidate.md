@@ -1,0 +1,141 @@
+# Console migration candidate identity and verification
+
+This prepares an installable independent-user Console and OtterIO Web removal
+pair. It does not declare a new published release or complete the public
+notification/transition/fallback policy. The stable baselines are OC
+`RELEASE.2026-10-10T11-42-18Z` (`ee1846d587a6548db4e595d653ca4f54baea2b1a`)
+and OtterIO `RELEASE.2026-10-10T16-38-05Z`
+(`8cc518b31ac8b69c8f855e19b4bd027f44275c47`).
+
+Read the [28-capability scope mapping](console-migration-capabilities.md) and
+[Chinese verification record](console-migration-verification.md) for the current
+replacement decisions and the limits of actual recorded runs. These documents
+do not change the historical capability matrix's release-gate status.
+
+## Clean source-pair CI
+
+The [migration workflow](../.github/workflows/console-migration.yml) builds this
+OC checkout and the exact declared OtterIO source, then runs
+[the pair runner](../buildscripts/test-console-migration-pair.py). The workflow
+records its selected sources rather than following a moving remote branch.
+Reproduce with clean binaries containing the declared embedded VCS revisions:
+
+```sh
+python3 buildscripts/test-console-migration-pair.py \
+  --cli /absolute/path/oc --console /absolute/path/oc-console \
+  --server /absolute/path/otterio \
+  --oc-source FULL_OC_COMMIT --server-source FULL_OTTERIO_COMMIT \
+  --output /private/tmp/console-migration-pair.json
+```
+
+`console-migration-pair.json` is a candidate source manifest/report:
+`schemaVersion: 1`, `evidenceKind: candidate-source-pair` and
+`releaseAssetCertification: false`. It binds each program's actual binary
+SHA-256, embedded source revision/state, executed platform and SDK pin; harness
+hashes and each check's result/report hash remain separate. Its `passed` result
+requires the requested checks, not merely successful builds or skipped opt-in
+tests. Child reports retain their own topology and operation scope.
+
+The checks cover object/settings/version/copy behavior across listener
+arrangements, native and relationship-conditioned IAM over single/independent
+dual HTTPS, Range/diagnostics/STS protocols, and actual isolated Keycloak
+Chromium login over both HTTPS arrangements. Read the generated report for the
+exact checks executed and failures.
+
+The [recorded Darwin arm64 source pair](evidence/console-migration/source-pair-darwin-arm64.json)
+passed all eight required profiles for clean OC source
+`26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27` and OtterIO source
+`c3b3665154264993fa06a28e95ab25fdd03d7c0c`: 360 functional acceptance groups,
+three real protocol checks, 27 OIDC protocol checks and 22 actual Chromium
+checks. The original child reports remain alongside the manifest with their
+recorded hashes. This local result does not certify a new PR head or Linux CI.
+
+The source report does not bind OC/OtterIO image digests or certify a new release
+archive, container image or all supported architectures. Its Keycloak image
+identity belongs only to the IdP test fixture. The [HTTPS templates](../deploy/README.console-https.md)
+therefore require an independently verified digest matching the selected source
+and program checksums. A stable tag or digest alone does not prove native/OIDC
+or protected IAM compatibility.
+
+## Real upgrade and rollback
+
+The separate [upgrade runner](../buildscripts/console_upgrade_acceptance.py) starts actual
+previous-release OC/Console/OtterIO programs, verifies official manifests,
+checksums and the OC archive's extracted executable bytes, then upgrades to the
+specified candidate programs and rolls back in disposable storage. It uses
+single and independent dual TLS/CA arrangements. Supply all six program paths,
+the previous source/release identities and official manifest/checksum files;
+run its `--help` for the exact arguments. For the stable baselines above:
+
+```sh
+python3 buildscripts/console_upgrade_acceptance.py \
+  --previous-server /absolute/path/previous-otterio \
+  --previous-cli /absolute/path/previous-oc \
+  --previous-console /absolute/path/previous-oc-console \
+  --server /absolute/path/candidate-otterio \
+  --cli /absolute/path/candidate-oc --console /absolute/path/candidate-oc-console \
+  --previous-source 8cc518b31ac8b69c8f855e19b4bd027f44275c47 \
+  --server-source FULL_OTTERIO_COMMIT --cli-source FULL_OC_COMMIT \
+  --previous-release RELEASE.2026-10-10T16-38-05Z \
+  --previous-oc-release RELEASE.2026-10-10T11-42-18Z \
+  --previous-manifest /absolute/path/previous-otterio-manifest.json \
+  --previous-checksums /absolute/path/previous-otterio-checksums.txt \
+  --previous-oc-manifest /absolute/path/previous-oc-manifest.json \
+  --previous-oc-checksums /absolute/path/previous-oc-checksums.txt \
+  --previous-oc-archive /absolute/path/previous-oc-archive.tar.gz \
+  --profiles single-tls dual-tls \
+  --output /private/tmp/console-migration-upgrade.json
+```
+
+The [recorded Darwin arm64 upgrade](evidence/console-migration/upgrade-darwin-arm64.json)
+passed both storage profiles: one HTTPS S3/Admin listener, and separate HTTPS
+S3/Admin listeners with independent CAs. It uses the published baselines above,
+OC candidate source `26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27` and OtterIO
+candidate source `c3b3665154264993fa06a28e95ab25fdd03d7c0c`, on disposable
+single-node erasure storage using four temporary storage directories. Its JSON records the exact executable
+hashes and harness versions. A new PR head must produce its own evidence.
+
+The run preserves object bytes, historical versions, tags, versioning, group
+policy allow/deny behavior and CLI configuration. It actually returns to the
+previous programs before a new write, after one new object write, and after
+restoring the pre-upgrade snapshot. Old and new local Console preferences use
+loopback HTTP; new native-user preferences use browser HTTPS and remain isolated
+from the shared local preferences across restart. This is not an OIDC
+old-to-new upgrade test. Genuine failed runs remain alongside the passing
+report; missing/failed reports or same-version restarts do not prove an upgrade.
+
+This evidence applies only to the named programs and declared path. It is not
+general server downgrade compatibility, all-platform execution, arbitrary proxy
+TLS termination or distributed/federated/gateway support. The candidate server
+has no embedded Web; `OTTERIO_BROWSER=on` must fail rather than create a fallback.
+Fallback to embedded Web requires the verified previous server, not a flag on
+the candidate.
+
+## Final release validation
+
+After clean synchronized main passes the required CI, publish the compatible OC
+first. Verify all thirteen assets, checksum/manifest identities and immutable
+image contents, then rerun the declared paired operations and upgrade scope
+against the exact programs/images users receive. Source reports do not become
+release certification by renaming files or attaching them to a release.
+
+Before publishing the OtterIO removal release, satisfy or explicitly announce a
+revision of its public notification, default-off transition and fallback policy.
+The existing stable Release flow is not an RC builder even when latest promotion
+is disabled. See [release and migration gates](console-release-migration.md).
+
+## 中文说明
+
+候选源码报告固定真实程序 SHA-256、嵌入的源码状态、运行平台、SDK 与验收脚本
+摘要；它不认证 OC/OtterIO 镜像身份，IdP 的 Keycloak 摘要仅属于测试样本，
+`releaseAssetCertification` 明确为 false。已落盘的 Darwin arm64 完整报告
+八项通过；新 PR head 的 CI 和新 HTTPS 配方对应程序/镜像仍需独立核验，
+不预设新的已发布标签。
+
+已落盘的 Darwin arm64 跨版本报告通过单 HTTPS 和独立双 HTTPS/CA 存储入口，
+使用两个项目的 2026-10-10 正式程序与报告所列候选程序，真实升级后再回退。
+旧、新 local 偏好兼容在回环 HTTP 验证，新 native 偏好隔离和重启持久在
+HTTPS 验证；没有测试 OIDC 旧版到新版升级。报告只证明所列程序、源码、脚本
+与单节点四存储目录纠删码路径，不是四物理盘认证；新 PR head 和正式附件、
+镜像仍需重新验证。已公布通知和
+回退窗口必须完成或明确公告修订，不能由代码合并替代。
