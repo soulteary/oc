@@ -30,6 +30,21 @@ def require_user_change(result, target, status, login_required, expected_access_
         raise RuntimeError('native user mutation acknowledgement does not match its target and retirement scope')
 
 
+def require_service_account_inventory(client, user, access_key, present, public_access_keys):
+    # Require a successful authenticated management read. A missing parent,
+    # denied query or malformed response cannot establish child deletion.
+    query = urllib.parse.urlencode({'user': user})
+    result = json.loads(client('/api/iam/service-accounts?' + query, expected=200,
+                               allowed_credentials=tuple(public_access_keys))[0])
+    if not isinstance(result, dict) or result.get('user') != user or not isinstance(result.get('serviceAccounts'), list):
+        raise RuntimeError('native service-account inventory did not confirm the requested parent')
+    accounts = result['serviceAccounts']
+    if (any(not isinstance(account, dict) or not isinstance(account.get('accessKey'), str) or
+            account.get('parentUser') != user for account in accounts) or
+            (any(account['accessKey'] == access_key for account in accounts)) is not present):
+        raise RuntimeError('native service-account inventory did not confirm the expected child presence')
+
+
 def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                   credentials, endpoint, admin, s3ca, adminca, bucket, viewer_access,
                   viewer_secret, root_access, root_secret, checks, signed_request):
@@ -206,6 +221,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 service_key = service['credentials']['accessKey']
                 credentials.extend([service_key, service['credentials']['secretKey']])
                 public_access_keys.append(service_key)
+                require_service_account_inventory(manager, new_user, service_key, True, public_access_keys)
                 def service_read(expected):
                     uri = '/' + urllib.parse.quote(bucket + '/plain.txt', safe='/-_.~')
                     status, _, _ = signed_request(endpoint, 'GET', uri, b'', service_key,
@@ -240,6 +256,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 second_created('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
                 deleted = native_iam_action(manager, delete_user, manager_headers, public_access_keys)
                 require_user_change(deleted, new_user, 'deleted', False, [new_user, service_key])
+                require_service_account_inventory(manager, new_user, service_key, False, public_access_keys)
                 group = json.loads(cli('--json', 'admin', 'group', 'info', 'store', new_group))
                 assert group['groupName'] == new_group and new_user not in group.get('members', [])
                 service_read(403)
@@ -247,11 +264,12 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 # identity again. Only explicit retirement keeps both cookies dead.
                 cli('admin', 'user', 'add', 'store', new_user, new_secret)
                 cli('admin', 'policy', 'set', 'store', 'readonly', 'user=' + new_user)
+                require_service_account_inventory(manager, new_user, service_key, False, public_access_keys)
                 created_browser('/api/session', expected=401)
                 second_created('/api/session', expected=401)
                 created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
                 service_read(403)
-                checks.append('native user deletion rejects unauthorized operators, atomically removes group membership and service children, retires all target sessions, and identical username/secret recreation requires fresh login')
+                checks.append('native user deletion rejects unauthorized operators, removes group membership and service children confirmed by manager inventory before/after deletion and parent recreation, retires target sessions and requires fresh login')
                 cli('admin', 'user', 'remove', 'store', new_user)
                 cli('admin', 'group', 'remove', 'store', new_group)
                 self_disabled = native_iam_action(manager, {'action': 'user.disable', 'user': manager_access, 'confirmTarget': manager_access}, manager_headers, public_access_keys)

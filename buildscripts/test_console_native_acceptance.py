@@ -4,8 +4,9 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from unittest.mock import Mock
 
-from console_native_acceptance import native_iam_action, require_user_change
+from console_native_acceptance import native_iam_action, require_service_account_inventory, require_user_change
 
 spec = importlib.util.spec_from_file_location('native_acceptance_scanner', Path(__file__).with_name('test-console-integration.py'))
 acceptance = importlib.util.module_from_spec(spec)
@@ -90,6 +91,38 @@ class NativeIAMAcceptanceTests(unittest.TestCase):
                 result['impact']['affectedAccessKeys'] = affected
                 with self.assertRaisesRegex(RuntimeError, 'retirement scope'):
                     require_user_change(result, 'public-target', 'disabled', False, ['public-target', 'public-child'])
+
+    def test_inventory_confirms_creation_deletion_and_no_child_after_parent_recreation(self):
+        child = {'accessKey': 'public-child', 'parentUser': 'public-target', 'status': 'on'}
+        client = Mock(side_effect=[(json.dumps({'user': 'public-target', 'serviceAccounts': accounts}).encode(), {})
+                                  for accounts in ([child], [], [])])
+        for present in (True, False, False):
+            require_service_account_inventory(client, 'public-target', 'public-child', present, ['public-target', 'public-child'])
+        self.assertEqual(client.call_count, 3)
+        for call in client.call_args_list:
+            self.assertEqual(call.args, ('/api/iam/service-accounts?user=public-target',))
+            self.assertEqual(call.kwargs, {'expected': 200, 'allowed_credentials': ('public-target', 'public-child')})
+
+    def test_disabled_or_orphaned_child_in_inventory_is_not_deleted(self):
+        for status in ('on', 'off'):
+            result = {'user': 'public-target', 'serviceAccounts': [
+                {'accessKey': 'public-child', 'parentUser': 'public-target', 'status': status}]}
+            client = Mock(return_value=(json.dumps(result).encode(), {}))
+            with self.subTest(status=status), self.assertRaisesRegex(RuntimeError, 'child presence'):
+                require_service_account_inventory(client, 'public-target', 'public-child', False, ['public-target', 'public-child'])
+
+    def test_inventory_errors_and_malformed_results_cannot_establish_absence(self):
+        client = Mock(side_effect=RuntimeError('management inventory query failed'))
+        with self.assertRaisesRegex(RuntimeError, 'management inventory query failed'):
+            require_service_account_inventory(client, 'public-target', 'public-child', False, ['public-target', 'public-child'])
+        for result in ({'code': 'iam_not_found'}, {'user': 'public-target'},
+                       {'user': 'other-parent', 'serviceAccounts': []},
+                       {'user': 'public-target', 'serviceAccounts': None},
+                       {'user': 'public-target', 'serviceAccounts': [{}]},
+                       {'user': 'public-target', 'serviceAccounts': [{'accessKey': 'public-child', 'parentUser': 'other-parent'}]}):
+            client = Mock(return_value=(json.dumps(result).encode(), {}))
+            with self.subTest(result=result), self.assertRaisesRegex(RuntimeError, 'inventory'):
+                require_service_account_inventory(client, 'public-target', 'public-child', False, ['public-target', 'public-child'])
 
 
 if __name__ == '__main__':
