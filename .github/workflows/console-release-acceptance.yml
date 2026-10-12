@@ -55,12 +55,6 @@ jobs:
           stage.tag_valid(os.environ['OC_TAG'])
           stage.tag_valid(os.environ['OTTERIO_TAG'])
           PY
-      - uses: actions/checkout@v7.0.1
-        with:
-          repository: soulteary/otterio
-          ref: ${{ inputs.otterio_tag }}
-          path: otterio-candidate
-          persist-credentials: false
       - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: oc/go.mod
@@ -101,7 +95,6 @@ jobs:
             --download-drafts --oc-tag "$OC_TAG" --otterio-tag "$OTTERIO_TAG" \
             --previous-oc "$RUNNER_TEMP/release-previous/oc" \
             --previous-otterio "$RUNNER_TEMP/release-previous/otterio" \
-            --otterio-source-dir "$GITHUB_WORKSPACE/otterio-candidate" \
             --output "$RUNNER_TEMP/console-release-acceptance"
       - name: Report the exact acceptance identity
         run: |

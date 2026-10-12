@@ -27,6 +27,8 @@ PREVIOUS_SERVER_SOURCE = '8cc518b31ac8b69c8f855e19b4bd027f44275c47'
 PREVIOUS_MANIFEST = '2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3'
 # Allow the pair wrapper's 30-second cleanup and its nested 10-second cleanup.
 PROCESS_CLEANUP_TIMEOUT = 45
+IMAGE_PROBE_HARNESS_PATHS = ('buildscripts/console_release_acceptance.py',
+                             'buildscripts/verify-s3-startup.go', 'go.mod', 'go.sum')
 
 
 def host_target():
@@ -129,7 +131,7 @@ def cleanup_containers(names):
     return {'status': 'failed' if errors else 'passed', 'containers': len(names), 'errors': errors}
 
 
-def image_acceptance(releases, assets, output, otterio_source_dir):
+def image_acceptance(releases, assets, output):
     """Execute both architectures by digest and compare actual container bytes."""
     report = {'schemaVersion': 1, 'mode': 'registry-digest', 'passed': False, 'checks': [],
               'scope': 'OCI program byte equality and CLI/filesystem/S3 fixtures; QEMU/binfmt execution does not qualify native hardware.'}
@@ -138,6 +140,7 @@ def image_acceptance(releases, assets, output, otterio_source_dir):
         STAGE.require(platform.system() == 'Linux', 'registry runtime acceptance requires a Linux hosted runner')
         host = host_target().replace('-', '/')
         report['runnerPlatform'] = host
+        report['harnesses'] = {name: STAGE.sha256(ROOT / name) for name in IMAGE_PROBE_HARNESS_PATHS}
         for repository, release in releases.items():
             STAGE.verify_images(release)
             image = release['images'][0]['repository'] + '@' + release['images'][0]['digest']
@@ -183,8 +186,8 @@ def image_acceptance(releases, assets, output, otterio_source_dir):
                             docker_command(['cp', container + ':/usr/bin/otterio', str(extracted)])
                             STAGE.require(STAGE.sha256(extracted) == STAGE.sha256(binary), 'image server differs from release program')
                             STAGE.require(release['tag'] in run_container([image, '--version'], 'version'), 'image server version mismatch')
-                            # Linux hosted runners support host networking. The existing signed S3
-                            # probe exercises PUT/GET/DELETE using the packaged image on each arch.
+                            # Linux hosted runners support host networking. Execute the reviewed
+                            # OC probe and dependencies; the candidate contributes only image bytes.
                             launcher = directory / 'server'
                             server_name = prefix + '-server'
                             owned.append(server_name)
@@ -194,10 +197,16 @@ def image_acceptance(releases, assets, output, otterio_source_dir):
                                                 '--mount ' + shlex.quote('type=bind,src=' + temporary + ',dst=' + temporary) + ' '
                                                 + shlex.quote(image) + ' "$@"\n')
                             launcher.chmod(0o755)
-                            env = dict(os.environ, TMPDIR=temporary)
-                            code, _ = run_isolated(['go', 'run', 'buildscripts/verify-s3-startup.go', str(launcher)],
-                                                   env, 300, cwd=otterio_source_dir)
+                            env = dict(os.environ, TMPDIR=temporary, GOWORK='off', GOENV='off',
+                                       GOTOOLCHAIN='local', CGO_ENABLED='0')
+                            for name in ('GOFLAGS', 'GOOS', 'GOARCH'):
+                                env.pop(name, None)
+                            code, _ = run_isolated(['go', 'run', '-mod=readonly',
+                                                   str(ROOT / 'buildscripts/verify-s3-startup.go'), str(launcher)],
+                                                   env, 300, cwd=ROOT)
                             STAGE.require(code == 0, 'container S3 round trip failed')
+                        STAGE.require(all(STAGE.sha256(ROOT / name) == digest for name, digest in report['harnesses'].items()),
+                                      'trusted image probe or dependencies changed during acceptance')
                         row.update(passed=True, binaryBytesMatched=True, runtimePassed=True)
                     finally:
                         row['cleanup'] = cleanup_containers(owned)
@@ -223,7 +232,6 @@ def main():
     parser.add_argument('--download-drafts', action='store_true')
     parser.add_argument('--previous-oc', type=Path, required=True)
     parser.add_argument('--previous-otterio', type=Path, required=True)
-    parser.add_argument('--otterio-source-dir', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -284,7 +292,7 @@ def main():
             image_ok = False
             if args.download_drafts:
                 STAGE.require(platform.system() == 'Linux', 'registry runtime acceptance requires a Linux hosted runner')
-                image_ok = image_acceptance(document['releases'], assets, args.output / 'images.json', args.otterio_source_dir)
+                image_ok = image_acceptance(document['releases'], assets, args.output / 'images.json')
             else:
                 (args.output / 'images.json').write_text(json.dumps({'schemaVersion': 1, 'mode': 'not-certified', 'passed': False,
                     'checks': [], 'reason': 'Local packaged-program evidence does not certify registry digests or container runtime.'}, indent=2) + '\n')

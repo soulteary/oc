@@ -113,7 +113,7 @@ class LocalEvidenceTests(unittest.TestCase):
                      '--oc-assets', str(fixture.directories['soulteary/oc']),
                      '--otterio-assets', str(fixture.directories['soulteary/otterio']),
                      '--previous-oc', str(previous_oc), '--previous-otterio', str(previous_ot),
-                     '--otterio-source-dir', str(root), '--output', str(root / 'result')]
+                     '--output', str(root / 'result')]
         return fixture, arguments
 
     def profile(self, command, report):
@@ -211,7 +211,7 @@ class LocalEvidenceTests(unittest.TestCase):
             def snapshot(repository, tag, destination):
                 shutil.copytree(fixture.directories[repository], destination)
                 return copy.deepcopy(fixture.releases[repository])
-            def images(releases, assets, output, source):
+            def images(releases, assets, output):
                 self.assertTrue(all(path.is_dir() for path in assets.values()))
                 Path(output).write_text('{"passed":true}')
                 return True
@@ -403,6 +403,7 @@ class FakeDocker:
     def __init__(self, fixture, failure=None, probe_code=0):
         self.fixture, self.failure, self.probe_code = fixture, failure, probe_code
         self.active, self.created, self.removed, self.mounted = {}, [], [], []
+        self.probe_calls = []
 
     def command(self, arguments, timeout=300):
         verb = arguments[0]
@@ -449,6 +450,7 @@ class FakeDocker:
             raise AssertionError('mounted directory removed before daemon cleanup')
 
     def probe(self, command, env, timeout, cwd):
+        self.probe_calls.append((command, env, timeout, cwd))
         launcher = Path(command[-1])
         arguments = shlex.split(launcher.read_text().splitlines()[1])
         name = arguments[arguments.index('--name') + 1]
@@ -461,7 +463,7 @@ class FakeDocker:
 
 
 class ImageCleanupTests(unittest.TestCase):
-    def check(self, root, failure=None, probe_code=0):
+    def check(self, root, failure=None, probe_code=0, probe=None):
         fixture_root = root / 'fixture'
         fixture_root.mkdir()
         fixture = OfficialFixture(fixture_root)
@@ -470,8 +472,9 @@ class ImageCleanupTests(unittest.TestCase):
              patch.object(acceptance.platform, 'system', return_value='Linux'), \
              patch.object(acceptance.platform, 'machine', return_value='x86_64'), \
              patch.object(acceptance, 'docker_command', side_effect=docker.command), \
-             patch.object(acceptance, 'run_isolated', side_effect=docker.probe):
-            result = acceptance.image_acceptance(fixture.releases, fixture.directories, root / 'images.json', root)
+             patch.object(acceptance, 'run_isolated', side_effect=lambda *args, **kwargs:
+                          probe(docker, *args, **kwargs) if probe else docker.probe(*args, **kwargs)):
+            result = acceptance.image_acceptance(fixture.releases, fixture.directories, root / 'images.json')
         return result, json.loads((root / 'images.json').read_text()), docker
 
     def test_success_cleans_unique_names_and_records_native_and_qemu_scope(self):
@@ -489,6 +492,61 @@ class ImageCleanupTests(unittest.TestCase):
                 self.assertEqual(row['cleanup']['errors'], [])
             self.assertTrue(any(name.endswith('-server') for name in docker.removed))
             self.assertTrue(all(not path.exists() for path in docker.mounted))
+            self.assertEqual(report['harnesses'], {name: acceptance.STAGE.sha256(acceptance.ROOT / name)
+                                                  for name in acceptance.IMAGE_PROBE_HARNESS_PATHS})
+            for command, env, _, cwd in docker.probe_calls:
+                self.assertEqual(cwd, acceptance.ROOT)
+                self.assertEqual(command[:4], ['go', 'run', '-mod=readonly', str(acceptance.ROOT / 'buildscripts/verify-s3-startup.go')])
+                self.assertEqual(env['GOWORK'], 'off')
+                self.assertEqual(env['GOENV'], 'off')
+                self.assertNotIn('GOFLAGS', env)
+
+    def test_zero_exit_partner_stub_cannot_override_trusted_probe_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            candidate = root / 'candidate'
+            (candidate / 'buildscripts').mkdir(parents=True)
+            (candidate / 'buildscripts/verify-s3-startup.go').write_text('package main\nfunc main() {}\n')
+            selected = []
+            def probe(docker, command, env, timeout, cwd):
+                selected.append((command, cwd))
+                if Path(cwd) == candidate:
+                    return 0, 'candidate stub skips all S3 checks'
+                docker.probe(command, env, timeout, cwd)
+                return 7, 'trusted S3 checks failed'
+            original_directory = Path.cwd()
+            try:
+                os.chdir(candidate)
+                result, report, docker = self.check(root, probe=probe)
+            finally:
+                os.chdir(original_directory)
+            self.assertFalse(result)
+            self.assertTrue(selected)
+            self.assertTrue(all(cwd == acceptance.ROOT for _, cwd in selected))
+            self.assertTrue(all(str(candidate) not in item for command, _ in selected for item in command))
+            server = next(row for row in report['checks'] if row['repository'] == 'soulteary/otterio')
+            self.assertFalse(server['runtimePassed'])
+            self.assertEqual(docker.active, {})
+
+    def test_changed_trusted_probe_dependency_cannot_mint_runtime_success(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            trusted = root / 'trusted'
+            for name in acceptance.IMAGE_PROBE_HARNESS_PATHS:
+                target = trusted / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(acceptance.ROOT / name, target)
+            def probe(docker, command, env, timeout, cwd):
+                result = docker.probe(command, env, timeout, cwd)
+                (trusted / 'go.mod').write_text('module substituted\n')
+                return result
+            with patch.object(acceptance, 'ROOT', trusted):
+                result, report, docker = self.check(root, probe=probe)
+            self.assertFalse(result)
+            self.assertIn('dependencies changed', report['reason'])
+            server = next(row for row in report['checks'] if row['repository'] == 'soulteary/otterio')
+            self.assertFalse(server['runtimePassed'])
+            self.assertEqual(docker.active, {})
 
     def test_partial_create_and_attached_run_failure_are_cleaned(self):
         for failure in ('create', 'run', 'bytes'):

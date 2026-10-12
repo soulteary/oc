@@ -118,7 +118,14 @@ Linux amd64/arm64 is a separate result; it must pass by digest before those imag
 architectures can be described as runtime-accepted. Those checks compare each
 image's executables with its matching packages, execute OC/Console version/help
 and an OC filesystem copy, and exercise the server's signed S3 startup/round-trip
-probe. They do not run the whole Console functional suite inside each image.
+probe. The probe is [reviewed OC code](../buildscripts/verify-s3-startup.go) from
+the immutable workflow-dispatch checkout and runs with that checkout's `go.mod`
+and `go.sum`, with workspace overrides disabled and read-only module resolution.
+The image report fingerprints the probe, acceptance wrapper and Go dependency
+files and rejects changes during execution. OtterIO supplies packaged programs
+and image bytes; its candidate checkout or probe cannot select or weaken these
+runtime assertions. They do not run the whole Console functional suite inside
+each image.
 The hosted workflow installs QEMU for architecture execution; arm64 execution
 there is not a claim of native arm64 hardware testing. Cross-built archives alone
 do not establish execution on other platforms.

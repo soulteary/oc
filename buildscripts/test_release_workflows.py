@@ -84,24 +84,16 @@ def acceptance_boundary_errors(text):
         errors.append('acceptance verification steps cannot be skipped or suppress failures')
     checkouts = [(index, step) for index, step in enumerate(job_steps)
                  if step_field(step, 'uses').startswith('actions/checkout@')]
-    if len(checkouts) != 2:
-        errors.append('acceptance must check out its exact workflow source and validated Otterio source')
+    if len(checkouts) != 1:
+        errors.append('acceptance must check out only its exact trusted OC workflow source')
     else:
-        (_, own), (ot_index, partner) = checkouts
-        own_with, partner_with = section(own, 'with', 8), section(partner, 'with', 8)
+        _, own = checkouts[0]
+        own_with = section(own, 'with', 8)
         if ('          ref: ${{ github.sha }}' not in own_with or '          path: oc' not in own_with or
                 '          persist-credentials: false' not in own_with or 'repository:' in own_with):
             errors.append('acceptance own source must be the exact github.sha without persisted credentials')
-        if not all(value in partner_with for value in ('          repository: soulteary/otterio',
-                    '          ref: ${{ inputs.otterio_tag }}', '          path: otterio-candidate',
-                    '          persist-credentials: false')):
-            errors.append('acceptance partner source must be the requested validated Otterio tag')
-        validators = [(index, step_run(step)) for index, step in enumerate(job_steps)
-                      if 'stage.tag_valid(' in step_run(step)]
-        if len(validators) != 1 or not (checkouts[0][0] < validators[0][0] < ot_index) or not all(
-                value in validators[0][1] for value in ("stage.tag_valid(os.environ['OC_TAG'])",
-                    "stage.tag_valid(os.environ['OTTERIO_TAG'])", "'buildscripts/release-stage.py'")):
-            errors.append('both tags must be validated by the trusted helper before partner checkout')
+    validators = [(index, step_run(step)) for index, step in enumerate(job_steps)
+                  if 'stage.tag_valid(' in step_run(step)]
     commands = '\n'.join(step_run(step) for step in job_steps)
     if any(re.search(pattern, commands) for pattern in (
             r'gh\s+release\s+(?:edit|create|upload|delete)', r'release-stage\.py\s+publish',
@@ -114,10 +106,14 @@ def acceptance_boundary_errors(text):
             '--download-drafts --oc-tag "$OC_TAG" --otterio-tag "$OTTERIO_TAG"',
             '--previous-oc "$RUNNER_TEMP/release-previous/oc"',
             '--previous-otterio "$RUNNER_TEMP/release-previous/otterio"',
-            '--otterio-source-dir "$GITHUB_WORKSPACE/otterio-candidate"',
             '--output "$RUNNER_TEMP/console-release-acceptance"')) or any(
-            value in wrappers[0][1] for value in ('--oc-assets', '--otterio-assets', '|| true')):
+            value in wrappers[0][1] for value in ('--oc-assets', '--otterio-assets', '--otterio-source-dir', '|| true')):
         errors.append('acceptance must run the actual draft wrapper and retain its exit status')
+    if len(validators) != 1 or len(checkouts) != 1 or len(wrappers) != 1 or not (
+            checkouts[0][0] < validators[0][0] < wrappers[0][0]) or not all(
+                value in validators[0][1] for value in ("stage.tag_valid(os.environ['OC_TAG'])",
+                    "stage.tag_valid(os.environ['OTTERIO_TAG'])", "'buildscripts/release-stage.py'")):
+        errors.append('both tags must be validated by the trusted helper before packaged acceptance')
     old = [step_run(step) for step in job_steps if 'gh release download RELEASE.2026-10-10T16-38-05Z' in step_run(step)]
     expected = '2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3'
     if len(old) != 1 or not all(value in old[0] for value in (
@@ -315,7 +311,7 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
         self.workflows[name] = original
         self.reject_change(name, 'run: test "$GITHUB_REF" = refs/heads/main', 'run: true', 'first step')
 
-    def test_acceptance_rejects_optional_tags_and_unchecked_partner_checkout(self):
+    def test_acceptance_rejects_optional_tags_and_validation_after_execution(self):
         name = 'console-release-acceptance.yml'
         original = self.workflows[name]
         for key in ('oc_tag', 'otterio_tag'):
@@ -325,24 +321,28 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
                 self.workflows[name] = original
         for tag in ('OC_TAG', 'OTTERIO_TAG'):
             with self.subTest(validation=tag):
-                self.reject_change(name, "stage.tag_valid(os.environ['" + tag + "'])", 'pass', 'before partner checkout')
+                self.reject_change(name, "stage.tag_valid(os.environ['" + tag + "'])", 'pass', 'before packaged acceptance')
                 self.workflows[name] = original
         blocks = steps(original, 'packaged-pair')
         validation = next(block for block in blocks if 'stage.tag_valid(' in step_run(block))
-        partner = next(block for block in blocks if 'repository: soulteary/otterio' in block)
-        self.workflows[name] = original.replace(validation[8:], '__VALIDATION__', 1).replace(partner[8:], validation[8:], 1).replace('__VALIDATION__', partner[8:], 1)
-        self.assertIn('both tags must be validated by the trusted helper before partner checkout', boundary_errors(self.workflows))
+        wrapper = next(block for block in blocks if 'python3 buildscripts/console_release_acceptance.py' in block)
+        self.workflows[name] = original.replace(validation[8:], '__VALIDATION__', 1).replace(wrapper[8:], validation[8:], 1).replace('__VALIDATION__', wrapper[8:], 1)
+        self.assertIn('both tags must be validated by the trusted helper before packaged acceptance', boundary_errors(self.workflows))
 
-    def test_acceptance_uses_exact_own_sha_and_requested_partner_tag(self):
+    def test_acceptance_uses_exact_own_sha_and_refuses_candidate_checkout(self):
         name = 'console-release-acceptance.yml'
         original = self.workflows[name]
         for before, after, message in (
                 ('ref: ${{ github.sha }}', 'ref: main', 'exact github.sha'),
-                ('ref: ${{ inputs.otterio_tag }}', 'ref: main', 'validated Otterio tag'),
                 ('persist-credentials: false', 'persist-credentials: true', 'persisted credentials')):
             with self.subTest(change=before):
                 self.reject_change(name, before, after, message)
                 self.workflows[name] = original
+        partner = ('      - uses: actions/checkout@v7.0.1\n        with:\n'
+                   '          repository: soulteary/otterio\n          ref: ${{ inputs.otterio_tag }}\n'
+                   '          path: otterio-candidate\n          persist-credentials: false\n')
+        self.workflows[name] = original.replace('      - uses: actions/setup-go@', partner + '      - uses: actions/setup-go@', 1)
+        self.assertIn('acceptance must check out only its exact trusted OC workflow source', boundary_errors(self.workflows))
 
     def test_acceptance_permissions_remain_read_only(self):
         name = 'console-release-acceptance.yml'
@@ -381,6 +381,7 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
         original = self.workflows[name]
         for before, after in (
                 ('--download-drafts', '--oc-assets candidate-oc --otterio-assets candidate-otterio'),
+                ('--output "$RUNNER_TEMP/console-release-acceptance"', '--otterio-source-dir candidate --output "$RUNNER_TEMP/console-release-acceptance"'),
                 ('--output "$RUNNER_TEMP/console-release-acceptance"', '--output "$RUNNER_TEMP/console-release-acceptance" || true')):
             with self.subTest(change=before):
                 self.reject_change(name, before, after, 'actual draft wrapper')
