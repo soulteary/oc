@@ -1,0 +1,128 @@
+{
+  "userAgentScope": "Python HTTPS cookie-jar protocol client; browser rendering/SameSite not evaluated",
+  "storageTopology": "dual HTTPS S3/Admin listeners",
+  "certificateTopology": "independent Admin CA; IdP/S3/Console share primary CA",
+  "dateUTC": "2026-10-11T20:20:47.125249+00:00",
+  "status": "failed",
+  "checks": [
+    "actual Keycloak discovery satisfies fixed HTTPS origin RS256/code/S256/client_secret_basic profile",
+    "independent Admin HTTPS CA accepted; S3 primary CA is rejected for Admin listener",
+    "isolated two-user distinct bucket/prefix policies and real objects created",
+    "alice: real code/PKCE login STS permits own prefix and denies other prefix/user bucket",
+    "alice: real code/PKCE login and refresh STS credentials allow own prefix and deny other prefix/user bucket",
+    "bob: real code/PKCE login STS permits own prefix and denies other prefix/user bucket",
+    "bob: real code/PKCE login and refresh STS credentials allow own prefix and deny other prefix/user bucket"
+  ],
+  "scope": "isolated HTTPS Keycloak + real OtterIO STS",
+  "harnessSha256": "1185de90e85dd607bce6d02d864e16f4689b8e5da159072bf9e70981c4a0e8b9",
+  "programs": {
+    "server": {
+      "sha256": "ce430ba0d3d2e39b70a6fb9f0c6b493cf2f0e6a79852b6d0fd6d14e9acf4d147",
+      "declaredSource": "f2bdc23403ee0c4b35f9ce4092c68b80074349e1",
+      "binaryVCSRevision": "f2bdc23403ee0c4b35f9ce4092c68b80074349e1",
+      "binaryVCSModified": false,
+      "platform": "linux/arm64"
+    },
+    "oc": {
+      "sha256": "202d29371a0d4bc3dfc84594225ff81b5dcaddff1096dee9fc405d34a7b6af89",
+      "declaredSource": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+      "binaryVCSRevision": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    },
+    "console": {
+      "sha256": "635b4b0703129fdb2d923e8e3fcd3d65cf34a703df5b26d5e42a5de2f9b9c400",
+      "declaredSource": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+      "binaryVCSRevision": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    }
+  },
+  "browserSiteTopology": "localhost IdP and 127.0.0.1 Console (different sites)",
+  "certificateIdentities": {
+    "primaryCAsha256": "7ccb1b28cac65827ff1f32083bbd62dbae63fa76ffb0c7dff2080c0f10de5108",
+    "adminCAsha256": "81b0a2e2ea64d5c3038965740a8b76645106c3104f5c78ff30075d8ea48f4385"
+  },
+  "keycloak": {
+    "version": "26.8.0",
+    "image": "quay.io/keycloak/keycloak@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+    "platform": "linux/arm64",
+    "profile": "confidential/client_secret_basic; RS256; code; mandatory PKCE S256; HTTPS; offline_access"
+  },
+  "discoveryProfile": {
+    "id_token_signing_alg_values_supported": [
+      "PS384",
+      "RS384",
+      "EdDSA",
+      "ES384",
+      "HS256",
+      "HS512",
+      "ES256",
+      "RS256",
+      "HS384",
+      "ES512",
+      "PS256",
+      "PS512",
+      "RS512"
+    ],
+    "response_types_supported": [
+      "code",
+      "none",
+      "id_token",
+      "token",
+      "id_token token",
+      "code id_token",
+      "code token",
+      "code id_token token"
+    ],
+    "code_challenge_methods_supported": [
+      "plain",
+      "S256"
+    ],
+    "token_endpoint_auth_methods_supported": [
+      "private_key_jwt",
+      "client_secret_basic",
+      "client_secret_post",
+      "tls_client_auth",
+      "client_secret_jwt"
+    ]
+  },
+  "storageContainer": {
+    "baseImage": "ghcr.io/soulteary/otterio:RELEASE.2026-10-09T15-22-07Z@sha256:7ddf211748d11bb8f6af23576f19eaf5b2675f70f647e38ed9fdd14912824ba8",
+    "runtimeProgram": {
+      "sha256": "ce430ba0d3d2e39b70a6fb9f0c6b493cf2f0e6a79852b6d0fd6d14e9acf4d147",
+      "declaredSource": "f2bdc23403ee0c4b35f9ce4092c68b80074349e1",
+      "binaryVCSRevision": "f2bdc23403ee0c4b35f9ce4092c68b80074349e1",
+      "binaryVCSModified": false,
+      "platform": "linux/arm64"
+    },
+    "clockTopology": "Keycloak and OtterIO share Docker VM clock and temporary network namespace"
+  },
+  "initialTokenClock": {
+    "alice": {
+      "issuedAtOffsetSeconds": -0.753,
+      "secondsUntilExpiry": 89.247
+    },
+    "bob": {
+      "issuedAtOffsetSeconds": 0.238,
+      "secondsUntilExpiry": 90.238
+    }
+  },
+  "keycloakRefresh": {
+    "alice": {
+      "nonceAbsentAllowed": true,
+      "nonceMatchesWhenPresent": true,
+      "subjectPreserved": true,
+      "issuerAudiencePreserved": true
+    },
+    "bob": {
+      "nonceAbsentAllowed": true,
+      "nonceMatchesWhenPresent": true,
+      "subjectPreserved": true,
+      "issuerAudiencePreserved": true
+    }
+  },
+  "keycloakSuccessfulRefreshEvents": 2,
+  "error": "isolated browser acceptance hook failed",
+  "cleanup": "passed"
+}

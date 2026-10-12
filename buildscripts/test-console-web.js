@@ -123,13 +123,13 @@ function createHarness(options = {}) {
   }
   elements.get("settings-kind").value = "policy";
   document = {
-    body: { dataset: { authMode: options.native ? "native" : "local" } },
+    body: { dataset: { authMode: options.oidc ? "oidc" : options.native ? "native" : "local" } },
     activeElement: null,
     getElementById(id) { assert.ok(elements.has(id), `script references missing HTML id ${id}`); return elements.get(id); },
     createElement(tagName) { return new Element(tagName); },
   };
   const window = {
-    location: { origin: "http://127.0.0.1:9001" },
+    location: { origin: "http://127.0.0.1:9001", assign(url) { downloads.push(url); } },
     addEventListener(type, callback) {
       if (!windowListeners.has(type)) windowListeners.set(type, []);
       windowListeners.get(type).push(callback);
@@ -1823,13 +1823,13 @@ test("native page suspension clears unsubmitted identity credentials", async () 
  assert.equal(h.calls.filter(c=>c.url==="/api/login").length,0);
 });
 
-test("native writable sessions expose creation and account status changes but reject other identity edits", async () => {
+test("native writable sessions expose atomic IAM changes but reject unknown actions", async () => {
   const h = createHarness({ native: true, readOnly: false, capabilities: fullCapabilities });
   await h.ready();
   await h.fire("open-iam");
   assert.equal(h.element("iam-action-form").hidden, false);
-  assert.deepEqual(h.element("iam-action").children.map(o=>o.value),["user.create", "user.enable", "user.disable", "user.delete"]);
-  h.element("iam-action").value="user.rotate";
+  assert.deepEqual(h.element("iam-action").children.map(o=>o.value),["user.create", "user.enable", "user.disable", "user.rotate", "user.policies", "user.delete"]);
+  h.element("iam-action").value="unknown.action";
   await h.fire("iam-action-form", "submit", { force: true });
   assert.equal(h.calls.filter(call => call.url === "/api/iam/actions").length, 0);
   assert.equal(h.element("workspace").hidden, false);
@@ -1944,6 +1944,16 @@ test("diagnostics session expiry clears snapshots and returns to login", async (
  assert.equal(h.element("workspace").hidden,true); assert.equal(h.element("diagnostics-body").textContent,"");
 });
 
+test("OIDC sign-in navigates without collecting local or IAM credentials", async () => {
+ const h = createHarness({oidc:true}); await h.ready();
+ assert.equal(h.element("login-code-fields").hidden,true);
+ assert.equal(h.element("native-login-fields").hidden,true);
+ assert.equal(h.element("login-code").required,false);
+ const before=h.calls.filter(c=>c.url==="/api/login").length;
+ await h.fire("login-form","submit");
+ assert.equal(h.calls.filter(c=>c.url==="/api/login").length,before);
+ assert.ok(h.downloads.includes("/api/oidc/login"));
+});
 (async () => {
   let passed = 0;
   for (const item of tests) {

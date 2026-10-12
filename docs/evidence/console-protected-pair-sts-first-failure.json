@@ -1,0 +1,27 @@
+{
+  "evidenceKind": "structured-redacted-extraction",
+  "rawOutputIncluded": false,
+  "originalSHA256": "6b1701369709367ceb1680770969554b742d95cd6ca894fc063220a95bfec7ef",
+  "events": [
+    {
+      "Time": "2026-10-12T04:24:18.117955+08:00",
+      "Action": "output",
+      "Package": "github.com/soulteary/mc/internal/oidc",
+      "Test": "TestOtterIOSTSIntegration",
+      "failureClass": "upstream-protocol-rejected"
+    },
+    {
+      "Time": "2026-10-12T04:24:18.128392+08:00",
+      "Action": "fail",
+      "Package": "github.com/soulteary/mc/internal/oidc",
+      "Test": "TestOtterIOSTSIntegration",
+      "Elapsed": 2.95
+    },
+    {
+      "Time": "2026-10-12T04:24:18.135847+08:00",
+      "Action": "fail",
+      "Package": "github.com/soulteary/mc/internal/oidc",
+      "Elapsed": 3.513
+    }
+  ]
+}

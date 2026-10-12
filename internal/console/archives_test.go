@@ -6,6 +6,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/soulteary/mc/internal/consoleapi"
+	"github.com/soulteary/mc/internal/oidc"
 )
 
 type archiveBackend struct {
@@ -552,6 +554,77 @@ func TestArchiveListIsBoundedToSixteenOwnedTasks(t *testing.T) {
 	}
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil || len(result.Archives) != 16 {
 		t.Fatalf("bounded list=%d %s", w.Code, w.Body.String())
+	}
+	assertArchiveClean(t, s, dir)
+}
+
+type archiveOldGenerationWriter struct {
+	*httptest.ResponseRecorder
+	expire context.CancelFunc
+}
+
+func (w archiveOldGenerationWriter) Write(p []byte) (int, error) {
+	w.expire()
+	return w.ResponseRecorder.Write(p)
+}
+func TestOIDCReadyArchiveDownloadSurvivesOldGenerationExpiry(t *testing.T) {
+	for _, expireBefore := range []bool{false, true} {
+		t.Run(map[bool]string{false: "during-download", true: "before-download"}[expireBefore], func(t *testing.T) {
+			s, dir := archiveServer(t, &archiveBackend{}, 16)
+			cookie, _ := signIn(t, s)
+			current := s.sessions[sha256.Sum256([]byte(cookie.Value))]
+			oldctx, oldcancel := context.WithCancel(context.Background())
+			defer oldcancel()
+			current.oidc = &oidcSession{grant: &oidc.Grant{}, generations: newOIDCGenerations(current.ctx, current.runtime, current.expires, current.expires)}
+			old := &session{ctx: oldctx, oidc: current.oidc}
+			filename := path.Join(dir, "ready.zip")
+			if err := os.WriteFile(filename, []byte("completed ZIP"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			taskctx, taskcancel := context.WithCancel(oldctx)
+			task := &archiveTask{owner: old, ctx: taskctx, cancel: taskcancel, path: filename, info: archiveReply{ID: strings.Repeat("a", 43), Status: "ready", Expires: time.Now().Add(time.Minute)}}
+			s.archives[task.info.ID] = task
+			if expireBefore {
+				oldcancel()
+			}
+			r := testRequest(http.MethodGet, "/api/archives/"+task.info.ID+"/download", "", cookie)
+			w := httptest.NewRecorder()
+			s.ServeHTTP(archiveOldGenerationWriter{w, oldcancel}, r)
+			if w.Code != 200 || w.Body.String() != "completed ZIP" || task.info.Status != "succeeded" {
+				t.Fatalf("old generation canceled ready download: %d %q %+v", w.Code, w.Body.String(), task.info)
+			}
+			assertArchiveClean(t, s, dir)
+		})
+	}
+}
+
+func TestOIDCCompletedArchiveOutlivesPreparingGeneration(t *testing.T) {
+	s, dir := archiveServer(t, &archiveBackend{}, 16)
+	cookie, reply := signIn(t, s)
+	root := s.sessions[sha256.Sum256([]byte(cookie.Value))]
+	manager := newOIDCGenerations(root.ctx, root.runtime, root.expires, root.expires)
+	root.oidc = &oidcSession{grant: &oidc.Grant{}, generations: manager}
+	old := manager.current
+	info := startArchive(t, s, cookie, reply.CSRFToken, `{"refs":[{"bucket":"bucket","key":"one"}]}`)
+	if ready := awaitArchive(t, s, cookie, info.ID); ready.Status != "ready" {
+		t.Fatal(ready)
+	}
+	if err := manager.refresh(context.Background(), func(context.Context) (sessionRuntime, time.Time, error) {
+		return sessionRuntime{backend: &archiveBackend{}, lifetime: &backendLifetime{cleanup: func() {}}}, root.expires, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	old.cancel()
+	s.mu.Lock()
+	task := s.archives[info.ID]
+	alive := task.ctx.Err() == nil && task.info.Status == "ready" && task.path != ""
+	s.mu.Unlock()
+	if !alive {
+		t.Fatal("completed archive inherited expired preparation credentials")
+	}
+	w := archiveRequest(s, cookie, "", http.MethodGet, "/api/archives/"+info.ID+"/download", "")
+	if w.Code != 200 {
+		t.Fatalf("download=%d %s", w.Code, w.Body.String())
 	}
 	assertArchiveClean(t, s, dir)
 }

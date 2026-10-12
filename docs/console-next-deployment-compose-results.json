@@ -1,0 +1,29 @@
+{
+  "dateUTC": "2026-10-11T18:04:23.270874+00:00",
+  "hostPlatform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "status": "passed",
+  "checks": [
+    "modified host ports and fixed-digest Compose configuration valid",
+    "published OC Console authenticates and reads buckets through bridge",
+    "published CLI creates and reads disposable object bytes",
+    "object bytes survive storage container recreation on unchanged image and volume",
+    "language favorites and recent preferences survive console restart",
+    "legacy page RPC upload download ZIP unavailable on internal Admin listener",
+    "same-server same-volume rollback restores embedded page and object bytes",
+    "return to browser-off retains OC access and object bytes"
+  ],
+  "images": {
+    "otterio": "ghcr.io/soulteary/otterio:RELEASE.2026-10-09T15-22-07Z@sha256:7ddf211748d11bb8f6af23576f19eaf5b2675f70f647e38ed9fdd14912824ba8",
+    "oc-init": "ghcr.io/soulteary/oc:RELEASE.2026-10-10T11-42-18Z@sha256:f4a042ae7b9a2fb3b32c8984d36a53aea77cb69bd8469002f3cfb11d1b246dd6",
+    "oc": "ghcr.io/soulteary/oc:RELEASE.2026-10-10T11-42-18Z@sha256:f4a042ae7b9a2fb3b32c8984d36a53aea77cb69bd8469002f3cfb11d1b246dd6"
+  },
+  "composeSha256": "ffe90e70daa6c5c107f0a06b9b94399f118a8e8f8205e3005f5587c63c6a2176",
+  "harnessSha256": "759f14a32f9a8d93861da1e9113d3d8b0dd92a9265aa213942fc743741a7d9ef",
+  "containerPlatforms": {
+    "oc": "linux/arm64",
+    "otterio": "linux/arm64"
+  },
+  "platform": "Docker containers: linux/arm64",
+  "dockerOperatingSystem": "fedora",
+  "cleanup": "passed"
+}

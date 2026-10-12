@@ -344,7 +344,7 @@ jobs:
         run: |
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
-            --server "$RUNNER_TEMP/otterio-console-features" --native \
+            --server "$RUNNER_TEMP/otterio-console-features" --native --expect-relationship-unsupported \
             --server-source 6f6d0835ddff68020f1491c403b958fade22841f \
             --server-patch buildscripts/console-server-base.patch \
             --server-patch buildscripts/console-features-server.patch \

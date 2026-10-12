@@ -124,7 +124,7 @@ func (s *Server) serveJobs(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		jobs := []consoleapi.Job{}
 		for _, j := range s.jobs {
-			if j.owner == sess {
+			if sameSession(j.owner, sess) {
 				jobs = append(jobs, snapshot(j))
 			}
 		}
@@ -172,7 +172,7 @@ func snapshot(j *job) consoleapi.Job {
 
 func (s *Server) ownedJobLocked(id string, sess *session) *job {
 	j := s.jobs[id]
-	if j == nil || j.owner != sess {
+	if j == nil || !sameSession(j.owner, sess) {
 		return nil
 	}
 	return j
@@ -192,7 +192,7 @@ func (s *Server) createJob(w http.ResponseWriter, sess *session, info consoleapi
 	}
 	count := 0
 	for _, j := range s.jobs {
-		if j.owner == sess {
+		if sameSession(j.owner, sess) {
 			count++
 		}
 	}
@@ -215,7 +215,7 @@ func (s *Server) createJob(w http.ResponseWriter, sess *session, info consoleapi
 func (s *Server) evictTerminalLocked(owner *session) bool {
 	var oldest *job
 	for _, j := range s.jobs {
-		if !terminal(j.info.Status) || (owner != nil && j.owner != owner) {
+		if !terminal(j.info.Status) || (owner != nil && !sameSession(j.owner, owner)) {
 			continue
 		}
 		if oldest == nil || j.info.Created.Before(oldest.info.Created) {
@@ -346,7 +346,11 @@ func (s *Server) uploadJob(w http.ResponseWriter, r *http.Request, sess *session
 		writeError(w, 404, "not_found", "This task does not exist.")
 		return
 	}
-	if j.info.Kind != "upload" || j.info.Status != "waiting" || j.ctx.Err() != nil || !time.Now().Before(j.info.Expires) {
+	executionContext := j.ctx
+	if sess.oidc != nil {
+		executionContext = sess.ctx
+	}
+	if j.info.Kind != "upload" || j.info.Status != "waiting" || executionContext.Err() != nil || !time.Now().Before(j.info.Expires) {
 		s.mu.Unlock()
 		writeError(w, 409, "task_state", "This upload cannot be started again.")
 		return
@@ -361,11 +365,16 @@ func (s *Server) uploadJob(w http.ResponseWriter, r *http.Request, sess *session
 		writeError(w, 400, "invalid_input", "The upload length does not match the registered file size.")
 		return
 	}
-	if err := tryAcquire(j.ctx, s.writeSlots); err != nil {
+	if err := tryAcquire(executionContext, s.writeSlots); err != nil {
 		s.mu.Unlock()
 		writeSlotError(w, err)
 		return
 	}
+	if sess.oidc != nil {
+		j.cancel()
+		j.ctx, j.cancel = context.WithCancel(sess.ctx)
+	}
+	j.owner = sess
 	j.timer.Stop()
 	j.info.Status = "running"
 	j.info.Expires = j.owner.expires
@@ -554,7 +563,13 @@ func (s *Server) executeDeletion(w http.ResponseWriter, r *http.Request, sess *s
 		writeError(w, 404, "not_found", "This task does not exist.")
 		return
 	}
-	if j.info.Kind != "delete" || j.info.Status != "ready" || j.ctx.Err() != nil || !time.Now().Before(j.info.Expires) {
+	executionContext := j.ctx
+	if sess.oidc != nil {
+		// A ready plan belongs to the stable login, not the credential
+		// generation that scanned it. Execution uses the acquired generation.
+		executionContext = sess.ctx
+	}
+	if j.info.Kind != "delete" || j.info.Status != "ready" || executionContext.Err() != nil || !time.Now().Before(j.info.Expires) {
 		s.mu.Unlock()
 		writeError(w, 409, "task_state", "This deletion plan is no longer ready.")
 		return
@@ -576,7 +591,7 @@ func (s *Server) executeDeletion(w http.ResponseWriter, r *http.Request, sess *s
 		writeJSON(w, 200, info)
 		return
 	}
-	if err := tryAcquire(j.ctx, s.writeSlots); err != nil {
+	if err := tryAcquire(executionContext, s.writeSlots); err != nil {
 		s.mu.Unlock()
 		writeSlotError(w, err)
 		return
@@ -587,6 +602,12 @@ func (s *Server) executeDeletion(w http.ResponseWriter, r *http.Request, sess *s
 		writeError(w, 409, "connection_ending", "This connection is ending.")
 		return
 	}
+	// Use the same runtime and context retained above, including after refresh.
+	if sess.oidc != nil {
+		j.cancel()
+		j.ctx, j.cancel = context.WithCancel(sess.ctx)
+	}
+	j.owner = sess
 	j.confirm = [32]byte{}
 	j.info.Status = "running"
 	j.info.Expires = j.owner.expires

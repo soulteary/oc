@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/soulteary/mc/internal/consoleapi"
 )
 
 // Unit instances are exclusively owned; production instances require Server.mu.
@@ -75,7 +73,7 @@ func TestIdentityRevocationsScopeIsolationAndRepeatedChanges(t *testing.T) {
 func TestUnknownIdentityScopeRejectsBeforeMutationOrWriteReservation(t *testing.T) {
 	s := testServer(t, &fakeBackend{}, time.Hour)
 	w := httptest.NewRecorder()
-	s.retireNativeUser(w, httptest.NewRequest("POST", "/api/iam/actions", nil), nil, nil, consoleapi.IAMActionRequest{Action: "user.delete"})
+	s.executeIAMUserMutation(w, httptest.NewRequest("POST", "/api/iam/actions", nil), nil, iamUserMutationPlan{})
 	if w.Code != 409 || len(s.writeSlots) != 0 {
 		t.Fatal("unknown user reached mutation reservation")
 	}

@@ -1,0 +1,30 @@
+{
+  "console": {
+    "sha256": "635b4b0703129fdb2d923e8e3fcd3d65cf34a703df5b26d5e42a5de2f9b9c400",
+    "declaredSource": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+    "binaryVCSRevision": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+    "binaryVCSModified": false,
+    "platform": "darwin/arm64"
+  },
+  "cli": {
+    "sha256": "202d29371a0d4bc3dfc84594225ff81b5dcaddff1096dee9fc405d34a7b6af89",
+    "declaredSource": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+    "binaryVCSRevision": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+    "binaryVCSModified": false,
+    "platform": "darwin/arm64"
+  },
+  "server": {
+    "sha256": "f4691efaa11c790257fb8a5a80f950a3aa6ce1ecb8a3cd25291b3cbecd71b699",
+    "declaredSource": "d2479684b344fb1f2975f546471888749f75d671",
+    "binaryVCSRevision": "d2479684b344fb1f2975f546471888749f75d671",
+    "binaryVCSModified": false,
+    "platform": "darwin/arm64"
+  },
+  "legacyServer": {
+    "sha256": "7c52ea3a1e8a4ed6c50ef3c570261268ee5bcb50d0a89a7e3661bdcba459d4fe",
+    "declaredSource": "cbbffbd40531f101cb67c263c69010a0a1b8ed4e",
+    "binaryVCSRevision": "cbbffbd40531f101cb67c263c69010a0a1b8ed4e",
+    "binaryVCSModified": false,
+    "platform": "darwin/arm64"
+  }
+}

@@ -14,14 +14,14 @@ func validNativeCredentials(c NativeCredentials) bool {
 	return consoleapi.ValidIAMAccessKey(c.AccessKey) && len(c.SecretKey) >= 8 && len(c.SecretKey) <= 128 && utf8.ValidString(c.SecretKey) && !strings.ContainsAny(c.SecretKey, "\x00\r\n")
 }
 func (s *Server) cookieName() string {
-	if s.nativeLogin != nil {
+	if s.nativeLogin != nil || s.oidc != nil {
 		return nativeCookieName
 	}
 	return cookieName
 }
 func (s *Server) sessionCookie(token string, maxAge int) *http.Cookie {
 	cookie := &http.Cookie{Name: s.cookieName(), Value: token, Path: "/", MaxAge: maxAge, HttpOnly: true, SameSite: http.SameSiteStrictMode}
-	if s.nativeLogin != nil {
+	if s.nativeLogin != nil || s.oidc != nil {
 		cookie.Secure = true
 		cookie.SameSite = http.SameSiteLaxMode
 	}
@@ -29,7 +29,10 @@ func (s *Server) sessionCookie(token string, maxAge int) *http.Cookie {
 }
 
 func (s *Server) loginPrompt() string {
-	if s.nativeLogin != nil {
+	if s.oidc != nil {
+		return "Sign in with your identity provider."
+	}
+	if s.nativeLogin != nil || s.oidc != nil {
 		return "Sign in with your IAM credentials."
 	}
 	return "Sign in with the code printed by OC."

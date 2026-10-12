@@ -17,6 +17,7 @@ import secrets
 import signal
 import socket
 import ssl
+import sys
 import subprocess
 import tempfile
 import time
@@ -254,7 +255,7 @@ def scenario(args, name, preview=False, record=None):
                 command += ['--console-address', f'127.0.0.1:{ports[1]}']
                 if tls:
                     command += ['--console-certs-dir', str(admincert_dir)]
-            command += [str(root / f'data-{i}') for i in range(4)] if args.writes or args.settings or args.features or args.version_copy or args.native else [str(root / 'data')]
+            command += [str(root / f'data-{i}') for i in range(4)] if args.writes or args.settings or args.features or args.version_copy or args.native or args.relationship_iam else [str(root / 'data')]
             server = subprocess.Popen(command, env=env, stdout=log, stderr=log)
             deadline = time.monotonic() + 30
             while True:
@@ -381,6 +382,11 @@ def scenario(args, name, preview=False, record=None):
                 record['nativeMetrics'] = verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                     credentials, endpoint, admin, s3ca, adminca, bucket, restricted_access, restricted_secret,
                     access, secret, checks)
+            if args.relationship_iam:
+                from console_relationship_iam_acceptance import verify_relationship_iam
+                record['relationshipIAMMetrics'] = verify_relationship_iam(args, root, cli, browser, stop, certificate, free_port, env,
+                    credentials, endpoint, admin, s3ca, adminca, bucket, restricted_access, restricted_secret,
+                    access, secret, checks)
             if args.settings or args.settings_legacy:
                 from console_settings_acceptance import verify_settings
                 record['settingsMetrics'] = verify_settings(
@@ -428,13 +434,25 @@ def scenario(args, name, preview=False, record=None):
             record['status'] = 'passed'
             return record
         finally:
-            stop(restricted_writer)
-            stop(write_console)
-            stop(restricted_console)
-            stop(console)
-            stop(server)
+            cleanup = {'status': 'running', 'processes': [], 'errors': []}
+            record['processCleanup'] = cleanup
+            for label, process in [('restricted-writer', restricted_writer), ('write-console', write_console),
+                                   ('restricted-console', restricted_console), ('console', console), ('server', server)]:
+                try:
+                    stop(process)
+                    if process is not None and process.poll() is None:
+                        raise RuntimeError('temporary process remains active')
+                    cleanup['processes'].append({'component': label, 'stopped': True})
+                except Exception as error:
+                    cleanup['errors'].append({'component': label, 'errorClass': type(error).__name__})
             for log in log_files:
-                log.close()
+                try:
+                    log.close()
+                except Exception as error:
+                    cleanup['errors'].append({'component': 'fixture-log', 'errorClass': type(error).__name__})
+            cleanup['status'] = 'failed' if cleanup['errors'] else 'passed'
+            if cleanup['errors'] and sys.exc_info()[0] is None:
+                raise RuntimeError('temporary fixture process cleanup failed')
 
 
 def main():
@@ -447,6 +465,8 @@ def main():
     parser.add_argument('--server-patch', action='append', default=[], help='patch applied on top of the recorded server source (repeatable)')
     parser.add_argument('--output', required=True)
     parser.add_argument('--scenarios', default=None)
+    parser.add_argument('--relationship-iam', action='store_true', help='verify relationship-conditioned native IAM mutations')
+    parser.add_argument('--expect-relationship-unsupported', action='store_true', help='require legacy server to reject relationship mutations')
     parser.add_argument('--native', action='store_true', help='verify independent native IAM sessions over browser/storage HTTPS')
     parser.add_argument('--preview', action='store_true', help='hold the last disposable scenario for manual browser QA')
     parser.add_argument('--writes', action='store_true', help='also test opt-in uploads and deletes on disposable four-disk storage')
@@ -465,8 +485,12 @@ def main():
         parser.error('--features-iam-create-unsupported requires --features without --features-legacy')
     if args.settings_base and not args.settings:
         parser.error('--settings-base requires --settings')
-    names = (args.scenarios or ('single-tls,dual-tls' if args.native else 'single-http,dual-http,dual-tls')).split(',')
-    if args.native and any(not name.endswith('tls') for name in names):
+    if args.expect_relationship_unsupported and not (args.relationship_iam or args.native):
+        parser.error('--expect-relationship-unsupported requires --relationship-iam or --native')
+    if args.native and args.relationship_iam:
+        parser.error('select one native acceptance profile')
+    names = (args.scenarios or ('single-tls,dual-tls' if args.native or args.relationship_iam else 'single-http,dual-http,dual-tls')).split(',')
+    if (args.native or args.relationship_iam) and any(not name.endswith('tls') for name in names):
         parser.error('--native requires TLS storage scenarios')
     if any(name not in ('single-http', 'dual-http', 'single-tls', 'dual-tls') for name in names):
         parser.error('unknown scenario')
@@ -483,11 +507,13 @@ def main():
             report['scope'] = 'console-storage-features-and-iam-create-refusal'
     if args.settings or args.settings_legacy:
         report['settingsProfile'] = 'legacy-read-only-fallback' if args.settings_legacy else ('v1-base-protected-settings' if args.settings_base else 'v1-protected-settings')
+    if args.relationship_iam:
+        report['scope'] = 'relationship-iam-unsupported' if args.expect_relationship_unsupported else 'relationship-iam-native'
     if args.native:
         report['scope'] = 'native-iam-https-read-only'
     if args.version_copy:
         report['scope'] += '-and-version-copy'
-    report['storage'] = 'single-node-four-disk-erasure' if args.writes or args.settings or args.features or args.version_copy or args.native else 'filesystem'
+    report['storage'] = 'single-node-four-disk-erasure' if args.writes or args.settings or args.features or args.version_copy or args.native or args.relationship_iam else 'filesystem'
     harness_paths = [Path(__file__), Path(__file__).with_name('console_write_acceptance.py'),
                      Path(__file__).with_name('console_acceptance_protocol.py'),
                      Path(__file__).with_name('local_http.py')]
@@ -497,6 +523,8 @@ def main():
     if args.features:
         features_path = Path(__file__).with_name('console_features_acceptance.py')
         harness_paths.append(features_path)
+    if args.relationship_iam:
+        harness_paths.append(Path(__file__).with_name('console_relationship_iam_acceptance.py'))
     if args.native:
         harness_paths.append(Path(__file__).with_name('console_native_acceptance.py'))
     if args.version_copy:

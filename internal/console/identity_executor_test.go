@@ -83,3 +83,29 @@ func TestIdentityExecutorOwnsImpactSnapshot(t *testing.T) {
 		t.Fatal("caller mutation changed executor retirement or leaked barrier")
 	}
 }
+
+func TestIdentityExecutorKnownEmptyPreservesSessions(t *testing.T) {
+	s := nativeRotationFixture(t, func(context.Context, string) error { return nil }, nil)
+	alice, _ := nativeSignIn(t, s, "alice")
+	bob, _ := nativeSignIn(t, s, "bob")
+	s.mu.Lock()
+	var owner *session
+	for _, sess := range s.sessions {
+		if sess.nativeUser == "alice" {
+			owner = sess
+		}
+	}
+	s.mu.Unlock()
+	impact := identityImpact{known: true, scopes: []identityScope{}}
+	if s.beginIdentityMutation(httptest.NewRecorder(), nil, impact) != nil {
+		t.Fatal("empty impact admitted missing actor")
+	}
+	mutation := s.beginIdentityMutation(httptest.NewRecorder(), owner, impact)
+	if mutation == nil || mutation.impact.scopes == nil || len(s.writeSlots) != cap(s.writeSlots) {
+		t.Fatal("known-empty impact lost barrier or authority")
+	}
+	mutation.finish(true)
+	if nativeSessionStatus(s, alice) != 200 || nativeSessionStatus(s, bob) != 200 || len(s.writeSlots) != 0 {
+		t.Fatal("empty impact retired unrelated sessions or leaked slots")
+	}
+}

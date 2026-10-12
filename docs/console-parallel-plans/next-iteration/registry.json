@@ -1,0 +1,324 @@
+{
+  "planDate": "2026-10-12",
+  "timezone": "Asia/Shanghai",
+  "scope": "保留 OIDC，完成替代和迁移验收后移除 OtterIO 内置 Web",
+  "baselines": {
+    "oc": "8bc379e238e4dd85ec57adce2504b8482af9326e",
+    "otterio": "8cc518b31ac8b69c8f855e19b4bd027f44275c47"
+  },
+  "maxConcurrentAgents": 4,
+  "coordinatorConsumesSlot": true,
+  "statuses": [
+    "unclaimed",
+    "active",
+    "blocked",
+    "review",
+    "integrated",
+    "verified"
+  ],
+  "tasks": [
+    {
+      "id": "00",
+      "file": "00-integration.md",
+      "owner": "root",
+      "status": "integrated",
+      "dependencies": [],
+      "scope": "本轮开发集成和受影响验收已完成；正式发行/迁移/物理删除属于后续门禁"
+    },
+    {
+      "id": "01",
+      "file": "01-oidc.md",
+      "owner": "parity",
+      "status": "verified",
+      "dependencies": [
+        "00: lifecycle contract",
+        "02: identity contract"
+      ],
+      "scope": "开发OIDC完成；OC a7ebefb0 + d2479684 临时Keycloak真实Chromium单/双独立CA TLS全部通过；不开放未知native父关系IAM写"
+    },
+    {
+      "id": "02",
+      "file": "02-identity-protocols.md",
+      "owner": "identity",
+      "status": "verified",
+      "dependencies": [],
+      "scope": "开发协议验收通过：d2479684锁内重新授权、全关系CAS、受保护创建与native STS当前父权限交集；相关race及真实native单双TLS通过，不是正式发行认证"
+    },
+    {
+      "id": "03-user",
+      "file": "03-iam.md",
+      "owner": "root",
+      "status": "verified",
+      "dependencies": [
+        "00: shared types",
+        "02: required protocols and impact scope"
+      ],
+      "scope": "开发实现与原生single/dual HTTPS各29项验收通过；同OC缺cap legacy各13项拒绝零写；OIDC写仍拒绝，正式发行另验收"
+    },
+    {
+      "id": "03-group",
+      "file": "03-iam.md",
+      "owner": "parity",
+      "status": "verified",
+      "dependencies": [
+        "00: shared types",
+        "02: required protocols and impact scope"
+      ],
+      "scope": "开发实现与原生single/dual HTTPS各29项验收通过；同OC缺cap legacy各13项拒绝零写；OIDC写仍拒绝，正式发行另验收"
+    },
+    {
+      "id": "03-service-account",
+      "file": "03-iam.md",
+      "owner": "parity",
+      "status": "verified",
+      "dependencies": [
+        "00: shared types",
+        "02: required protocols and impact scope"
+      ],
+      "scope": "开发实现与原生single/dual HTTPS各29项验收通过；同OC缺cap legacy各13项拒绝零写；OIDC写仍拒绝，正式发行另验收"
+    },
+    {
+      "id": "04",
+      "file": "04-parity.md",
+      "owner": "root",
+      "status": "review",
+      "dependencies": [],
+      "verificationDependencies": [
+        "01",
+        "02",
+        "03-user",
+        "03-group",
+        "03-service-account"
+      ],
+      "scope": "28项结构矩阵和开发证据已集成；正式发行证据、剩余安全范围与拓扑尚待认证，矩阵verified-replacement未改"
+    },
+    {
+      "id": "05",
+      "file": "05-deployment-release.md",
+      "owner": "deployment",
+      "status": "review",
+      "dependencies": [],
+      "verificationDependencies": [
+        "01",
+        "02",
+        "03-user",
+        "03-group",
+        "03-service-account",
+        "04"
+      ],
+      "scope": "开发同资产native/OIDC与设置/协议验收通过；正式发行资产、承诺平台、升级回退、审计和长期预算尚待完成"
+    },
+    {
+      "id": "06",
+      "file": "06-removal.md",
+      "owner": "identity",
+      "status": "review",
+      "dependencies": [],
+      "executionGates": [
+        "05: actual release pair certified",
+        "OIDC replacement verified",
+        "notified release cycles complete",
+        "bounded fallback window complete before physical deletion"
+      ],
+      "scope": "依赖清单已完成；正式配对、至少两实际通知周期与有限fallback窗口未满足，旧Web保留"
+    }
+  ],
+  "sharedFileWindows": [
+    {
+      "owner": "parity",
+      "files": [
+        "internal/console/server.go",
+        "internal/console/session_clients.go",
+        "internal/console/oidc_*.go"
+      ],
+      "status": "integrated",
+      "purpose": "OIDC生命周期安全复查及修正；CLI/UI由root集成"
+    },
+    {
+      "owner": "identity",
+      "files": [
+        "internal/console/identity_revocations.go"
+      ],
+      "status": "integrated"
+    },
+    {
+      "owner": "deployment",
+      "files": [
+        "buildscripts/console_released_compose_acceptance.py",
+        "buildscripts/test_console_released_compose.py"
+      ],
+      "status": "integrated"
+    },
+    {
+      "owner": "identity",
+      "repository": "otterio",
+      "files": [
+        "cmd/fiber_admin_router.go"
+      ],
+      "status": "integrated",
+      "purpose": "接入条件IAM协议并修复锁内授权"
+    },
+    {
+      "owner": "root",
+      "files": [
+        "cmd/oc-console/*",
+        "internal/console/web/*",
+        "buildscripts/test-console-web.js"
+      ],
+      "status": "integrated",
+      "purpose": "OIDC入口、界面与回归集成"
+    }
+  ],
+  "integrations": [
+    {
+      "task": "02",
+      "sourceCommit": "0f7adee5",
+      "integrationCommit": "157fac2e",
+      "scope": "OIDC主体命名空间与关系快照拒绝语义"
+    },
+    {
+      "task": "04",
+      "sourceCommit": "5b5426f1",
+      "integrationCommit": "5b32e51a",
+      "scope": "矩阵与门禁；集成复查补客户端二进制绑定"
+    },
+    {
+      "task": "05",
+      "sourceCommit": "72d5e464",
+      "integrationCommit": "c10b4948",
+      "scope": "发布Compose持久化、回退与清理报告"
+    },
+    {
+      "task": "01",
+      "integrationCommit": "ddcc66bb",
+      "scope": "OIDC世代租约、独立STS会话、固定寿命与CLI/UI"
+    },
+    {
+      "task": "02",
+      "integrationCommit": "6c6de24d",
+      "scope": "权威关系查询及coupled policy binding客户端；服务端19560364"
+    },
+    {
+      "task": "05",
+      "integrationCommit": "9ea39081",
+      "scope": "临时HTTPS Keycloak协议验收与失败证据"
+    }
+  ],
+  "evidence": [
+    {
+      "task": "05",
+      "path": "docs/console-next-deployment-compose-results.json",
+      "result": "passed",
+      "scope": "已固定发布对/local shared alias/HTTP/linux arm64；非OIDC认证"
+    },
+    {
+      "task": "04",
+      "result": "5 unittest groups passed",
+      "scope": "门禁负例，不是完整功能替代证据"
+    },
+    {
+      "task": "02/04",
+      "path": "docs/console-next-features-results.json",
+      "result": "68 acceptance groups passed",
+      "scope": "4 HTTP/TLS entry configurations; local alias features; clean source combination, not releases"
+    },
+    {
+      "task": "02/04",
+      "path": "docs/console-next-native-results.json",
+      "result": "52 acceptance groups passed",
+      "scope": "single/dual HTTPS native sessions before OIDC integration"
+    },
+    {
+      "task": "00",
+      "result": "5 related Go packages race passed; lint 0 issues",
+      "scope": "integration b32781de, prior to OIDC session integration"
+    },
+    {
+      "task": "01",
+      "result": "88 web behavior groups passed; 5 related Go packages race passed",
+      "scope": "OIDC集成CLI/UI和生命周期；真实Console OIDC仍验收中"
+    },
+    {
+      "task": "01/04",
+      "path": "docs/console-next-oidc-native-results.json",
+      "result": "52 acceptance groups passed",
+      "scope": "OIDC集成ddcc66bb后的native single/dual HTTPS回归；server19560364"
+    },
+    {
+      "task": "01",
+      "path": "docs/console-keycloak-console-dual-results.json",
+      "result": "14 acceptance groups passed",
+      "scope": "隔离Keycloak 26.8.0 双CA，51ee9152 Console协议cookiejar；非真实浏览器证据"
+    },
+    {
+      "task": "03/05",
+      "path": "docs/console-relationship-supported-results.json",
+      "result": "single/dual TLS each 22 acceptance groups passed",
+      "scope": "52310833 Console与ff6e66f OtterIO；后续回调修复及凭据回滚强化将用最终资产另行复验"
+    },
+    {
+      "task": "03/05",
+      "path": "docs/console-relationship-legacy-fixed-results.json",
+      "result": "single/dual TLS each 12 acceptance groups passed",
+      "scope": "同52310833 Console与旧cbbffbd服务端；未知协议拒绝，未以此证明权限认证"
+    },
+    {
+      "task": "04",
+      "path": "docs/console-protected-pair-storage.md",
+      "result": "224 acceptance groups passed",
+      "scope": "a7ebefb0 / f2bdc234 固定开发配对；写入、设置、版本复制各四种入口，全部清理通过"
+    },
+    {
+      "task": "04",
+      "path": "docs/console-protected-pair-features.json",
+      "result": "68 acceptance groups passed",
+      "scope": "同一固定开发配对，四种 HTTP/TLS 入口；开发构建"
+    },
+    {
+      "task": "01/04",
+      "path": "docs/console-protected-pair-protocols-wrapper-failed.json",
+      "result": "failed: preparationError PermissionError",
+      "scope": "首次包装器失败保留；range 与 diagnostics 已通过，异常阶段正在诊断，不能据此声称 STS 通过"
+    },
+    {
+      "task": "02/03",
+      "path": "docs/console-relationship-protected-sts-fixed-results.json",
+      "result": "58 acceptance groups passed",
+      "scope": "OC a7ebefb0 + server d2479684；native single/dual HTTPS各29；父状态/删除/重建后的service与STS权限、cookie不复活、19/22字符碰撞零写"
+    },
+    {
+      "task": "03/05",
+      "path": "docs/console-relationship-protected-legacy-results.json",
+      "result": "26 acceptance groups passed",
+      "scope": "同OC a7ebefb0 + legacy cbbffbd，缺新cap拒绝且零写"
+    },
+    {
+      "task": "04",
+      "path": "docs/console-d247968-final-settings-protocols.md",
+      "result": "84 settings groups; range, diagnostics, real STS passed",
+      "scope": "OC a7ebefb0 +修复server d2479684，首次执行无skip；非正式发行证据"
+    },
+    {
+      "task": "01",
+      "path": "docs/console-oidc-browser-acceptance.md",
+      "result": "49 browser/protocol acceptance checks passed",
+      "scope": "same OC a7 + repaired d247 server；single 13 protocol+11 Chromium，dual independent CA 14+11；both cleanup passed"
+    }
+  ],
+  "openDecisions": [
+    "用户已选择隔离临时Keycloak；真实profile/版本由05记录",
+    "supported platforms and proxy topology",
+    "fallback end release/date after default-off gates"
+  ],
+  "executionStarted": "2026-10-12",
+  "executionBaselines": {
+    "oc": "1c5c3edc",
+    "otterio": "8cc518b"
+  },
+  "developmentPair": {
+    "oc": "a7ebefb03f8669cb93eb927a96f320a6e20229d4",
+    "otterio": "d2479684b344fb1f2975f546471888749f75d671",
+    "kind": "clean module builds; not published release assets"
+  },
+  "iterationOutcome": "本轮开发与受影响复验完成；发布迁移及删除门禁未满足"
+}

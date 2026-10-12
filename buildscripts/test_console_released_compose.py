@@ -1,10 +1,13 @@
 """Reject false browser-off success and derive actual container architecture."""
 import subprocess
+import json
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
 from console_acceptance_protocol import legacy_route_disabled
-from console_released_compose_acceptance import container_platform, probe_legacy_route
+from console_released_compose_acceptance import container_platform, probe_legacy_route, images_from_recipe, finalize_report
 
 
 class ReleasedComposeEvidenceTests(unittest.TestCase):
@@ -17,6 +20,31 @@ class ReleasedComposeEvidenceTests(unittest.TestCase):
         self.assertTrue(legacy_route_disabled(404, 'not found'))
         self.assertTrue(legacy_route_disabled(403, '<Error><Code>AccessDenied</Code></Error>'))
         self.assertTrue(legacy_route_disabled(400, '<Error xmlns="urn:s3"><Code>InvalidRequest</Code></Error>'))
+
+    def test_image_evidence_uses_recipe_and_requires_matching_immutable_refs(self):
+        recipe=(Path(__file__).resolve().parents[1]/'deploy/compose.console.yaml').read_text(encoding="utf-8")
+        refs=images_from_recipe(recipe)
+        self.assertEqual(refs['oc'], refs['oc-init'])
+        with self.assertRaises(ValueError):
+            images_from_recipe(recipe.replace('@sha256:', '@sha512:'))
+        with self.assertRaises(ValueError):
+            images_from_recipe(recipe.replace(refs['oc'], 'other@sha256:'+'a'*64, 1))
+
+    def test_cleanup_failure_saves_report_and_preserves_primary_failure(self):
+        def fail():
+            raise RuntimeError('sensitive subprocess output')
+        with tempfile.TemporaryDirectory() as root:
+            path=Path(root)/'nested/report.json'
+            report={'status':'failed','error':'original failure'}
+            finalize_report(report, path, fail)
+            saved=json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(saved['error'], 'original failure')
+            self.assertEqual(saved['cleanup'], 'failed')
+            self.assertNotIn('sensitive', path.read_text(encoding="utf-8"))
+            report={'status':'passed'}
+            with self.assertRaises(RuntimeError):
+                finalize_report(report, path, fail)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))['status'], 'failed')
 
     @patch('console_released_compose_acceptance.subprocess.run')
     def test_probe_requires_response_body_and_successful_curl(self, run):

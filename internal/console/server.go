@@ -53,6 +53,7 @@ type NativeConnection struct {
 }
 
 type Config struct {
+	OIDC        *OIDCConfig
 	NativeLogin func(context.Context, NativeCredentials) (NativeConnection, error)
 	DataDir     string
 	Identity    string
@@ -85,6 +86,7 @@ type sessionRuntime struct {
 }
 
 type session struct {
+	oidc       *oidcSession
 	runtime    sessionRuntime
 	nativeUser string
 	csrf       string
@@ -104,6 +106,7 @@ type sessionReply struct {
 // Server owns clients returned by BackendFactory. A Config.Backend supplied
 // without a factory is borrowed and must be closed by the caller after shutdown.
 type Server struct {
+	oidc *OIDCConfig
 	// Startup defaults are copied into a session at login. Request handlers and
 	// background tasks must use that session's runtime instead of these fields.
 	preferences     *preferenceStore
@@ -152,13 +155,16 @@ type Server struct {
 }
 
 func New(cfg Config) (*Server, error) {
-	native := cfg.NativeLogin != nil
+	native := cfg.NativeLogin != nil || cfg.OIDC != nil
 	u, err := url.Parse(cfg.BaseURL)
 	if err != nil || u == nil || u.User != nil || u.ForceQuery || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || u.Hostname() == "" {
 		return nil, errors.New("console base URL must be a root browser origin")
 	}
 	if err := clienttransport.ValidateEndpointHost(u); err != nil {
 		return nil, err
+	}
+	if cfg.OIDC != nil && (cfg.OIDC.Client == nil || cfg.OIDC.Connect == nil || cfg.OIDC.StorageTarget == "" || cfg.NativeLogin != nil) {
+		return nil, errors.New("invalid independent OIDC configuration")
 	}
 	if native {
 		if u.Scheme != "https" || cfg.Backend != nil || cfg.BackendFactory != nil || cfg.LoginCode != "" {
@@ -215,6 +221,7 @@ func New(cfg Config) (*Server, error) {
 	life, stopLife := context.WithCancel(context.Background())
 	settings, _ := cfg.Backend.(consoleapi.SettingsBackend)
 	return &Server{
+		oidc:               cfg.OIDC,
 		nativeUserChanging: make(map[string]bool), nativeRotating: make(map[string]bool), nativeLogin: cfg.NativeLogin, dataDir: cfg.DataDir, userPreferences: make(map[string]*principalPreferences), preferences: preferences, backend: cfg.Backend, backendFactory: cfg.BackendFactory, allowWrites: cfg.AllowWrites, alias: cfg.Alias, origin: u.Scheme + "://" + u.Host,
 		host: u.Host, code: sha256.Sum256([]byte(cfg.LoginCode)), ttl: cfg.SessionTTL,
 		assets: web.FS(), sessions: make(map[[32]byte]*session),
@@ -269,7 +276,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'")
-	if s.nativeLogin != nil && r.TLS == nil {
+	if (s.nativeLogin != nil || s.oidc != nil) && r.TLS == nil {
 		writeError(w, http.StatusBadRequest, "https_required", "Use the HTTPS console URL.")
 		return
 	}
@@ -277,7 +284,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "invalid_origin", "Open the console using its local URL.")
 		return
 	}
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+	callback := s.oidc != nil && r.URL.Path == "/api/oidc/callback" && r.Method == http.MethodGet && (r.Header.Get("Sec-Fetch-Mode") == "" || r.Header.Get("Sec-Fetch-Mode") == "navigate") && (r.Header.Get("Sec-Fetch-Dest") == "" || r.Header.Get("Sec-Fetch-Dest") == "document")
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" && !callback {
 		writeError(w, http.StatusForbidden, "invalid_origin", "Cross-site requests are not allowed.")
 		return
 	}
@@ -300,7 +308,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveAsset(w, r)
 		return
 	}
+	if s.oidc != nil && (r.URL.Path == "/api/oidc/login" || r.URL.Path == "/api/oidc/callback") {
+		s.serveOIDC(w, r)
+		return
+	}
 	if r.URL.Path == "/api/login" {
+		if s.oidc != nil {
+			writeError(w, 403, "oidc_login_required", s.loginPrompt())
+			return
+		}
 		if !s.requireMethod(w, r, http.MethodPost) || !s.requireOrigin(w, r) {
 			return
 		}
@@ -317,11 +333,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 409, "credential_change_pending", "This user's account is being changed. Wait for the result before signing in again.")
 			return
 		}
-		if !sess.runtime.retain() {
+		if sess.oidc == nil && !sess.runtime.retain() {
 			writeError(w, http.StatusUnauthorized, "login_required", s.loginPrompt())
 			return
 		}
 		releaseClient = sess.runtime.release
+		r = r.WithContext(context.WithValue(r.Context(), oidcRequestKey{}, oidcRequestSession{sess, oidcCookieHash(r, s.cookieName())}))
 		if s.nativeLogin != nil && strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/logout" {
 			if !s.verifyNativeSession(w, r, sess) {
 				return
@@ -435,7 +452,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, iam := sess.runtime.backend.(consoleapi.IAMBackend)
 		// These describe implemented interfaces and explicit process gates.
 		// Individual reads still discover server protocols and permissions.
-		writeJSON(w, 200, map[string]any{"rename": rename && sess.runtime.writer != nil, "bucketManagement": buckets, "versions": versions, "versioning": versions, "sharing": shares && s.allowSharing, "archives": archives, "iam": iam, "iamPolicyBindings": iam, "writesAllowed": sess.runtime.writer != nil, "maxArchiveSize": s.maxArchiveSize, "maxArchiveObjects": maxPlanKeys})
+		writeJSON(w, 200, map[string]any{"rename": rename && sess.runtime.writer != nil, "bucketManagement": buckets, "versions": versions, "versioning": versions, "sharing": shares && s.allowSharing, "archives": archives, "iam": iam, "iamPolicyBindings": iam, "iamWritesAllowed": iam && s.oidc == nil && sess.runtime.writer != nil, "writesAllowed": sess.runtime.writer != nil, "maxArchiveSize": s.maxArchiveSize, "maxArchiveObjects": maxPlanKeys})
 	case "/api/buckets":
 		buckets, err := sess.runtime.backend.ListBuckets(ctx)
 		if err != nil {
@@ -555,7 +572,9 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "This console page does not exist.")
 		return
 	}
-	if name == "index.html" && s.nativeLogin != nil {
+	if name == "index.html" && s.oidc != nil {
+		data = []byte(strings.Replace(string(data), `data-auth-mode="local"`, `data-auth-mode="oidc"`, 1))
+	} else if name == "index.html" && s.nativeLogin != nil {
 		data = []byte(strings.Replace(string(data), `data-auth-mode="local"`, `data-auth-mode="native"`, 1))
 	}
 	contentTypes := map[string]string{"index.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "i18n.js": "text/javascript; charset=utf-8", "style.css": "text/css; charset=utf-8"}
@@ -677,13 +696,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 409, "credential_change_pending", "This user's credentials changed during sign-in. Sign in again with the current secret.")
 			return
 		}
-		count := 0
-		for _, existing := range s.sessions {
-			if existing.runtime.identity == runtime.identity {
-				count++
-			}
-		}
-		if count >= 4 {
+		if s.principalSessionLimitLocked(runtime.identity) {
 			s.mu.Unlock()
 			cancel()
 			runtime.retire()
@@ -723,23 +736,27 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) removeSessionLocked(token [32]byte, sess *session) {
-	if s.sessions[token] != sess {
+	if current := s.sessions[token]; current == nil || !sameSession(current, sess) {
 		return
 	}
 	delete(s.sessions, token)
+	if sess.oidc != nil {
+		sess.oidc.generations.close()
+		sess.oidc.grant.Close()
+	}
 	if sess.timer != nil {
 		sess.timer.Stop()
 	}
 	sess.cancel()
 	for id, task := range s.jobs {
-		if task.owner == sess {
+		if sameSession(task.owner, sess) {
 			task.cancel()
 			task.timer.Stop()
 			delete(s.jobs, id)
 		}
 	}
 	for id, task := range s.archives {
-		if task.owner == sess {
+		if sameSession(task.owner, sess) {
 			if task.timer != nil {
 				task.timer.Stop()
 			}
@@ -752,6 +769,12 @@ func (s *Server) removeSessionLocked(token [32]byte, sess *session) {
 }
 
 func (s *Server) authenticate(r *http.Request) (*session, [32]byte) {
+	if pinned, ok := r.Context().Value(oidcRequestKey{}).(oidcRequestSession); ok {
+		if pinned.sess.ctx.Err() != nil || !time.Now().Before(pinned.sess.expires) {
+			return nil, pinned.hash
+		}
+		return pinned.sess, pinned.hash
+	}
 	cookie, err := r.Cookie(s.cookieName())
 	if err != nil || len(cookie.Value) != 43 {
 		return nil, [32]byte{}
@@ -766,6 +789,19 @@ func (s *Server) authenticate(r *http.Request) (*session, [32]byte) {
 	if !time.Now().Before(sess.expires) {
 		s.removeSessionLocked(hash, sess)
 		return nil, hash
+	}
+	if sess.oidc != nil {
+		g, err := sess.oidc.generations.acquire()
+		if err != nil {
+			s.removeSessionLocked(hash, sess)
+			return nil, hash
+		}
+		selected := *sess
+		selected.runtime = g.runtime
+		selected.ctx = g.ctx
+		selected.cancel = func() {}
+		selected.expires = g.expires
+		return &selected, hash
 	}
 	return sess, hash
 }
@@ -1013,4 +1049,16 @@ func setDownloadHeaders(w http.ResponseWriter, key string) {
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
+}
+
+// Caller holds s.mu through the subsequent insertion to prevent concurrent
+// native or OIDC sign-ins from exceeding the same per-principal budget.
+func (s *Server) principalSessionLimitLocked(identity string) bool {
+	count := 0
+	for _, existing := range s.sessions {
+		if existing.runtime.identity == identity {
+			count++
+		}
+	}
+	return count >= 4
 }

@@ -2,15 +2,19 @@
 package console
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/soulteary/mc/internal/consoleapi"
 )
 
 // identityScope has separate namespaces for a native connection principal and
 // its authenticated IAM user. Untrusted strings never become another kind.
-// OIDC issuer/subject and IAM parent mapping are deliberately not represented.
+// OIDC principals use a separate target/issuer/subject namespace; IAM parent mappings require authoritative evidence.
 type identityScope struct {
 	kind uint8
 	key  string
@@ -19,6 +23,7 @@ type identityScope struct {
 const (
 	nativePrincipalScopeKind uint8 = iota + 1
 	nativeUserScopeKind
+	oidcPrincipalScopeKind
 )
 
 func nativePrincipalScope(key string) identityScope {
@@ -27,7 +32,7 @@ func nativePrincipalScope(key string) identityScope {
 func nativeUserScope(key string) identityScope { return identityScope{nativeUserScopeKind, key} }
 func (scope identityScope) valid() bool {
 	switch scope.kind {
-	case nativePrincipalScopeKind:
+	case nativePrincipalScopeKind, oidcPrincipalScopeKind:
 		_, err := hex.DecodeString(scope.key)
 		return len(scope.key) == 64 && err == nil
 	case nativeUserScopeKind:
@@ -74,4 +79,29 @@ func (state *identityRevocations) revoke(scope identityScope) error {
 }
 func (state *identityRevocations) changedSince(scope identityScope, epoch uint64) bool {
 	return !scope.valid() || state.tombstones[scope] > epoch
+}
+
+// OIDCPrincipalIdentity binds a verified OIDC subject to one fixed storage
+// target. The caller must supply the verified issuer and subject, never email
+// or a browser-selected target. JSON tuple encoding avoids delimiter aliases.
+func OIDCPrincipalIdentity(target, issuer, subject string) (string, error) {
+	if target == "" || !utf8.ValidString(target) {
+		return "", errUnknownIdentityScope
+	}
+	for _, value := range []string{issuer, subject} {
+		if value == "" || !utf8.ValidString(value) || strings.ContainsAny(value, "\x00\r\n") {
+			return "", errUnknownIdentityScope
+		}
+	}
+	data, _ := json.Marshal([]string{"oc:oidc-principal:v1", target, issuer, subject})
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func oidcPrincipalScope(target, issuer, subject string) (identityScope, error) {
+	key, err := OIDCPrincipalIdentity(target, issuer, subject)
+	if err != nil {
+		return identityScope{}, err
+	}
+	return identityScope{kind: oidcPrincipalScopeKind, key: key}, nil
 }

@@ -1,0 +1,632 @@
+{
+  "schemaVersion": 1,
+  "policy": "No historical report implies verification. CLI retention or reduced scope requires an explicit approved decision.",
+  "capabilities": [
+    {
+      "id": "legacy-ServerInfo",
+      "legacyHandler": "ServerInfo",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/session; /api/diagnostics/server",
+      "permissionDifference": "Ordinary users previously received host/runtime/global information; permission-safe replacement requires an explicit decision.",
+      "status": "pending-decision",
+      "requiredChecks": [
+        "parity-ServerInfo"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-StorageInfo",
+      "legacyHandler": "StorageInfo",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/diagnostics/server",
+      "permissionDifference": "Old handler exposed total usage to every authenticated user; Admin permission may differ.",
+      "status": "pending-decision",
+      "requiredChecks": [
+        "parity-StorageInfo"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-MakeBucket",
+      "legacyHandler": "MakeBucket",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/buckets/create",
+      "permissionDifference": "Writes opt-in; private default and confirmation.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-MakeBucket"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-DeleteBucket",
+      "legacyHandler": "DeleteBucket",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/buckets/delete",
+      "permissionDifference": "Exact confirmation and nonempty protection.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-DeleteBucket"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-ListBuckets",
+      "legacyHandler": "ListBuckets",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/buckets",
+      "permissionDifference": "S3 permission-scoped list.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-ListBuckets"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-ListObjects",
+      "legacyHandler": "ListObjects",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/objects",
+      "permissionDifference": "Continuation tokens and literal prefixes.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-ListObjects"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-RemoveObject",
+      "legacyHandler": "RemoveObject",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/deletes",
+      "permissionDifference": "Partial failures and version references.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-RemoveObject"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-Login",
+      "legacyHandler": "Login",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/login",
+      "permissionDifference": "Native per-user credentials; no administrator borrowing.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-Login"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-SetAuth",
+      "legacyHandler": "SetAuth",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/self-secret",
+      "permissionDifference": "Authority-bound rotation and retirement.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-SetAuth"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-CreateURLToken",
+      "legacyHandler": "CreateURLToken",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/shares",
+      "permissionDifference": "Dedicated old URL token is replaced by bounded S3 presigning, not an equivalent credential format.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-CreateURLToken"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-Upload",
+      "legacyHandler": "Upload",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/uploads",
+      "permissionDifference": "Multipart lifecycle and cancel.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-Upload"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-Download",
+      "legacyHandler": "Download",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/download",
+      "permissionDifference": "Range, conditions, HEAD and denied historical reads.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-Download"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-DownloadZip",
+      "legacyHandler": "DownloadZip",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/archives",
+      "permissionDifference": "Bounded task ownership; safe manifest paths.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-DownloadZip"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-GetBucketPolicy",
+      "legacyHandler": "GetBucketPolicy",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/bucket-settings",
+      "permissionDifference": "Policy reads through S3.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-GetBucketPolicy"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-ListAllBucketPolicies",
+      "legacyHandler": "ListAllBucketPolicies",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/bucket-settings",
+      "permissionDifference": "Old prefix policy summaries need comparison with full policy editor.",
+      "status": "pending-decision",
+      "requiredChecks": [
+        "parity-ListAllBucketPolicies"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-SetBucketPolicy",
+      "legacyHandler": "SetBucketPolicy",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/bucket-settings",
+      "permissionDifference": "Conditional server revision rather than unprotected replacement.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-SetBucketPolicy"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-PresignedGet",
+      "legacyHandler": "PresignedGet",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "/api/shares",
+      "permissionDifference": "Independent sharing opt-in; exact current or historical reference.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-PresignedGet"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-GetDiscoveryDoc",
+      "legacyHandler": "GetDiscoveryDoc",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "internal/oidc discovery",
+      "permissionDifference": "Discovery comes from configured issuer; do not restore anonymous legacy RPC.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "parity-GetDiscoveryDoc"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "legacy-LoginSTS",
+      "legacyHandler": "LoginSTS",
+      "oldSource": "cmd/web-handlers.go",
+      "replacement": "OIDC browser session",
+      "permissionDifference": "Protocol client exists; complete browser callback/refresh/expiry integration required.",
+      "status": "pending-implementation",
+      "requiredChecks": [
+        "parity-LoginSTS"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-tls",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "object-special-keys",
+      "legacyHandler": null,
+      "oldSource": null,
+      "replacement": "Literal Unicode, slash, empty objects and pagination",
+      "permissionDifference": "Must use the session identity and exercise denial/cancellation cases.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "object-special-keys"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual",
+        "gateway"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "version-markers",
+      "legacyHandler": null,
+      "oldSource": null,
+      "replacement": "Null versions, historical versions and delete markers",
+      "permissionDifference": "Must use the session identity and exercise denial/cancellation cases.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "version-markers"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual",
+        "gateway"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "iam-lifecycle",
+      "legacyHandler": null,
+      "oldSource": null,
+      "replacement": "User/group/service-account creation and atomic conditional mutations",
+      "permissionDifference": "Must use the session identity and exercise denial/cancellation cases.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "iam-lifecycle"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual",
+        "gateway"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "oidc-lifecycle",
+      "legacyHandler": null,
+      "oldSource": null,
+      "replacement": "Callback, refresh, fixed expiry, logout and stale completion",
+      "permissionDifference": "Must use the session identity and exercise denial/cancellation cases.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "oidc-lifecycle"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual",
+        "gateway"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-tls",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "session-isolation",
+      "legacyHandler": null,
+      "oldSource": null,
+      "replacement": "Different/same-user tasks, preferences, cancellation and permission denial",
+      "permissionDifference": "Must use the session identity and exercise denial/cancellation cases.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "session-isolation"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual",
+        "gateway"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-tls",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "diagnostic-stream",
+      "legacyHandler": null,
+      "oldSource": null,
+      "replacement": "Permission checks, bounded stream and cancellation",
+      "permissionDifference": "Must use the session identity and exercise denial/cancellation cases.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "diagnostic-stream"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual",
+        "gateway"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    },
+    {
+      "id": "browser-off-core",
+      "legacyHandler": null,
+      "oldSource": null,
+      "replacement": "Legacy routes disabled with S3/Admin/STS/health/metrics available",
+      "permissionDifference": "Must use the session identity and exercise denial/cancellation cases.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "browser-off-core"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual",
+        "gateway"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls",
+        "gateway-single-tls",
+        "gateway-dual-tls"
+      ]
+    },
+    {
+      "id": "deployment-topologies",
+      "legacyHandler": null,
+      "oldSource": null,
+      "replacement": "Server/gateway, single/dual endpoints, TLS and independent CA",
+      "permissionDifference": "Must use the session identity and exercise denial/cancellation cases.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "deployment-topologies"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual",
+        "gateway"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls",
+        "gateway-single-tls",
+        "gateway-dual-tls"
+      ]
+    },
+    {
+      "id": "release-migration",
+      "legacyHandler": null,
+      "oldSource": null,
+      "replacement": "Installable release pair, migration notice and rollback window",
+      "permissionDifference": "Must use the session identity and exercise denial/cancellation cases.",
+      "status": "pending-verification",
+      "requiredChecks": [
+        "release-migration"
+      ],
+      "topologies": [
+        "server-single",
+        "server-dual",
+        "gateway"
+      ],
+      "testIDs": [],
+      "evidence": [],
+      "requiredProfiles": [
+        "single-http",
+        "dual-http",
+        "dual-tls"
+      ]
+    }
+  ]
+}

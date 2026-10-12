@@ -59,6 +59,27 @@ def failure_locations(output):
     return result
 
 
+class ProtocolProcessError(OSError):
+    """Structural syscall evidence; never includes command output or env."""
+    def __init__(self, phase, process, error):
+        super().__init__('protocol process-group operation failed')
+        self.details = {'phase': phase, 'exceptionClass': type(error).__name__, 'errno': error.errno,
+                        'wrapperPID': os.getpid(), 'wrapperPGID': os.getpgrp(),
+                        'ownedProcessPID': process.pid, 'expectedOwnedPGID': process.pid,
+                        'ownedProcessExited': process.poll() is not None}
+        try:
+            self.details['observedOwnedPGID'] = os.getpgid(process.pid)
+        except OSError as query_error:
+            self.details['groupQueryExceptionClass'] = type(query_error).__name__
+
+
+def signal_owned_group(process, sig, phase):
+    try:
+        os.killpg(process.pid, sig)
+    except PermissionError as error:
+        raise ProtocolProcessError(phase, process, error) from None
+
+
 def run(command, env, timeout):
     start = time.monotonic()
     # A separate process group contains wrapper-owned Go tests and fixture servers.
@@ -71,17 +92,17 @@ def run(command, env, timeout):
         output, _ = process.communicate(timeout=timeout)
         return process.returncode, output, round(time.monotonic() - start, 3)
     except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGTERM)
+        signal_owned_group(process, signal.SIGTERM, "timeout-terminate-group")
         try:
             process.communicate(timeout=10)
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
+            signal_owned_group(process, signal.SIGKILL, "timeout-kill-group")
             process.communicate()
         return 124, '', round(time.monotonic() - start, 3)
     finally:
         # Also reap fixture descendants after a child exits unexpectedly.
         try:
-            os.killpg(process.pid, signal.SIGKILL)
+            signal_owned_group(process, signal.SIGKILL, "final-descendant-reap")
         except ProcessLookupError:
             pass
         if process.poll() is None:
@@ -176,6 +197,8 @@ def main():
         report['interrupted'] = True
     except (OSError, ValueError) as error:
         report['preparationError'] = type(error).__name__
+        if isinstance(error, ProtocolProcessError):
+            report['executionFailure'] = error.details
     finally:
         save()
     return 0 if report['passed'] else 1

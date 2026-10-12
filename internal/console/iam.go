@@ -32,6 +32,10 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 	}
 	var nativeArgs *consoleapi.IAMActionRequest
 	if method == http.MethodPost {
+		if s.oidc != nil {
+			writeError(w, 403, "identity_relationship_unknown", "OIDC identity has no authoritative native parent mapping; IAM changes are unavailable.")
+			return
+		}
 		if !s.requireOrigin(w, r) || !s.requireCSRF(w, r, sess) {
 			return
 		}
@@ -41,7 +45,7 @@ func (s *Server) serveIAM(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if !nativeIAMActionAllowed(nativeArgs.Action) || (nativeArgs.Action == "group.create" && len(nativeArgs.Members) != 0) {
-				writeError(w, 403, "identity_changes_disabled", "Native IAM supports creation and user status/deletion; other identity changes are unavailable.")
+				writeError(w, 403, "identity_changes_disabled", "This native IAM action is unavailable or requires a supported conditional protocol. Create groups empty before reviewing membership changes.")
 				return
 			}
 		}
@@ -115,12 +119,60 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		writeError(w, 400, "invalid_input", "Choose a supported IAM action and confirm its exact target. Include only the fields required by that action.")
 		return
 	}
-	if s.nativeLogin != nil && (args.Action == "user.disable" || args.Action == "user.delete") {
-		s.retireNativeUser(w, r, sess, backend, args)
+	if s.nativeLogin != nil && args.Action == "user.rotate" {
+		plan, err := prepareNativeUserSecretPlan(r.Context(), sess, args.User)
+		if err != nil {
+			s.writeNativeRelationshipPlanError(w, err)
+			return
+		}
+		s.executeNativeUserSecretPlan(w, r, sess, plan, args.SecretKey)
+		args.SecretKey = ""
+		return
+	}
+	if s.nativeLogin != nil && (args.Action == "user.policies" || args.Action == "group.policies") {
+		plan, err := prepareNativeRelationshipBindingPlan(r.Context(), sess, args)
+		if err != nil {
+			s.writeNativeRelationshipPlanError(w, err)
+			return
+		}
+		s.executeNativeRelationshipBindingPlan(w, r, sess, plan)
+		return
+	}
+	if s.nativeLogin != nil && validPreparedServiceAccountAction(args) {
+		plan, err := prepareNativeServiceAccountPlan(r.Context(), sess, args)
+		if err != nil {
+			s.writeNativeRelationshipPlanError(w, err)
+			return
+		}
+		s.executeNativeServiceAccountPlan(w, r, sess, plan)
+		args.SecretKey = ""
+		return
+	}
+	if s.nativeLogin != nil && validPreparedGroupAction(args) {
+		plan, err := prepareIAMGroupMutation(r.Context(), sess, args)
+		if err != nil {
+			s.writeNativeRelationshipPlanError(w, err)
+			return
+		}
+		s.executeIAMGroupMutation(w, r, sess, plan)
+		return
+	}
+	if s.nativeLogin != nil && validPreparedUserAction(args) {
+		plan, err := prepareIAMUserMutation(r.Context(), sess, args)
+		if err != nil {
+			s.writeNativeRelationshipPlanError(w, err)
+			return
+		}
+		s.executeIAMUserMutation(w, r, sess, plan)
+		return
+	}
+	if s.nativeLogin != nil && args.Action == "service-account.create" {
+		s.createNativeServiceAccount(w, r, sess, args)
+		args.SecretKey = ""
 		return
 	}
 	// Local IAM edits can invalidate the shared identity and reserve every
-	// write slot. Native creation and account activation use one ordinary slot;
+	// write slot. Native creation uses one ordinary slot;
 	// conditional creation must not replace existing identities.
 	rotate := s.nativeLogin == nil
 	if !s.startSettingsWrite(w, sess, rotate) {
@@ -157,11 +209,6 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 		}{"outcome_unknown", "The IAM change may have completed. Verify it with an administrative client, then restart OC before continuing.", true})
 		return
 	}
-	if s.nativeLogin != nil && args.Action == "user.enable" && result.Outcome == "confirmed" {
-		// Enabling an account does not change its credentials. The local SDK
-		// conservatively marks self-target actions as requiring restart.
-		result.RestartRequired = false
-	}
 	if s.nativeLogin != nil && (result.RestartRequired || result.Outcome != "confirmed") {
 		writeError(w, 502, "outcome_unknown", "The IAM operation was not safely confirmed. Verify the exact target before making another request.")
 		return
@@ -177,5 +224,13 @@ func (s *Server) iamAction(w http.ResponseWriter, r *http.Request, sess *session
 }
 
 func nativeIAMActionAllowed(action string) bool {
-	return action == "user.delete" || action == "user.disable" || action == "user.enable" || action == "user.create" || action == "group.create" || action == "service-account.create"
+	return action == "service-account.enable" || action == "service-account.disable" || action == "service-account.rotate" || action == "service-account.policy" || action == "service-account.delete" || action == "group.add-members" || action == "group.remove-members" || action == "group.enable" || action == "group.disable" || action == "group.delete" || action == "user.rotate" || action == "user.policies" || action == "group.policies" || action == "user.delete" || action == "user.disable" || action == "user.enable" || action == "user.create" || action == "group.create" || action == "service-account.create"
+}
+
+func (s *Server) writeNativeRelationshipPlanError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errUnknownIdentityScope) {
+		writeError(w, 403, "identity_changes_disabled", "This server cannot safely establish the identity relationships for this change.")
+		return
+	}
+	writeBackendError(w, err)
 }

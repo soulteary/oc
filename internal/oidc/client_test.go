@@ -702,3 +702,26 @@ func TestOpaqueHandleCopiesShareLifecycleWithoutCopyingLocks(t *testing.T) {
 		t.Fatal("grant copy did not share closed state")
 	}
 }
+
+func TestGrantTerminalCredentialsUseImmutableSessionDeadline(t *testing.T) {
+	f := newFixture(t)
+	c := f.client(t)
+	c.config.MaxSessionLifetime = time.Minute
+	a := f.begin(t, c)
+	g, err := c.Complete(context.Background(), binding, a.State, "code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	credentials, err := g.Credentials()
+	deadline := g.SessionDeadline()
+	if err != nil || deadline.IsZero() || !credentials.Expires.Equal(deadline) {
+		t.Fatal("terminal credentials and session use different deadlines", err)
+	}
+	// Runtime connection setup may happen later than the credential exchange.
+	// It must reuse this instant rather than deriving another lifetime bound.
+	time.Sleep(time.Millisecond)
+	if !g.SessionDeadline().Equal(deadline) {
+		t.Fatal("session deadline changed after login completion")
+	}
+}

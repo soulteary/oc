@@ -1,0 +1,132 @@
+{
+  "dateUTC": "2026-10-11T18:30:39.837406+00:00",
+  "status": "passed",
+  "checks": [
+    "actual Keycloak discovery satisfies fixed HTTPS origin RS256/code/S256/client_secret_basic profile",
+    "isolated two-user distinct bucket/prefix policies and real objects created",
+    "alice: real code/PKCE login STS permits own prefix and denies other prefix/user bucket",
+    "alice: real code/PKCE login and refresh STS credentials allow own prefix and deny other prefix/user bucket",
+    "bob: real code/PKCE login STS permits own prefix and denies other prefix/user bucket",
+    "bob: real code/PKCE login and refresh STS credentials allow own prefix and deny other prefix/user bucket",
+    "alice: production Console binding/replay rejection and isolated object permissions",
+    "bob: production Console binding/replay rejection and isolated object permissions",
+    "simultaneously active Alice/Bob preferences and archive tasks remain isolated",
+    "Alice logout rejects old cookie while Bob continues authorized reads",
+    "Bob survives initial ID token expiry; additional actual Keycloak refresh events observed",
+    "Bob session ends at fixed TTL despite successful refresh",
+    "Console protected log contains no fixture password, root credential or client secret"
+  ],
+  "scope": "isolated HTTPS Keycloak + real OtterIO STS",
+  "harnessSha256": "c5ec5ce3e47b73f81ad513630725c3b5a8f80fb55073b02f6f6b81fdf675b2f6",
+  "programs": {
+    "server": {
+      "sha256": "08d868f66bd03db38c0d118aad52e93660e13e3f60712eba5f413afb5a954f34",
+      "declaredSource": "19560364ec735f5b811964f5199b2b59e7100400",
+      "binaryVCSRevision": "19560364ec735f5b811964f5199b2b59e7100400",
+      "binaryVCSModified": false,
+      "platform": "linux/arm64"
+    },
+    "oc": {
+      "sha256": "ec5f6bade1a9ed7a50376a3749a289e6caa4768a01b8187333a8589e326aae6a",
+      "declaredSource": "b32781defdcc859081fb7797ea15339c894804b0",
+      "binaryVCSRevision": "b32781defdcc859081fb7797ea15339c894804b0",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    },
+    "console": {
+      "sha256": "52febbc4f96553307571b4c8f10b68de1b43376d44246aa42dc411066b91f428",
+      "declaredSource": "ddcc66bb89d7cc41966286a7a2f887d772fee047",
+      "binaryVCSRevision": "ddcc66bb89d7cc41966286a7a2f887d772fee047",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    }
+  },
+  "keycloak": {
+    "version": "26.8.0",
+    "image": "quay.io/keycloak/keycloak@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+    "platform": "linux/arm64",
+    "profile": "confidential/client_secret_basic; RS256; code; mandatory PKCE S256; HTTPS; offline_access"
+  },
+  "discoveryProfile": {
+    "id_token_signing_alg_values_supported": [
+      "PS384",
+      "RS384",
+      "EdDSA",
+      "ES384",
+      "HS256",
+      "HS512",
+      "ES256",
+      "RS256",
+      "HS384",
+      "ES512",
+      "PS256",
+      "PS512",
+      "RS512"
+    ],
+    "response_types_supported": [
+      "code",
+      "none",
+      "id_token",
+      "token",
+      "id_token token",
+      "code id_token",
+      "code token",
+      "code id_token token"
+    ],
+    "code_challenge_methods_supported": [
+      "plain",
+      "S256"
+    ],
+    "token_endpoint_auth_methods_supported": [
+      "private_key_jwt",
+      "client_secret_basic",
+      "client_secret_post",
+      "tls_client_auth",
+      "client_secret_jwt"
+    ]
+  },
+  "storageContainer": {
+    "baseImage": "ghcr.io/soulteary/otterio:RELEASE.2026-10-09T15-22-07Z@sha256:7ddf211748d11bb8f6af23576f19eaf5b2675f70f647e38ed9fdd14912824ba8",
+    "runtimeProgram": {
+      "sha256": "08d868f66bd03db38c0d118aad52e93660e13e3f60712eba5f413afb5a954f34",
+      "declaredSource": "19560364ec735f5b811964f5199b2b59e7100400",
+      "binaryVCSRevision": "19560364ec735f5b811964f5199b2b59e7100400",
+      "binaryVCSModified": false,
+      "platform": "linux/arm64"
+    },
+    "clockTopology": "Keycloak and OtterIO share Docker VM clock and temporary network namespace"
+  },
+  "initialTokenClock": {
+    "alice": {
+      "issuedAtOffsetSeconds": -0.313,
+      "secondsUntilExpiry": 89.687
+    },
+    "bob": {
+      "issuedAtOffsetSeconds": 0.476,
+      "secondsUntilExpiry": 90.476
+    }
+  },
+  "keycloakRefresh": {
+    "alice": {
+      "nonceAbsentAllowed": true,
+      "nonceMatchesWhenPresent": true,
+      "subjectPreserved": true,
+      "issuerAudiencePreserved": true
+    },
+    "bob": {
+      "nonceAbsentAllowed": true,
+      "nonceMatchesWhenPresent": true,
+      "subjectPreserved": true,
+      "issuerAudiencePreserved": true
+    }
+  },
+  "keycloakSuccessfulRefreshEvents": 2,
+  "consoleRefreshEvidence": {
+    "waitSeconds": 95,
+    "idTokenSeconds": 90,
+    "keycloakEventsBefore": 2,
+    "keycloakEventsAfter": 3
+  },
+  "consoleAcceptance": "passed: binding/replay, simultaneous users, permissions, preferences/tasks, local logout, observed refresh",
+  "cleanup": "passed"
+}

@@ -15,7 +15,7 @@ func directIdentityImpact(scope identityScope) identityImpact {
 	return identityImpact{scopes: []identityScope{scope}, known: scope.valid()}
 }
 func (impact identityImpact) valid() bool {
-	if !impact.known || len(impact.scopes) == 0 {
+	if !impact.known || impact.scopes == nil {
 		return false
 	}
 	for _, scope := range impact.scopes {
@@ -46,11 +46,11 @@ type identityMutation struct {
 
 func (s *Server) beginIdentityMutation(w http.ResponseWriter, sess *session, impact identityImpact) *identityMutation {
 	// The executor owns the same immutable snapshot used to validate and gate.
-	impact.scopes = append([]identityScope(nil), impact.scopes...)
-	if !impact.valid() {
+	if !impact.valid() || sess == nil || sess.ctx == nil {
 		writeError(w, 409, "identity_impact_unknown", "The affected identity cannot be established safely.")
 		return nil
 	}
+	impact.scopes = append([]identityScope{}, impact.scopes...)
 	s.mu.Lock()
 	if s.closed || s.rotating || sess.ctx.Err() != nil || s.nativeRotating[sess.runtime.identity] || s.nativeUserChanging[sess.nativeUser] {
 		s.mu.Unlock()

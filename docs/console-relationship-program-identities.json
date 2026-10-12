@@ -1,0 +1,34 @@
+{
+  "dateUTC": "2026-10-11T19:19:21.513266+00:00",
+  "method": "independent declared full commit against go version -m embedded VCS; modified=false required; actual file SHA-256",
+  "programs": {
+    "console": {
+      "sha256": "5db7d34748b893c2d72aaef71d477023a00168b7d0c65652f29a73d7cead4a13",
+      "declaredSource": "52310833272b25c9ef146562eb8470d4e2dafb1a",
+      "binaryVCSRevision": "52310833272b25c9ef146562eb8470d4e2dafb1a",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    },
+    "cli": {
+      "sha256": "e2d255e116ea97a5fda98a5c6f6965fdb2c7b46fd11d9fd4109de3c7497cd9f8",
+      "declaredSource": "2a5a0f2152190ae438583a219f05cac84ddd3a9b",
+      "binaryVCSRevision": "2a5a0f2152190ae438583a219f05cac84ddd3a9b",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    },
+    "server": {
+      "sha256": "03f929b2882d28f9af8d8c7a9274325170b12aa5961fcce05cc778aaa6b0f04a",
+      "declaredSource": "ff6e66f3fbd7e57198ef5df016fdd79e5545fc7b",
+      "binaryVCSRevision": "ff6e66f3fbd7e57198ef5df016fdd79e5545fc7b",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    },
+    "legacy-server": {
+      "sha256": "7c52ea3a1e8a4ed6c50ef3c570261268ee5bcb50d0a89a7e3661bdcba459d4fe",
+      "declaredSource": "cbbffbd40531f101cb67c263c69010a0a1b8ed4e",
+      "binaryVCSRevision": "cbbffbd40531f101cb67c263c69010a0a1b8ed4e",
+      "binaryVCSModified": false,
+      "platform": "darwin/arm64"
+    }
+  }
+}

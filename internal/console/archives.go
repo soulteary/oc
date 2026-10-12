@@ -109,7 +109,7 @@ func (s *Server) serveArchives(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		archives := make([]archiveReply, 0)
 		for _, task := range s.archives {
-			if task.owner == sess {
+			if sameSession(task.owner, sess) {
 				archives = append(archives, task.info)
 			}
 		}
@@ -131,7 +131,7 @@ func (s *Server) serveArchives(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	task := s.archives[id]
-	if task == nil || task.owner != sess {
+	if task == nil || !sameSession(task.owner, sess) {
 		s.mu.Unlock()
 		writeError(w, 404, "not_found", "This archive does not exist.")
 		return
@@ -153,6 +153,13 @@ func (s *Server) serveArchives(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		writeError(w, 409, "archive_not_ready", "The archive is unavailable or is still being prepared.")
 		return
+	}
+	if sess.oidc != nil {
+		// A completed ZIP needs no old-generation storage credentials. Bind
+		// its download to the acquired session while preserving archive expiry.
+		task.cancel()
+		task.ctx, task.cancel = context.WithDeadline(sess.oidc.generations.ctx, task.info.Expires)
+		task.owner = sess
 	}
 	task.info.Status = "downloading"
 	filename := task.path
@@ -249,7 +256,7 @@ func (s *Server) newArchive(w http.ResponseWriter, r *http.Request, sess *sessio
 	}
 	owned := 0
 	for _, existing := range s.archives {
-		if existing.owner == sess || (s.nativeLogin != nil && existing.owner.runtime.identity == sess.runtime.identity) {
+		if sameSession(existing.owner, sess) || (s.nativeLogin != nil && existing.owner.runtime.identity == sess.runtime.identity) {
 			owned++
 		}
 	}
@@ -292,9 +299,11 @@ func (s *Server) prepareArchive(task *archiveTask, reader consoleapi.ReferenceBa
 		if failure != nil {
 			s.finishArchive(task, "failed", archiveError(failure))
 		}
+		s.mu.Lock()
 		if task.ctx.Err() != nil {
-			s.finishArchive(task, "canceled", nil)
+			s.finishArchiveLocked(task, "canceled", nil)
 		}
+		s.mu.Unlock()
 		if filename != "" {
 			s.mu.Lock()
 			keep := task.path == filename && (task.info.Status == "ready" || task.info.Status == "downloading")
@@ -467,6 +476,12 @@ func (s *Server) prepareArchive(task *archiveTask, reader consoleapi.ReferenceBa
 	}
 	s.mu.Lock()
 	if task.ctx.Err() == nil && task.info.Status == "running" {
+		if task.owner.oidc != nil {
+			// Storage work has finished. Keep the ZIP for the browser session,
+			// independent of the credentials used to prepare its contents.
+			task.cancel()
+			task.ctx, task.cancel = context.WithDeadline(task.owner.oidc.generations.ctx, task.info.Expires)
+		}
 		task.info.Status = "ready"
 	} else {
 		failure = task.ctx.Err()
@@ -556,6 +571,11 @@ func (s *Server) releaseArchiveLocked(task *archiveTask) {
 func (s *Server) finishArchive(task *archiveTask, status string, err *consoleapi.Error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.finishArchiveLocked(task, status, err)
+}
+
+// The caller holds s.mu, including when testing the context for cancellation.
+func (s *Server) finishArchiveLocked(task *archiveTask, status string, err *consoleapi.Error) {
 	if task.ctx.Err() != nil || task.info.Status == "canceled" {
 		status, err = "canceled", nil
 	}

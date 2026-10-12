@@ -1,6 +1,6 @@
 // Copyright 2026 soulteary. Licensed under the Apache License, Version 2.0.
 
-// oc-console provides local alias access or independent native IAM login over HTTPS.
+// oc-console provides local alias access or independent native IAM/OIDC login over HTTPS.
 package main
 
 import (
@@ -40,20 +40,25 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags := flag.NewFlagSet("oc-console", flag.ContinueOnError)
 	flags.SetOutput(errorOutput)
 	var opts options
-	flags.StringVar(&opts.authMode, "auth-mode", "local", "local login code or native IAM user login (HTTPS; read-only by default)")
-	flags.StringVar(&opts.s3URL, "s3-url", "", "fixed HTTPS storage root URL for native login")
-	flags.StringVar(&opts.tlsCert, "tls-cert", "", "browser HTTPS certificate PEM for native login")
-	flags.StringVar(&opts.tlsKey, "tls-key", "", "browser HTTPS private key PEM for native login")
+	flags.StringVar(&opts.oidcIssuer, "oidc-issuer", "", "fixed HTTPS identity provider issuer")
+	flags.StringVar(&opts.oidcClientID, "oidc-client-id", "", "identity provider client ID")
+	flags.StringVar(&opts.oidcCA, "oidc-ca", "", "identity provider PEM CA file")
+	flags.StringVar(&opts.oidcSecretFile, "oidc-client-secret-file", "", "private file containing confidential client secret")
+	flags.DurationVar(&opts.sessionTTL, "session-ttl", 30*time.Minute, "fixed OIDC session lifetime (1m to 24h)")
+	flags.StringVar(&opts.authMode, "auth-mode", "local", "local login code, native IAM or OIDC login (read-only by default)")
+	flags.StringVar(&opts.s3URL, "s3-url", "", "fixed HTTPS storage root URL for native or OIDC login")
+	flags.StringVar(&opts.tlsCert, "tls-cert", "", "browser HTTPS certificate PEM for native or OIDC login")
+	flags.StringVar(&opts.tlsKey, "tls-key", "", "browser HTTPS private key PEM for native or OIDC login")
 	flags.StringVar(&opts.configDir, "config-dir", "", "OC configuration directory (default OC_CONFIG_DIR, MC_CONFIG_DIR, or user profile)")
 	flags.StringVar(&opts.alias, "alias", "", "one S3 alias from OC config.json (required in local mode)")
 	flags.StringVar(&opts.dataDir, "data-dir", "", "writable application data directory (default CONFIG_DIR/console-data)")
 	flags.BoolVar(&opts.containerListen, "container-listen", false, "allow wildcard binding inside a container; requires --public-url")
-	flags.StringVar(&opts.publicURL, "public-url", "", "browser origin: local HTTP loopback or native HTTPS")
+	flags.StringVar(&opts.publicURL, "public-url", "", "browser origin: local HTTP loopback or native/OIDC HTTPS")
 	flags.StringVar(&opts.address, "address", "127.0.0.1:9090", "literal IP and port (local mode requires loopback)")
 	flags.StringVar(&opts.s3CA, "s3-ca", "", "S3 PEM CA file, replacing certs/CAs custom trust")
 	flags.StringVar(&opts.adminURL, "admin-url", "", "independent OtterIO management root URL")
 	flags.StringVar(&opts.adminCA, "admin-ca", "", "independent management PEM CA file")
-	flags.BoolVar(&opts.allowWrites, "allow-writes", false, "enable confirmed storage writes/settings; local mode permits IAM changes, native mode permits own-secret rotation, IAM creation and user activation")
+	flags.BoolVar(&opts.allowWrites, "allow-writes", false, "enable confirmed storage writes/settings and protocol-protected native IAM changes; OIDC IAM remains read-only")
 	flags.BoolVar(&opts.allowSharing, "allow-sharing", false, "enable explicitly requested time-limited download links")
 	flags.StringVar(&opts.shareURL, "share-url", "", "S3 root URL reachable by download-link recipients")
 	flags.StringVar(&opts.archiveDir, "archive-dir", "", "temporary directory for complete ZIP downloads (default system temporary directory)")
@@ -61,7 +66,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	flags.Int64Var(&opts.maxUploadSize, "max-upload-size", 1<<30, "maximum file size in bytes (1 to 5368709120)")
 	showVersion := flags.Bool("version", false, "print version and exit")
 	flags.Usage = func() {
-		fmt.Fprintln(errorOutput, "Usage: oc-console --alias NAME [options]\n       oc-console --auth-mode native --s3-url URL --public-url URL --tls-cert FILE --tls-key FILE [options]\n\nA storage console, read-only by default. Native mode requires HTTPS and independent IAM credentials.")
+		fmt.Fprintln(errorOutput, "Usage: oc-console --alias NAME [options]\n       oc-console --auth-mode native --s3-url URL --public-url URL --tls-cert FILE --tls-key FILE [options]\n       oc-console --auth-mode oidc --oidc-issuer URL --oidc-client-id ID --s3-url URL --public-url URL --tls-cert FILE --tls-key FILE [options]\n\nA storage console, read-only by default. Native and OIDC modes require HTTPS and independent user sessions.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -86,11 +91,20 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer) erro
 	if opts.allowSharing && opts.shareURL == "" && os.Getenv("OC_SHARE_URL") == "" && os.Getenv("OC_SHARE_URL_"+opts.alias) == "" {
 		return errors.New("--allow-sharing requires --share-url or OC_SHARE_URL for recipients")
 	}
+	if opts.authMode != "oidc" && opts.sessionTTL != 30*time.Minute {
+		return errors.New("--session-ttl requires --auth-mode oidc")
+	}
+	if opts.authMode == "oidc" {
+		return runOIDC(ctx, opts, output)
+	}
+	if opts.oidcIssuer != "" || opts.oidcClientID != "" || opts.oidcCA != "" || opts.oidcSecretFile != "" {
+		return errors.New("OIDC options require --auth-mode oidc")
+	}
 	if opts.authMode == "native" {
 		return runNative(ctx, opts, output)
 	}
 	if opts.authMode != "local" {
-		return errors.New("--auth-mode must be local or native")
+		return errors.New("--auth-mode must be local, native or oidc")
 	}
 	if opts.s3URL != "" || opts.tlsCert != "" || opts.tlsKey != "" {
 		return errors.New("--s3-url and browser TLS options require --auth-mode native")
