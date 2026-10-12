@@ -37,7 +37,7 @@ class NativeIAMAcceptanceTests(unittest.TestCase):
 
     def test_public_user_and_child_scope_are_allowed(self):
         result = self.action(self.confirmed())
-        require_user_change(result, 'public-target', 'disabled', False)
+        require_user_change(result, 'public-target', 'disabled', False, ['public-target', 'public-child'])
 
     def test_existing_parent_and_child_secrets_remain_forbidden(self):
         for leaked in ('existing-secret', 'child-secret'):
@@ -64,7 +64,32 @@ class NativeIAMAcceptanceTests(unittest.TestCase):
             result = copy.deepcopy(self.confirmed())
             mutate(result)
             with self.assertRaisesRegex(RuntimeError, 'retirement scope'):
-                require_user_change(result, 'public-target', 'disabled', False)
+                require_user_change(result, 'public-target', 'disabled', False, ['public-target', 'public-child'])
+
+    def test_retirement_scope_requires_exact_parent_and_children(self):
+        for affected in (['public-target'], ['public-child'], [],
+                         ['public-target', 'public-child', 'unrelated-key'],
+                         ['public-target', 'public-target'],
+                         ['public-target', 'public-child', 'public-child']):
+            with self.subTest(affected=affected):
+                result = self.confirmed()
+                result['impact']['affectedAccessKeys'] = affected
+                with self.assertRaisesRegex(RuntimeError, 'retirement scope'):
+                    require_user_change(result, 'public-target', 'disabled', False, ['public-target', 'public-child'])
+
+    def test_retirement_scope_order_is_irrelevant(self):
+        result = self.confirmed()
+        result['impact']['affectedAccessKeys'].reverse()
+        require_user_change(result, 'public-target', 'disabled', False, ['public-target', 'public-child'])
+
+    def test_retirement_scope_requires_an_array_of_access_keys(self):
+        for affected in (None, 'public-target', {'public-target': True},
+                         ['public-target', None], ['public-target', []]):
+            with self.subTest(affected=affected):
+                result = self.confirmed()
+                result['impact']['affectedAccessKeys'] = affected
+                with self.assertRaisesRegex(RuntimeError, 'retirement scope'):
+                    require_user_change(result, 'public-target', 'disabled', False, ['public-target', 'public-child'])
 
 
 if __name__ == '__main__':

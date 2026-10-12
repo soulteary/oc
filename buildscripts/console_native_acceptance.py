@@ -14,15 +14,19 @@ def native_iam_action(client, body, headers, public_access_keys, expected=200):
                              headers=headers, allowed_credentials=tuple(public_access_keys))[0])
 
 
-def require_user_change(result, target, status, login_required):
+def require_user_change(result, target, status, login_required, expected_access_keys):
     impact = result.get('impact', {})
+    affected = impact.get('affectedAccessKeys')
+    expected = set(expected_access_keys)
     if (result.get('outcome') != 'confirmed' or
             result.get('user') != {'accessKey': target, 'status': status} or
             result.get('loginRequired') is not login_required or
             result.get('restartRequired', False) is not False or
             impact.get('kind') != 'user' or impact.get('target') != target or
             impact.get('state') != 'known' or impact.get('coupledUsers') is not True or
-            target not in impact.get('affectedAccessKeys', [])):
+            target not in expected or not isinstance(affected, list) or
+            not all(isinstance(key, str) for key in affected) or
+            len(affected) != len(expected) or set(affected) != expected):
         raise RuntimeError('native user mutation acknowledgement does not match its target and retirement scope')
 
 
@@ -189,10 +193,10 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 created_browser('/api/session', expected=401)
                 enable_user = {'action': 'user.enable', 'user': new_user, 'confirmTarget': new_user}
                 alice('/api/iam/actions', 'POST', enable_user, expected=403, headers=alice_headers)
-                require_user_change(native_iam_action(manager, enable_user, manager_headers, public_access_keys), new_user, 'enabled', False)
+                require_user_change(native_iam_action(manager, enable_user, manager_headers, public_access_keys), new_user, 'enabled', False, [new_user])
                 created_browser('/api/session', expected=401)
                 created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-                require_user_change(native_iam_action(manager, {'action': 'user.enable', 'user': manager_access, 'confirmTarget': manager_access}, manager_headers, public_access_keys), manager_access, 'enabled', True)
+                require_user_change(native_iam_action(manager, {'action': 'user.enable', 'user': manager_access, 'confirmTarget': manager_access}, manager_headers, public_access_keys), manager_access, 'enabled', True, [manager_access])
                 manager('/api/session', expected=401)
                 manager_session = json.loads(manager('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret})[0])
                 manager_headers = {'X-CSRF-Token': manager_session['csrfToken']}
@@ -214,15 +218,17 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 disable_user = {'action': 'user.disable', 'user': new_user, 'confirmTarget': new_user}
                 alice('/api/iam/actions', 'POST', disable_user, expected=403, headers=alice_headers)
                 disabled = native_iam_action(manager, disable_user, manager_headers, public_access_keys)
-                require_user_change(disabled, new_user, 'disabled', False)
+                require_user_change(disabled, new_user, 'disabled', False, [new_user, service_key])
+                service_read(403)
                 rejected('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret}, expected=401)
                 # Enable before either old browser makes another request: explicit
                 # target retirement must not rely on request-time credential denial.
-                require_user_change(native_iam_action(manager, enable_user, manager_headers, public_access_keys), new_user, 'enabled', False)
+                require_user_change(native_iam_action(manager, enable_user, manager_headers, public_access_keys), new_user, 'enabled', False, [new_user, service_key])
+                service_read(200)
                 created_browser('/api/session', expected=401)
                 second_created('/api/session', expected=401)
                 created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-                checks.append('native user disable requires manager permission, revokes all target sessions before any follow-up request, and later enable permits only a fresh login')
+                checks.append('native user disable/enable confirms the complete parent/child scope, rejects/allows signed service-child reads, retires target sessions and permits only a fresh browser login')
                 delete_user = {'action': 'user.delete', 'user': new_user, 'confirmTarget': new_user}
                 alice('/api/iam/actions', 'POST', delete_user, expected=403, headers=alice_headers)
                 cli('admin', 'group', 'add', 'store', new_group, new_user)
@@ -233,8 +239,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 bob('/api/session')
                 second_created('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
                 deleted = native_iam_action(manager, delete_user, manager_headers, public_access_keys)
-                require_user_change(deleted, new_user, 'deleted', False)
-                assert service_key in deleted['impact']['affectedAccessKeys']
+                require_user_change(deleted, new_user, 'deleted', False, [new_user, service_key])
                 group = json.loads(cli('--json', 'admin', 'group', 'info', 'store', new_group))
                 assert group['groupName'] == new_group and new_user not in group.get('members', [])
                 service_read(403)
@@ -250,7 +255,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 cli('admin', 'user', 'remove', 'store', new_user)
                 cli('admin', 'group', 'remove', 'store', new_group)
                 self_disabled = native_iam_action(manager, {'action': 'user.disable', 'user': manager_access, 'confirmTarget': manager_access}, manager_headers, public_access_keys)
-                require_user_change(self_disabled, manager_access, 'disabled', True)
+                require_user_change(self_disabled, manager_access, 'disabled', True, [manager_access])
                 cli('admin', 'user', 'enable', 'store', manager_access)
                 manager('/api/session', expected=401)
                 manager('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret})
@@ -258,7 +263,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 bob('/api/session')
                 checks.append('native self-disable acknowledges before retiring own session, keeps shared console available and requires fresh login after administrative activation')
                 self_deleted = native_iam_action(manager, {'action': 'user.delete', 'user': manager_access, 'confirmTarget': manager_access}, {'X-CSRF-Token': json.loads(manager('/api/session')[0])['csrfToken']}, public_access_keys)
-                require_user_change(self_deleted, manager_access, 'deleted', True)
+                require_user_change(self_deleted, manager_access, 'deleted', True, [manager_access])
                 manager('/api/session', expected=401)
                 rejected('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret}, expected=401)
                 alice('/api/session')
