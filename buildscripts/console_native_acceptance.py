@@ -7,9 +7,71 @@ import time
 import urllib.parse
 
 
+def native_iam_action(client, body, headers, public_access_keys, expected=200):
+    # These names were created by this fixture; no existing or generated secret
+    # enters the exemption. Coupled acknowledgements include their public scope.
+    return json.loads(client('/api/iam/actions', 'POST', body, expected=expected,
+                             headers=headers, allowed_credentials=tuple(public_access_keys))[0])
+
+
+def require_user_change(result, target, status, login_required, expected_access_keys):
+    impact = result.get('impact', {})
+    affected = impact.get('affectedAccessKeys')
+    expected = set(expected_access_keys)
+    if (result.get('outcome') != 'confirmed' or
+            result.get('user') != {'accessKey': target, 'status': status} or
+            result.get('loginRequired') is not login_required or
+            result.get('restartRequired', False) is not False or
+            impact.get('kind') != 'user' or impact.get('target') != target or
+            impact.get('state') != 'known' or impact.get('coupledUsers') is not True or
+            target not in expected or not isinstance(affected, list) or
+            not all(isinstance(key, str) for key in affected) or
+            len(affected) != len(expected) or set(affected) != expected):
+        raise RuntimeError('native user mutation acknowledgement does not match its target and retirement scope')
+
+
+def require_service_account_inventory(client, user, access_key, present, public_access_keys):
+    # Require a successful authenticated management read. A missing parent,
+    # denied query or malformed response cannot establish child deletion.
+    query = urllib.parse.urlencode({'user': user})
+    result = json.loads(client('/api/iam/service-accounts?' + query, expected=200,
+                               allowed_credentials=tuple(public_access_keys))[0])
+    if not isinstance(result, dict) or result.get('user') != user or not isinstance(result.get('serviceAccounts'), list):
+        raise RuntimeError('native service-account inventory did not confirm the requested parent')
+    accounts = result['serviceAccounts']
+    if (any(not isinstance(account, dict) or not isinstance(account.get('accessKey'), str) or
+            account.get('parentUser') != user for account in accounts) or
+            (any(account['accessKey'] == access_key for account in accounts)) is not present):
+        raise RuntimeError('native service-account inventory did not confirm the expected child presence')
+
+
+def require_service_account_info(signed_request, admin, manager_access, manager_secret, context, access_key, present):
+    # Query the key directly: a parent-filtered list can hide detached children.
+    # The server encrypts successful info responses. Its explicit absence error
+    # must match status, code, message and route; authorization failure is 403
+    # even though this server can reuse the same code for that failure.
+    path = '/otterio/admin/v3/info-service-account'
+    status, payload, headers = signed_request(admin, 'GET', path, b'', manager_access,
+                                             manager_secret, context, query=urllib.parse.urlencode({'accessKey': access_key}))
+    if present:
+        if status != 200 or not payload or headers.get('Content-Type', '').split(';', 1)[0] != 'application/json':
+            raise RuntimeError('native direct service-account info did not confirm child existence')
+        return
+    if status != 404 or headers.get('Content-Type', '').split(';', 1)[0] != 'application/json':
+        raise RuntimeError('native direct service-account info did not return an explicit not-found result')
+    try:
+        result = json.loads(payload)
+    except (ValueError, UnicodeDecodeError):
+        raise RuntimeError('native direct service-account info returned malformed not-found evidence') from None
+    if (not isinstance(result, dict) or result.get('Code') != 'XOtterioInvalidIAMCredentials' or
+            result.get('Message') != 'The specified service account is not found (Specified service account does not exist)' or
+            result.get('Resource') != path):
+        raise RuntimeError('native direct service-account info did not identify the missing child')
+
+
 def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                   credentials, endpoint, admin, s3ca, adminca, bucket, viewer_access,
-                  viewer_secret, root_access, root_secret, checks):
+                  viewer_secret, root_access, root_secret, checks, signed_request):
     tls_dir = root / 'native-browser-tls'
     browser_ca = certificate(tls_dir)
     base = f'https://127.0.0.1:{free_port()}'
@@ -137,6 +199,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
             created = json.loads(manager('/api/iam/actions', 'POST', create_user, headers=manager_headers)[0])
             assert created['outcome'] == 'confirmed' and not created['restartRequired']
             credentials.extend([created['credentials']['accessKey'], created['credentials']['secretKey']])
+            public_access_keys = [manager_access, created['credentials']['accessKey']]
             manager('/api/iam/actions', 'POST', create_user, expected=409, headers=manager_headers)
             manager('/api/iam/actions', 'POST', {'action': 'group.create', 'group': new_group, 'confirmTarget': new_group}, headers=manager_headers)
             if getattr(args, 'expect_relationship_unsupported', False):
@@ -169,73 +232,86 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 created_browser('/api/session', expected=401)
                 enable_user = {'action': 'user.enable', 'user': new_user, 'confirmTarget': new_user}
                 alice('/api/iam/actions', 'POST', enable_user, expected=403, headers=alice_headers)
-                manager('/api/iam/actions', 'POST', enable_user, headers=manager_headers)
+                require_user_change(native_iam_action(manager, enable_user, manager_headers, public_access_keys), new_user, 'enabled', False, [new_user])
                 created_browser('/api/session', expected=401)
                 created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-                manager('/api/iam/actions', 'POST', {'action': 'user.enable', 'user': manager_access, 'confirmTarget': manager_access}, headers=manager_headers)
-                manager('/api/session')
-                checks.append('native account activation enforces manager permission, never revives revoked sessions and does not stop self-targeted manager sessions')
-                service = json.loads(manager('/api/iam/actions', 'POST', {'action': 'service-account.create', 'user': new_user, 'confirmTarget': new_user}, headers=manager_headers)[0])
+                require_user_change(native_iam_action(manager, {'action': 'user.enable', 'user': manager_access, 'confirmTarget': manager_access}, manager_headers, public_access_keys), manager_access, 'enabled', True, [manager_access])
+                manager('/api/session', expected=401)
+                manager_session = json.loads(manager('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret})[0])
+                manager_headers = {'X-CSRF-Token': manager_session['csrfToken']}
+                checks.append('native account activation enforces manager permission, never revives revoked sessions and acknowledges self-target enable before requiring a fresh manager login')
+                cli('admin', 'policy', 'set', 'store', 'readonly', 'user=' + new_user)
+                service = native_iam_action(manager, {'action': 'service-account.create', 'user': new_user, 'confirmTarget': new_user}, manager_headers, public_access_keys)
                 service_key = service['credentials']['accessKey']
                 credentials.extend([service_key, service['credentials']['secretKey']])
+                public_access_keys.append(service_key)
+                require_service_account_inventory(manager, new_user, service_key, True, public_access_keys)
+                def service_info(present):
+                    require_service_account_info(signed_request, admin, manager_access, manager_secret,
+                                                 ssl.create_default_context(cafile=str(adminca)), service_key, present)
+                service_info(True)
+                def service_read(expected):
+                    uri = '/' + urllib.parse.quote(bucket + '/plain.txt', safe='/-_.~')
+                    status, _, _ = signed_request(endpoint, 'GET', uri, b'', service_key,
+                                                 service['credentials']['secretKey'], ssl.create_default_context(cafile=str(s3ca)))
+                    if status != expected:
+                        raise RuntimeError('native user lifecycle did not preserve the expected signed service-child permission')
+                service_read(200)
                 second_created = browser(base, tls_context)
                 second_created('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
                 disable_user = {'action': 'user.disable', 'user': new_user, 'confirmTarget': new_user}
                 alice('/api/iam/actions', 'POST', disable_user, expected=403, headers=alice_headers)
-                disabled = json.loads(manager('/api/iam/actions', 'POST', disable_user, headers=manager_headers)[0])
-                assert disabled['outcome'] == 'confirmed' and not disabled['restartRequired'] and not disabled['loginRequired']
+                disabled = native_iam_action(manager, disable_user, manager_headers, public_access_keys)
+                require_user_change(disabled, new_user, 'disabled', False, [new_user, service_key])
+                service_read(403)
                 rejected('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret}, expected=401)
                 # Enable before either old browser makes another request: explicit
                 # target retirement must not rely on request-time credential denial.
-                manager('/api/iam/actions', 'POST', enable_user, headers=manager_headers)
+                require_user_change(native_iam_action(manager, enable_user, manager_headers, public_access_keys), new_user, 'enabled', False, [new_user, service_key])
+                service_read(200)
                 created_browser('/api/session', expected=401)
                 second_created('/api/session', expected=401)
                 created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-                checks.append('native user disable requires manager permission, revokes all target sessions before any follow-up request, and later enable permits only a fresh login')
+                checks.append('native user disable/enable confirms the complete parent/child scope, rejects/allows signed service-child reads, retires target sessions and permits only a fresh browser login')
                 delete_user = {'action': 'user.delete', 'user': new_user, 'confirmTarget': new_user}
                 alice('/api/iam/actions', 'POST', delete_user, expected=403, headers=alice_headers)
-                manager('/api/iam/actions', 'POST', delete_user, expected=409, headers=manager_headers)
-                created_browser('/api/session')  # service-account preflight preserves the session
                 cli('admin', 'group', 'add', 'store', new_group, new_user)
-                blocked = json.loads(manager('/api/iam/actions', 'POST', delete_user, expected=409, headers=manager_headers)[0])
-                assert blocked['code'] == 'user_has_groups'
+                group = json.loads(cli('--json', 'admin', 'group', 'info', 'store', new_group))
+                assert new_user in group['members']
                 created_browser('/api/session')
-                cli('admin', 'group', 'remove', 'store', new_group, new_user)
-                checks.append('native user deletion rejects unauthorized operators and users with groups/service accounts without revoking target sessions')
                 alice('/api/session')
                 bob('/api/session')
-                # Service-account cleanup must use its actual manager identity;
-                # the server deliberately prevents root from managing this target.
-                fixture_config = root / 'config' / 'config.json'
-                config = json.loads(fixture_config.read_text())
-                config['aliases']['native-manager'] = {**config['aliases']['store'], 'accessKey': manager_access, 'secretKey': manager_secret}
-                fixture_config.write_text(json.dumps(config))
-                fixture_config.chmod(0o600)
-                cli('admin', 'user', 'svcacct', 'rm', 'native-manager', service_key)
-                del config['aliases']['native-manager']
-                fixture_config.write_text(json.dumps(config))
                 second_created('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-                deleted = json.loads(manager('/api/iam/actions', 'POST', delete_user, headers=manager_headers)[0])
-                assert deleted['outcome'] == 'confirmed' and not deleted['restartRequired'] and not deleted['loginRequired']
+                deleted = native_iam_action(manager, delete_user, manager_headers, public_access_keys)
+                require_user_change(deleted, new_user, 'deleted', False, [new_user, service_key])
+                require_service_account_inventory(manager, new_user, service_key, False, public_access_keys)
+                service_info(False)
+                group = json.loads(cli('--json', 'admin', 'group', 'info', 'store', new_group))
+                assert group['groupName'] == new_group and new_user not in group.get('members', [])
+                service_read(403)
                 # Recreate the name AND secret before either old browser requests
                 # identity again. Only explicit retirement keeps both cookies dead.
                 cli('admin', 'user', 'add', 'store', new_user, new_secret)
+                cli('admin', 'policy', 'set', 'store', 'readonly', 'user=' + new_user)
+                require_service_account_inventory(manager, new_user, service_key, False, public_access_keys)
+                service_info(False)
                 created_browser('/api/session', expected=401)
                 second_created('/api/session', expected=401)
                 created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
-                checks.append('native user deletion retires all target sessions; recreating the identical username/secret cannot revive old cookies and requires fresh login')
+                service_read(403)
+                checks.append('native user deletion rejects unauthorized operators, removes group membership and service children confirmed by manager inventory and direct-key not-found before/after parent recreation, retires target sessions and requires fresh login')
                 cli('admin', 'user', 'remove', 'store', new_user)
                 cli('admin', 'group', 'remove', 'store', new_group)
-                self_disabled = json.loads(manager('/api/iam/actions', 'POST', {'action': 'user.disable', 'user': manager_access, 'confirmTarget': manager_access}, headers=manager_headers)[0])
-                assert self_disabled['outcome'] == 'confirmed' and self_disabled['loginRequired'] and not self_disabled['restartRequired']
+                self_disabled = native_iam_action(manager, {'action': 'user.disable', 'user': manager_access, 'confirmTarget': manager_access}, manager_headers, public_access_keys)
+                require_user_change(self_disabled, manager_access, 'disabled', True, [manager_access])
                 cli('admin', 'user', 'enable', 'store', manager_access)
                 manager('/api/session', expected=401)
                 manager('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret})
                 alice('/api/session')
                 bob('/api/session')
                 checks.append('native self-disable acknowledges before retiring own session, keeps shared console available and requires fresh login after administrative activation')
-                self_deleted = json.loads(manager('/api/iam/actions', 'POST', {'action': 'user.delete', 'user': manager_access, 'confirmTarget': manager_access}, headers={'X-CSRF-Token': json.loads(manager('/api/session')[0])['csrfToken']})[0])
-                assert self_deleted['outcome'] == 'confirmed' and self_deleted['loginRequired'] and not self_deleted['restartRequired']
+                self_deleted = native_iam_action(manager, {'action': 'user.delete', 'user': manager_access, 'confirmTarget': manager_access}, {'X-CSRF-Token': json.loads(manager('/api/session')[0])['csrfToken']}, public_access_keys)
+                require_user_change(self_deleted, manager_access, 'deleted', True, [manager_access])
                 manager('/api/session', expected=401)
                 rejected('/api/login', 'POST', {'accessKey': manager_access, 'secretKey': manager_secret}, expected=401)
                 alice('/api/session')

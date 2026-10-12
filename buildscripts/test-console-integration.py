@@ -88,6 +88,14 @@ def run_fixture_cli(command, env, credentials):
     return result.stdout
 
 
+def require_no_browser_credentials(payload, credentials, public_access_keys=()):
+    # IAM acknowledgements can name an already known public access key. Secrets
+    # remain forbidden even when their paired key is expected in the response.
+    if any(credential.encode() in payload for credential in credentials
+           if credential not in public_access_keys):
+        raise RuntimeError('browser response disclosed storage credentials')
+
+
 def stop(process):
     if process is None or process.poll() is not None:
         return
@@ -237,8 +245,7 @@ def scenario(args, name, preview=False, record=None):
                     response = error
                 with response:
                     payload = response.read()
-                    if any(credential.encode() in payload for credential in credentials if credential not in allowed_credentials):
-                        raise RuntimeError('browser response disclosed storage credentials')
+                    require_no_browser_credentials(payload, credentials, allowed_credentials)
                     accepted = expected if isinstance(expected, tuple) else (expected,)
                     if expected is not None and response.status not in accepted:
                         raise RuntimeError(f'{method} {path.split("?")[0]}: expected {expected}, got {response.status}: {payload[:300]!r}')
@@ -381,7 +388,7 @@ def scenario(args, name, preview=False, record=None):
                 from console_native_acceptance import verify_native
                 record['nativeMetrics'] = verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                     credentials, endpoint, admin, s3ca, adminca, bucket, restricted_access, restricted_secret,
-                    access, secret, checks)
+                    access, secret, checks, signed_request)
             if args.relationship_iam:
                 from console_relationship_iam_acceptance import verify_relationship_iam
                 record['relationshipIAMMetrics'] = verify_relationship_iam(args, root, cli, browser, stop, certificate, free_port, env,
