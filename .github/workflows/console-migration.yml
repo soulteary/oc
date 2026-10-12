@@ -1,0 +1,140 @@
+name: Console migration candidate pair
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: console-migration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate-pair:
+    name: Unpatched pair and real Chromium on Linux amd64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOTOOLCHAIN: local
+      CGO_ENABLED: "0"
+      OTTERIO_CANDIDATE_SOURCE: c3b3665154264993fa06a28e95ab25fdd03d7c0c
+      OTTERIO_PREVIOUS_MANIFEST_SHA256: 2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3
+      PYTHONDONTWRITEBYTECODE: "1"
+    defaults:
+      run:
+        shell: bash
+        working-directory: oc
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          path: oc
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: soulteary/otterio
+          ref: c3b3665154264993fa06a28e95ab25fdd03d7c0c
+          path: otterio-candidate
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: oc/go.mod
+          cache: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Check focused evidence regression tests
+        run: |
+          python3 -m unittest discover -s buildscripts -p 'test_console_migration_pair.py' -v
+          python3 -m unittest discover -s buildscripts -p 'test_console_upgrade_acceptance.py' -v
+      - name: Build exact clean source pair without patches or module rewrites
+        id: build
+        run: |
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git -C ../otterio-candidate rev-parse HEAD)" = "$OTTERIO_CANDIDATE_SOURCE"
+          test -z "$(git -C ../otterio-candidate status --porcelain --untracked-files=all)"
+          mkdir -p "$RUNNER_TEMP/console-migration/bin"
+          go mod download
+          go mod verify
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/console-migration/bin/oc" .
+          go build -mod=readonly -trimpath -o "$RUNNER_TEMP/console-migration/bin/oc-console" ./cmd/oc-console
+          (cd ../otterio-candidate && go mod download && go mod verify && go build -mod=readonly -trimpath -o "$RUNNER_TEMP/console-migration/bin/otterio" .)
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git -C ../otterio-candidate status --porcelain --untracked-files=all)"
+      - name: Install pinned real browser and operating system dependencies
+        run: |
+          # Official Playwright CLI installation: https://playwright.dev/docs/ci
+          npm install --prefix "$RUNNER_TEMP/console-migration/browser" --no-audit --no-fund --save-exact playwright@1.64.0
+          "$RUNNER_TEMP/console-migration/browser/node_modules/.bin/playwright" install --with-deps chromium
+          docker info > /dev/null
+          openssl version
+          echo "OC_BROWSER_NODE=$(command -v node)" >> "$GITHUB_ENV"
+          echo "OC_BROWSER_PLAYWRIGHT_MODULE=$RUNNER_TEMP/console-migration/browser/node_modules/playwright" >> "$GITHUB_ENV"
+          node -e 'console.log("OC_BROWSER_EXECUTABLE=" + require(process.argv[1]).chromium.executablePath())' "$RUNNER_TEMP/console-migration/browser/node_modules/playwright" >> "$GITHUB_ENV"
+      - name: Run all mandatory independent candidate profiles
+        run: |
+          python3 buildscripts/test-console-migration-pair.py \
+            --cli "$RUNNER_TEMP/console-migration/bin/oc" \
+            --console "$RUNNER_TEMP/console-migration/bin/oc-console" \
+            --server "$RUNNER_TEMP/console-migration/bin/otterio" \
+            --oc-source "$(git rev-parse HEAD)" \
+            --server-source "$OTTERIO_CANDIDATE_SOURCE" \
+            --output "$RUNNER_TEMP/console-migration/evidence/console-migration-pair.json"
+      - name: Download exact previous stable programs and their verification material
+        id: previous-assets
+        if: always() && steps.build.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous="$RUNNER_TEMP/console-migration/previous"
+          mkdir -p "$previous/otterio" "$previous/oc"
+          gh release download RELEASE.2026-10-10T16-38-05Z --repo soulteary/otterio \
+            --pattern otterio-linux-amd64 --pattern otterio-RELEASE.2026-10-10T16-38-05Z-checksums.txt \
+            --pattern release-manifest.json --dir "$previous/otterio"
+          gh release download RELEASE.2026-10-10T11-42-18Z --repo soulteary/oc \
+            --pattern oc-RELEASE.2026-10-10T11-42-18Z-linux-amd64.tar.gz \
+            --pattern checksums.txt --pattern release-manifest.json --dir "$previous/oc"
+          # The older server checksum file contains only its six programs.
+          # Bind its manifest to the independently recorded official asset digest.
+          manifest_digest="$(gh api repos/soulteary/otterio/releases/tags/RELEASE.2026-10-10T16-38-05Z --jq '.assets[] | select(.name == "release-manifest.json") | .digest')"
+          test "$manifest_digest" = "sha256:$OTTERIO_PREVIOUS_MANIFEST_SHA256"
+          (cd "$previous/oc" && sha256sum -c checksums.txt --ignore-missing)
+          (cd "$previous/otterio" && sha256sum -c otterio-RELEASE.2026-10-10T16-38-05Z-checksums.txt --ignore-missing)
+          tar -xzf "$previous/oc/oc-RELEASE.2026-10-10T11-42-18Z-linux-amd64.tar.gz" -C "$previous/oc"
+          chmod +x "$previous/otterio/otterio-linux-amd64"
+      - name: Verify actual previous-release upgrade and both rollback boundaries
+        if: always() && steps.previous-assets.outcome == 'success'
+        run: |
+          previous="$RUNNER_TEMP/console-migration/previous"
+          oldoc="$previous/oc/oc-RELEASE.2026-10-10T11-42-18Z-linux-amd64"
+          python3 buildscripts/console_upgrade_acceptance.py \
+            --previous-server "$previous/otterio/otterio-linux-amd64" \
+            --previous-cli "$oldoc/oc" --previous-console "$oldoc/oc-console" \
+            --server "$RUNNER_TEMP/console-migration/bin/otterio" \
+            --cli "$RUNNER_TEMP/console-migration/bin/oc" \
+            --console "$RUNNER_TEMP/console-migration/bin/oc-console" \
+            --previous-source 8cc518b31ac8b69c8f855e19b4bd027f44275c47 \
+            --server-source "$OTTERIO_CANDIDATE_SOURCE" --cli-source "$(git rev-parse HEAD)" \
+            --previous-release RELEASE.2026-10-10T16-38-05Z \
+            --previous-oc-release RELEASE.2026-10-10T11-42-18Z \
+            --previous-manifest "$previous/otterio/release-manifest.json" \
+            --previous-manifest-sha256 "$OTTERIO_PREVIOUS_MANIFEST_SHA256" \
+            --previous-checksums "$previous/otterio/otterio-RELEASE.2026-10-10T16-38-05Z-checksums.txt" \
+            --previous-oc-manifest "$previous/oc/release-manifest.json" \
+            --previous-oc-checksums "$previous/oc/checksums.txt" \
+            --previous-oc-archive "$previous/oc/oc-RELEASE.2026-10-10T11-42-18Z-linux-amd64.tar.gz" \
+            --profiles single-tls dual-tls \
+            --output "$RUNNER_TEMP/console-migration/evidence/console-migration-upgrade.json"
+      - name: Retain summary and original structural fixture reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: console-migration-candidate-linux-amd64
+          path: ${{ runner.temp }}/console-migration/evidence/*.json
+          if-no-files-found: error
+          retention-days: 14

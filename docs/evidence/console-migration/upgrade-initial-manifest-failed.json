@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "previous-release-to-candidate-upgrade",
+  "dateUTC": "2026-10-12T19:04:23.996825+00:00",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "releaseAssetCertification": false,
+  "passed": false,
+  "profiles": [],
+  "harnesses": {
+    "console_upgrade_acceptance.py": "f12f40257df47b1cb959c273724b57998910aaf4ab25a067d925d991eb259923",
+    "test-console-integration.py": "eb1d2436efecf184dfeaea91d4519c2c3f2194bc0f161c05696f6094566c05ed",
+    "local_http.py": "8d9ae2287186726711458bff030de76f2d805dfa1a0be32d5354c41f721fe24f",
+    "console_acceptance_protocol.py": "2fad03751d8c3f9344bf28680b099c1661cb7296a2762fe5f4fd0777464a78e1"
+  },
+  "preparationErrorClass": "RuntimeError",
+  "reason": "previous release manifest identity mismatch"
+}

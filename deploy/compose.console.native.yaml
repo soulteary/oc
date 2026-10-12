@@ -1,0 +1,54 @@
+# Single-instance, direct-HTTPS candidate deployment. See README.console-https.md.
+# OC_CANDIDATE_IMAGE must match the verified candidate/release manifest; no latest tag.
+services:
+  oc:
+    image: '${OC_CANDIDATE_IMAGE:?Set the verified OC image reference including sha256 digest}'
+    restart: unless-stopped
+    entrypoint: [oc-console]
+    command:
+      - --auth-mode
+      - native
+      - --address
+      - '0.0.0.0:9090'
+      - --public-url
+      - '${OC_PUBLIC_URL:?Set the exact browser HTTPS origin including its port}'
+      - --s3-url
+      - '${OC_S3_URL:?Set the existing HTTPS S3 root URL}'
+      - --admin-url
+      - '${OC_ADMIN_URL:?Set the existing HTTPS Admin root URL}'
+      - --s3-ca
+      - /run/secrets/s3_ca
+      - --admin-ca
+      - /run/secrets/admin_ca
+      - --tls-cert
+      - /run/secrets/browser_certificate
+      - --tls-key
+      - /run/secrets/browser_private_key
+      - --data-dir
+      - /app-data
+      - --archive-dir
+      - /archives
+    ports:
+      - '${OC_BROWSER_BIND:-127.0.0.1}:${OC_BROWSER_PORT:-9090}:9090'
+    volumes:
+      - oc-console-data:/app-data
+      - oc-console-archives:/archives
+    secrets:
+      - s3_ca
+      - admin_ca
+      - browser_certificate
+      - browser_private_key
+
+secrets:
+  s3_ca:
+    file: '${OC_S3_CA_FILE:?Set the S3 CA PEM file path}'
+  admin_ca:
+    file: '${OC_ADMIN_CA_FILE:?Set the independent Admin CA PEM file path}'
+  browser_certificate:
+    file: '${OC_BROWSER_CERT_FILE:?Set the browser TLS certificate PEM file path}'
+  browser_private_key:
+    file: '${OC_BROWSER_KEY_FILE:?Set the private browser TLS key PEM file path}'
+
+volumes:
+  oc-console-data:
+  oc-console-archives:

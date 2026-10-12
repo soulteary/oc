@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "previous-release-to-candidate-upgrade",
+  "dateUTC": "2026-10-12T19:38:38.732664+00:00",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "releaseAssetCertification": false,
+  "passed": true,
+  "profiles": [
+    {
+      "profile": "single-tls",
+      "status": "passed",
+      "checks": [
+        {
+          "name": "previous-baseline: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "previous published console writes shared local preferences",
+          "status": "passed"
+        },
+        {
+          "name": "candidate accepts omitted browser environment with retained TLS S3/Admin listeners",
+          "status": "passed"
+        },
+        {
+          "name": "candidate-without-new-writes: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "old-to-new local preferences preserved; native identity isolated and persistent after restart",
+          "status": "passed"
+        },
+        {
+          "name": "candidate legacy routes unavailable while verified S3 and Admin remain reachable",
+          "status": "passed"
+        },
+        {
+          "name": "rollback-without-new-writes: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "previous console can read local preferences after current console",
+          "status": "passed"
+        },
+        {
+          "name": "candidate accepts explicit browser off with retained TLS S3/Admin listeners",
+          "status": "passed"
+        },
+        {
+          "name": "candidate-after-new-write: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "rollback-after-new-write: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "snapshot-restored-baseline: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "pre-upgrade snapshot recovery omits subsequent writes as expected",
+          "status": "passed"
+        }
+      ],
+      "phase": "snapshot-restored-baseline",
+      "cleanup": "passed",
+      "durationSeconds": 6.831
+    },
+    {
+      "profile": "dual-tls",
+      "status": "passed",
+      "checks": [
+        {
+          "name": "previous-baseline: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "previous published console writes shared local preferences",
+          "status": "passed"
+        },
+        {
+          "name": "candidate accepts omitted browser environment with retained TLS S3/Admin listeners",
+          "status": "passed"
+        },
+        {
+          "name": "candidate-without-new-writes: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "old-to-new local preferences preserved; native identity isolated and persistent after restart",
+          "status": "passed"
+        },
+        {
+          "name": "candidate legacy routes unavailable while verified S3 and Admin remain reachable",
+          "status": "passed"
+        },
+        {
+          "name": "rollback-without-new-writes: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "previous console can read local preferences after current console",
+          "status": "passed"
+        },
+        {
+          "name": "candidate accepts explicit browser off with retained TLS S3/Admin listeners",
+          "status": "passed"
+        },
+        {
+          "name": "candidate-after-new-write: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "rollback-after-new-write: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "snapshot-restored-baseline: objects versions tags bucket configuration IAM group policy denies and CLI config preserved",
+          "status": "passed"
+        },
+        {
+          "name": "pre-upgrade snapshot recovery omits subsequent writes as expected",
+          "status": "passed"
+        }
+      ],
+      "phase": "snapshot-restored-baseline",
+      "cleanup": "passed",
+      "durationSeconds": 6.68
+    }
+  ],
+  "harnesses": {
+    "console_upgrade_acceptance.py": "5446debde387ae4bda763ac60d4c963c7cef9ddd7a3cf896f87aed39c934cf25",
+    "test-console-integration.py": "eb1d2436efecf184dfeaea91d4519c2c3f2194bc0f161c05696f6094566c05ed",
+    "local_http.py": "8d9ae2287186726711458bff030de76f2d805dfa1a0be32d5354c41f721fe24f",
+    "console_acceptance_protocol.py": "2fad03751d8c3f9344bf28680b099c1661cb7296a2762fe5f4fd0777464a78e1"
+  },
+  "previousReleaseManifests": {
+    "server": {
+      "tag": "RELEASE.2026-10-10T16-38-05Z",
+      "source": "8cc518b31ac8b69c8f855e19b4bd027f44275c47",
+      "manifestSHA256": "2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3",
+      "expectedManifestSHA256": "2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3",
+      "verification": "matches-expected-sha256",
+      "verifiedAssetSHA256": "48b673ad0e03723eeeedb2ab5773569093b426d8fa04e132d17183ac7afb6f9c"
+    },
+    "oc": {
+      "tag": "RELEASE.2026-10-10T11-42-18Z",
+      "source": "ee1846d587a6548db4e595d653ca4f54baea2b1a",
+      "manifestSHA256": "481000b8f26c4f9882d31f27822be6b5b5f282d41ca0e9529e72078d92c6e204",
+      "verifiedArchiveSHA256": "013b08e1c0d66f33202b8fe8e0705d95e0caa0358511ad924bae5b08ab00ca22"
+    }
+  },
+  "programs": {
+    "previousServer": {
+      "binarySHA256": "48b673ad0e03723eeeedb2ab5773569093b426d8fa04e132d17183ac7afb6f9c",
+      "source": "8cc518b31ac8b69c8f855e19b4bd027f44275c47",
+      "kind": "release-asset",
+      "embeddedVCS": "8cc518b31ac8b69c8f855e19b4bd027f44275c47",
+      "embeddedModified": "true",
+      "goVersion": "go1.27.2",
+      "goos": "darwin",
+      "goarch": "arm64"
+    },
+    "previousCLI": {
+      "binarySHA256": "1a840018d9cb74ae68da4083580178470aa491739d744c54c43c46e151bf96f1",
+      "source": "ee1846d587a6548db4e595d653ca4f54baea2b1a",
+      "kind": "release-asset",
+      "embeddedVCS": "ee1846d587a6548db4e595d653ca4f54baea2b1a",
+      "embeddedModified": "false",
+      "goVersion": "go1.27.2",
+      "goos": "darwin",
+      "goarch": "arm64"
+    },
+    "previousConsole": {
+      "binarySHA256": "8a8794eb289f95264a99fe08cf96e1afb0fb9d85ee80ab03c8cd115db1288e22",
+      "source": "ee1846d587a6548db4e595d653ca4f54baea2b1a",
+      "kind": "release-asset",
+      "embeddedVCS": "ee1846d587a6548db4e595d653ca4f54baea2b1a",
+      "embeddedModified": "false",
+      "goVersion": "go1.27.2",
+      "goos": "darwin",
+      "goarch": "arm64"
+    },
+    "server": {
+      "binarySHA256": "3211bf73d63cbd3f77ecdf9a70bb732980fb4448b3309b489bf59cfe2175c81e",
+      "source": "c3b3665154264993fa06a28e95ab25fdd03d7c0c",
+      "kind": "candidate-source-build",
+      "embeddedVCS": "c3b3665154264993fa06a28e95ab25fdd03d7c0c",
+      "embeddedModified": "false",
+      "goVersion": "go1.27.2",
+      "goos": "darwin",
+      "goarch": "arm64"
+    },
+    "cli": {
+      "binarySHA256": "5d05584f8b92def0ecdf10e734b2303a4d61718eeea10622fb6a6f31a5e7d30f",
+      "source": "26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27",
+      "kind": "candidate-source-build",
+      "embeddedVCS": "26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27",
+      "embeddedModified": "false",
+      "goVersion": "go1.27.2",
+      "goos": "darwin",
+      "goarch": "arm64"
+    },
+    "console": {
+      "binarySHA256": "18264a02aaa459aeeb40b4b229c2fc4404425d05c3ab365b07b338ca1c833a07",
+      "source": "26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27",
+      "kind": "candidate-source-build",
+      "embeddedVCS": "26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27",
+      "embeddedModified": "false",
+      "goVersion": "go1.27.2",
+      "goos": "darwin",
+      "goarch": "arm64"
+    }
+  }
+}

@@ -1,98 +1,139 @@
-# OC Console distribution and object management update
+# Independent-user Console and migration preparation
 
-Changes since [RELEASE.2026-10-09T17-33-03Z](https://github.com/soulteary/oc/releases/tag/RELEASE.2026-10-09T17-33-03Z)
-(source `99c6728ee75d10aaa7b6932a0ec07764258aa4ca`). This preparation
-uses UTC timestamp tags and does not reserve a tag or publish artifacts.
+Changes since [RELEASE.2026-10-10T11-42-18Z](https://github.com/soulteary/oc/releases/tag/RELEASE.2026-10-10T11-42-18Z),
+source `ee1846d587a6548db4e595d653ca4f54baea2b1a`, through the current source.
+This prepares the next UTC timestamp release; no tag, published artifact, image
+digest or completed migration window is declared here.
 
 ## Changes
 
-- Distribute `oc-console` alongside `oc` in all eleven platform archives and
-  Linux amd64/arm64 release images. Both programs report the release tag;
-  packaging checks verify executable bytes, licenses and checksums. The image
-  defaults to `oc`; start the console with `--entrypoint oc-console`.
-- Improve console object management, navigation and localization. Add persistent
-  preferences and recent bucket visits, with platform-appropriate preference
-  file permission checks on Windows.
-- Add a Docker Compose example for the local single-identity console. It sets
-  `OTTERIO_BROWSER=off` while retaining the internal Admin listener. The example
-  pins OtterIO `RELEASE.2026-10-09T15-22-07Z` and currently builds OC locally.
-- Fix console formatting and error-string lint findings.
+- Add independent native IAM browser login over direct HTTPS. Sessions use each
+  enabled IAM user's own credentials and permissions; root, service, STS and
+  directory identities are refused. Signed identity revalidation precedes
+  authenticated requests. Explicit rejection retires the session; transient
+  failure blocks dispatch without destroying it.
+- Add OIDC Authorization Code login with S256 PKCE, RS256 verification and
+  OtterIO WebIdentity STS. Fixed issuer/client/endpoints and separate IdP/S3/Admin
+  trust prevent browser-selected backends. Refresh rotates owned client
+  generations without extending the fixed browser lifetime. Cross-site callback,
+  logout, unrelated-user isolation and archive/upload ownership fixes accompany
+  this mode. Confidential-client secrets use private files.
+- Extend native IAM management with relationship-conditioned user, group,
+  policy-binding and service-account changes. Reviewed, single-use plans bind
+  the exact target, relationship revision and captured affected identities.
+  Confirmed or uncertain submissions retire captured local sessions and pending
+  logins; definitive refusal preserves them. Creation never replaces an existing
+  native target. User lifecycle checks include real service/STS child authority
+  and fresh-login boundaries.
+- Add authenticated conditional full downloads and single byte ranges with
+  GET/HEAD, validators and If-Range handling. Pin reads to the observed
+  object/version and verify upstream range replies. Multipart ranges remain
+  unsupported; historical versions retain independent permission checks.
+- Add permission-scoped Service diagnostics snapshots and bilingual navigation.
+  Missing `admin:ServerInfo` causes denial without privileged fallback.
+  Unavailable platform/runtime and global-capacity information is not replaced
+  with account-visible bucket totals.
+- Fix `oc admin policy update` checking the wrong error value. Empty arguments
+  and already-assigned policies now fail before binding replacement instead of
+  potentially clearing assignments. Valid additions retain existing policies.
+- Add direct-HTTPS single-instance native/OIDC deployment templates and exact
+  candidate-pair verification. Native acceptance checks complete coupled user
+  scope and confirms child deletion by signed direct access-key lookup,
+  independently of parent-filtered inventory.
 
-## Compatibility and upgrade
+## Compatibility, deployment and limits
 
-Go source builds require 1.27.2. This release retains the existing dependency
-pins: S3 SDK `github.com/soulteary/otterio-sdk/v7 v7.3.2`, server/admin module
-`github.com/soulteary/otterio v0.0.0-20261009091443-bcc238bc4c2c`,
-`crc64nvme v1.1.3`, `md5-simd v1.2.0` and urfave/cli v3.14.0.
-These build identities do not identify a remote server or establish compatibility
-with every historical OtterIO or third-party S3 service.
+`oc` and `oc-console` remain packaged together in eleven platform archives and
+Linux amd64/arm64 release images; the image entrypoint remains `oc`. Go source
+builds require 1.27.2. SDK/Admin dependencies remain independently pinned in
+`compatibility.json` and `go.mod`; they do not identify a remote server. Existing
+CLI configuration and supported `OC_*` / `MC_*` precedence remain. Older
+published artifacts do not acquire these source features automatically.
 
-**Known policy-update limitation:** `oc admin policy update` can clear a user's
-or group's policy assignments when passed an already assigned policy or an empty
-policy argument. This release does not fix that defect. Read the existing
-assignments with `oc admin user info` or `oc admin group info`, then use
-`oc admin policy set` with the complete desired comma-separated policy list and
-verify the result. See [administration guidance](docs/administration.md).
+Choose local alias, native or OIDC mode explicitly. Local mode shares one startup
+identity and must not substitute for independent users. Native/OIDC require
+browser HTTPS and HTTPS S3/Admin, with fixed endpoints and independent CA trust.
+Initial deployment scope is one OC instance; sessions are in memory and restart
+requires fresh login. Preferences persist per identity. See the [Console guide](docs/console.md),
+[HTTPS recipes](deploy/README.console-https.md) and [candidate verification](docs/console-migration-candidate.md).
 
-Existing CLI configuration and `OC_*` / supported `MC_*` precedence remain.
-Back up configuration and pin release images or manifest digests before upgrading.
-Older archives and images are not retroactively updated with the console.
+Writes and sharing remain explicit opt-ins subject to backend permissions.
+Native IAM mutations, protected settings and historical versions require matching
+server capability/relationship protocols. Unsupported operations are refused or
+retain documented read-only behavior. OIDC IAM mutations and Console secret
+rotation remain disabled. Native revalidation occurs at request time; it does
+not proactively detect external changes or continuously check operations in
+flight. Proxy TLS termination, multi-instance sessions, alternate browser engines,
+long-running stability and native execution on every cross-built platform are
+not certified by source-level acceptance.
 
-The console uses one configured alias identity for all local browser sessions.
-Writes and sharing require explicit opt-in; protected operations also require
-matching server capabilities and permissions. Independent-user/OIDC login and
-Range downloads remain outside this scope. See the [console guide](docs/console.md)
-and [migration and rollback gates](docs/console-release-migration.md).
-OtterIO's browser default remains unchanged. Restoring `OTTERIO_BROWSER=on`
-does not undo object writes, settings, secret rotation or lifecycle transitions.
+Pin both programs/images and back up configuration before rollout. OtterIO with
+embedded Web removed retains S3, Admin and STS, but explicitly setting
+`OTTERIO_BROWSER=on` fails startup; it cannot restore the old UI. A verified older
+server deployment is needed for that fallback. Returning to an old Console or
+server does not undo writes, secret changes or lifecycle transitions; server
+downgrades require separate data/configuration compatibility validation. Public
+notification, transition and fallback policy remains a release gate. Any revision
+to that policy must be announced explicitly, not relabelled as completed.
 
-Release from a clean synchronized main only after Go, Code scanning and the
-separate CLI compatibility checks pass on that exact source. Verify thirteen
-published assets and immutable image digests before rollout. Eleven cross-built
-archives and two image architectures do not prove native execution on every
-platform. See the [preparation record](docs/releases/2026-10-10-release-review.md)
+Release from clean synchronized main after required Go, Code scanning, CLI and
+candidate-pair checks pass on that exact commit. Then verify thirteen published
+assets, executable checksums and immutable image identities against the declared
+pair and supported upgrade path. Candidate source reports are not published-asset
+certification. The Release flow creates a stable release even with latest
+promotion disabled; it does not create an RC. See [release and migration gates](docs/console-release-migration.md)
 and [release procedure](docs/releasing.md).
 
 ---
 
-# OC Console 分发与对象管理更新
+# 独立用户 Console 与迁移准备
 
-本次变化以 [RELEASE.2026-10-09T17-33-03Z](https://github.com/soulteary/oc/releases/tag/RELEASE.2026-10-09T17-33-03Z)
-为基线，源码为 `99c6728ee75d10aaa7b6932a0ec07764258aa4ca`。
-继续使用 UTC 时间戳标签；本次准备不预留标签或发布附件。
+本次变化以 [RELEASE.2026-10-10T11-42-18Z](https://github.com/soulteary/oc/releases/tag/RELEASE.2026-10-10T11-42-18Z)
+为基线，源码为 `ee1846d587a6548db4e595d653ca4f54baea2b1a`，覆盖其后至当前
+源码的变更。本次准备不声明新标签、已发布附件、镜像摘要或已完成的迁移窗口。
 
 ## 本次变化
 
-- 11 个平台归档和 Linux amd64/arm64 发行镜像同时包含 `oc` 与 `oc-console`。
-  两个程序显示发行标签，打包检查核对程序字节、许可证和校验值。
-  镜像默认入口仍为 `oc`，使用 `--entrypoint oc-console` 启动控制台。
-- 完善控制台对象管理、导航和多语言界面，持久保存偏好及最近访问的桶；
-  Windows 偏好文件检查按该平台的权限语义执行。
-- 提供本机单身份控制台的 Docker Compose 示例，以 `OTTERIO_BROWSER=off`
-  关闭旧 Web，同时保留内部 Admin 监听。示例固定 OtterIO
-  `RELEASE.2026-10-09T15-22-07Z`，OC 当前仍使用本地构建镜像。
-- 修复控制台格式与错误字符串的 lint 问题。
+- 提供直接 HTTPS 的独立 native IAM 登录。每个浏览器使用自己的启用 IAM
+  身份，不接受 root、服务账号、STS 或目录身份。请求执行前重新校验签名身份；
+  明确拒绝撤销对应会话，临时故障阻止执行但保留会话。
+- 提供 OIDC Authorization Code、S256 PKCE、RS256 与 WebIdentity STS。
+  固定 issuer/client/后端及独立 CA，刷新替换客户端代次但不延长固定期限。
+  修复跨站回调、刷新后的上传/归档归属和登出隔离；client secret 使用私有文件。
+- native IAM 用户、组、绑定和服务账号操作采用关系版本条件与一次性确认
+  计划，绑定准确目标及受影响身份。结果确认或不确定时撤销捕获范围的
+  本机会话及待登录，明确拒绝保留会话。创建不覆盖身份；生命周期验证包括
+  真实 service/STS 子身份权限和同名重建不恢复旧会话。
+- 提供条件完整下载和单段 Range，支持 GET/HEAD、validators、If-Range，
+  固定实际对象/版本并校验上游响应；不支持多段 Range，历史版本单独授权。
+- 提供按身份权限读取的服务诊断快照及中英文导航；缺少 `admin:ServerInfo`
+  时拒绝，不借用管理员。平台/运行时和全局容量不可用时保持明确缺失。
+- 修复 `oc admin policy update` 检查错误变量：空参数或已有绑定在替换前
+  拒绝，不再可能清空绑定；合法新增保留现有策略。
+- 补充 native/OIDC 单实例 HTTPS 配方与精确候选配对。原生验收检查完整
+  用户影响范围，并按子账号 access key 直接签名查询，不能仅用父过滤列表证明删除。
 
 ## 升级与兼容性
 
-源码构建要求 Go 1.27.2。依赖继续固定为 S3 SDK v7.3.2、服务端 / 管理模块
-`v0.0.0-20261009091443-bcc238bc4c2c`、crc64nvme v1.1.3、md5-simd v1.2.0
-及 urfave/cli v3.14.0；它们不是远程服务端身份或历史版本、第三方 S3 的通用兼容证明。
+继续在 11 个平台归档和 Linux amd64/arm64 镜像中分发 `oc` 与 `oc-console`，
+默认入口为 `oc`。源码要求 Go 1.27.2，SDK/Admin 固定依赖不是远程服务端身份。
+保留现有 CLI 配置与受支持的 `OC_*`／`MC_*` 规则；旧发行包不自动获得新功能。
 
-**已知策略更新限制：** `oc admin policy update` 遇到已绑定的策略或空策略参数时，
-可能清空用户或组的策略绑定，本次发布尚未修复。先用 `oc admin user info` 或
-`oc admin group info` 读取现有绑定，再用 `oc admin policy set` 提交期望保留的
-完整策略列表（多个策略以逗号分隔），并核对结果，见[管理说明](docs/zh_CN/administration.md)。
+local 共用一个 alias 身份；独立用户选择 native 或 OIDC。首批为 OC 直接处理
+浏览器 TLS 的单实例，使用实际 HTTPS S3/Admin 地址及独立 CA。会话在内存中，
+重启后重新登录，偏好按身份持久保存，见[控制台指南](docs/zh_CN/console.md)、
+[HTTPS 配方](deploy/README.console-https.md#中文说明)及[候选验收](docs/console-migration-candidate.md)。
 
-保留现有 CLI 配置和 `OC_*` 优先于受支持 `MC_*` 的规则。升级前备份配置，
-固定版本或清单中的镜像摘要。已发布的旧归档和镜像不会补入控制台。
-所有本机浏览器会话共用启动时的别名身份；写操作与分享需显式开启，受保护操作
-还需服务端能力和当前身份权限。独立用户 / OIDC 登录及 Range 下载仍不在范围内。
-见[控制台指南](docs/zh_CN/console.md)及[迁移与回退条件](docs/console-release-migration.md)。
-OtterIO 的浏览器默认值不变。恢复 `OTTERIO_BROWSER=on` 不会撤销已完成的写入、
-配置、改密或生命周期转换。
+写入和分享需显式开启及实际权限；IAM、设置、历史版本需对应能力/关系协议，
+缺失时拒绝或只读。OIDC IAM 写入和 Console 改密仍禁用。请求前校验不等于
+主动检测外部变化或持续轮询在途操作。代理 TLS 终止、多实例、其他浏览器、
+长期稳定性及全部交叉编译平台的原生运行未由开发验收认证。
 
-最终发布需从干净且同步的 main 开始，同一提交的 Go、代码扫描和独立 CLI 兼容
-检查全部通过。上线前核验 13 个附件和不可变镜像摘要。交叉编译和双架构镜像
-不能代替各平台原生运行验收，见[准备记录](docs/releases/2026-10-10-release-review.md)
-与[发行流程](docs/zh_CN/releasing.md)。
+删除版 OtterIO 保留 S3/Admin/STS，但 `OTTERIO_BROWSER=on` 拒绝启动，不能
+恢复旧 UI；回退旧服务端需验证数据和配置兼容性。回退不撤销写入、改密和
+生命周期转换。通知、过渡与回退政策仍是发行门槛，修订时必须明确公告。
+
+正式发布需从干净同步的 main 开始，在同一提交完成要求的 CI 和候选配对，
+再核验 13 个附件、程序校验和、镜像身份及承诺的升级路径。开发报告不等于
+正式产物认证。关闭 latest promotion 仍创建 stable，不会创建 RC，见
+[迁移门槛](docs/console-release-migration.md)和[发行流程](docs/zh_CN/releasing.md)。
