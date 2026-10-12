@@ -29,6 +29,7 @@ Start with installation, then configure an alias and transfer a file. Guides des
 
 - [Contributing](../CONTRIBUTING.md), [development and testing](development.md), and the [code of conduct](../code_of_conduct.md).
 - [Maintainer workflow](MAINTAINERS.md) and [release publication](releasing.md).
+- [Packaged Console pair acceptance](console-release-acceptance.md): official draft-byte verification, publication inputs and runtime limits.
 - [Documentation maintenance](documentation.md): content structure, examples and the open-source references used for this documentation refresh.
 - [Naming and module compatibility](../CONFLICT.md).
 - [Internal notification fork](../internal/notify/README.md).

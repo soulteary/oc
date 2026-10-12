@@ -1,15 +1,10 @@
 name: Stable release promotion
 
 # This workflow never builds, creates tags, changes version tags, or uploads
-# release assets. Automatic/manual promotion and Release's publication job
+# release assets. Manual promotion, draft preparation and publication
 # share this lock from release-list validation through the final alias update.
 # A newer release cannot be published while an older promotion plan is in use.
 on:
-  workflow_call:
-    inputs:
-      tag:
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
       tag:

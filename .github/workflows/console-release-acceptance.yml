@@ -1,0 +1,118 @@
+name: Console release artifact acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      oc_tag:
+        description: 'Existing verified OC stable draft tag'
+        required: true
+        type: string
+      otterio_tag:
+        description: 'Existing verified Otterio stable draft tag'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+concurrency:
+  group: console-release-acceptance-${{ inputs.oc_tag }}-${{ inputs.otterio_tag }}
+  cancel-in-progress: false
+
+jobs:
+  packaged-pair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ secrets.CONSOLE_RELEASE_TOKEN || github.token }}
+      OC_TAG: ${{ inputs.oc_tag }}
+      OTTERIO_TAG: ${{ inputs.otterio_tag }}
+      PYTHONDONTWRITEBYTECODE: '1'
+      GOTOOLCHAIN: local
+      CGO_ENABLED: '0'
+    defaults:
+      run:
+        shell: bash
+        working-directory: oc
+    steps:
+      - name: Require the trusted main workflow
+        working-directory: .
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: oc
+          persist-credentials: false
+      - name: Validate both requested tags before using them
+        run: |
+          python3 - <<'PY'
+          import importlib.util, os
+          spec = importlib.util.spec_from_file_location('stage', 'buildscripts/release-stage.py')
+          stage = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(stage)
+          stage.tag_valid(os.environ['OC_TAG'])
+          stage.tag_valid(os.environ['OTTERIO_TAG'])
+          PY
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: soulteary/otterio
+          ref: ${{ inputs.otterio_tag }}
+          path: otterio-candidate
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: oc/go.mod
+          cache: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: docker/setup-qemu-action@v4.4.0
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install the pinned real browser
+        run: |
+          npm install --prefix "$RUNNER_TEMP/release-browser" --no-audit --no-fund --save-exact playwright@1.64.0
+          "$RUNNER_TEMP/release-browser/node_modules/.bin/playwright" install --with-deps chromium
+          echo "OC_BROWSER_NODE=$(command -v node)" >> "$GITHUB_ENV"
+          echo "OC_BROWSER_PLAYWRIGHT_MODULE=$RUNNER_TEMP/release-browser/node_modules/playwright" >> "$GITHUB_ENV"
+          node -e 'console.log("OC_BROWSER_EXECUTABLE=" + require(process.argv[1]).chromium.executablePath())' "$RUNNER_TEMP/release-browser/node_modules/playwright" >> "$GITHUB_ENV"
+      - name: Download independently identified previous stable programs
+        run: |
+          previous="$RUNNER_TEMP/release-previous"
+          mkdir -p "$previous/otterio" "$previous/oc"
+          gh release download RELEASE.2026-10-10T16-38-05Z --repo soulteary/otterio \
+            --pattern otterio-linux-amd64 --pattern otterio-RELEASE.2026-10-10T16-38-05Z-checksums.txt \
+            --pattern release-manifest.json --dir "$previous/otterio"
+          gh release download RELEASE.2026-10-10T11-42-18Z --repo soulteary/oc \
+            --pattern oc-RELEASE.2026-10-10T11-42-18Z-linux-amd64.tar.gz \
+            --pattern checksums.txt --pattern release-manifest.json --dir "$previous/oc"
+          digest="$(gh api repos/soulteary/otterio/releases/tags/RELEASE.2026-10-10T16-38-05Z --jq '.assets[] | select(.name == "release-manifest.json") | .digest')"
+          test "$digest" = sha256:2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3
+          chmod +x "$previous/otterio/otterio-linux-amd64"
+      - name: Accept the actual draft programs and immutable image digests
+        run: |
+          python3 buildscripts/console_release_acceptance.py \
+            --download-drafts --oc-tag "$OC_TAG" --otterio-tag "$OTTERIO_TAG" \
+            --previous-oc "$RUNNER_TEMP/release-previous/oc" \
+            --previous-otterio "$RUNNER_TEMP/release-previous/otterio" \
+            --otterio-source-dir "$GITHUB_WORKSPACE/otterio-candidate" \
+            --output "$RUNNER_TEMP/console-release-acceptance"
+      - name: Report the exact acceptance identity
+        run: |
+          echo 'Publication requires this successful run ID and the acceptance.json SHA-256 below.' >> "$GITHUB_STEP_SUMMARY"
+          echo "Run ID: $GITHUB_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "$RUNNER_TEMP/console-release-acceptance/acceptance.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve acceptance and all original reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: console-release-acceptance
+          path: ${{ runner.temp }}/console-release-acceptance/*.json
+          if-no-files-found: error
+          retention-days: 90

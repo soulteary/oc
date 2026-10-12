@@ -57,7 +57,8 @@ def run(command, env, timeout):
     spec = importlib.util.spec_from_file_location('migration_protocol_runner', ROOT / 'buildscripts/test-real-protocol-ci.py')
     protocol = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(protocol)
-    return protocol.run(command, env, timeout)
+    # The real-protocol child may itself need ten seconds to stop a detached group.
+    return protocol.run(command, env, timeout, cleanup_timeout=30)
 
 
 def require(condition, reason):

@@ -40,6 +40,10 @@ digest or completed migration window is declared here.
   candidate-pair verification. Native acceptance checks complete coupled user
   scope and confirms child deletion by signed direct access-key lookup,
   independently of parent-filtered inventory.
+- Separate release operations: the tag build stops at a verified stable draft;
+  manual publication requires an official successful packaged-pair acceptance
+  and rechecks its unchanged asset/image identities; stable promotion is a
+  separate manual action. Neither build nor publication changes `latest`.
 
 ## Compatibility, deployment and limits
 
@@ -76,15 +80,33 @@ downgrades require separate data/configuration compatibility validation. Public
 notification, transition and fallback policy remains a release gate. Any revision
 to that policy must be announced explicitly, not relabelled as completed.
 
-Release from clean synchronized main after required Go, Code scanning, CLI and
-candidate-pair checks pass on that exact commit. Then verify thirteen published
-assets, executable checksums and immutable image identities against the declared
-pair and supported upgrade path. Candidate source reports are not published-asset
-certification. The Release flow creates a stable release even with latest
-promotion disabled; it does not create an RC. See [release and migration gates](docs/console-release-migration.md)
-and [release procedure](docs/releasing.md).
+Build from clean synchronized main after required exact-commit CI and reviewed
+CLI/candidate-pair checks. The build verifies thirteen draft assets and pushes
+fixed-version images, which may already be public. A stable draft is not an RC.
+The [official packaged-pair gate](docs/console-release-acceptance.md) must bind
+the actual packages, programs and immutable images and pass its declared runtime
+and upgrade checks before manual publication. Local source or packaged reports
+are not official publication proof. Publication consumes the successful main
+run ID and independently reviewed attestation hash, rechecks the same bytes and
+leaves latest unchanged. Only separate manual promotion may move it.
+
+The [English migration announcement](https://github.com/soulteary/otterio/blob/main/docs/releases/console-migration-announcement.en.md)
+records the approved accelerated decision: explicit notice plus verified
+older-server/snapshot rollback. Its revision is not effective until the first
+approved public Web-free release containing that announcement. The October 10
+notice remains history; its second-notice/default-off/fallback windows have not
+been completed. Review the supported scope and retained-old-program restore
+boundary as part of the publication decision. No new tag, deadline, all-platform
+runtime certification or passed final artifact run is declared by these notes.
+See [release and migration gates](docs/console-release-migration.md) and
+[release procedure](docs/releasing.md).
 
 ---
+
+The Chinese preparation record below is retained unchanged. Its former
+automatic stable publication/promotion description is historical; the current
+English procedure above separates draft preparation, verified publication and
+manual promotion. No historical migration window is relabelled complete.
 
 # 独立用户 Console 与迁移准备
 

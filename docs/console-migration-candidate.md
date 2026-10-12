@@ -139,16 +139,23 @@ the candidate.
 
 ## Final release validation
 
-After clean synchronized main passes the required CI, publish the compatible OC
-first. Verify all thirteen assets, checksum/manifest identities and immutable
-image contents, then rerun the declared paired operations and upgrade scope
-against the exact programs/images users receive. Source reports do not become
-release certification by renaming files or attaching them to a release.
+After clean synchronized main passes the required CI, prepare verified stable
+drafts for both repositories. The [official packaged-pair gate](console-release-acceptance.md)
+checks the thirteen OC/eight OtterIO assets, checksum/manifest identities,
+extracted programs, immutable image contents and actual declared runtime/upgrade
+scope. Source and local packaged reports cannot become official acceptance by
+renaming files or attaching them to a release.
 
-Before publishing the OtterIO removal release, satisfy or explicitly announce a
-revision of its public notification, default-off transition and fallback policy.
-The existing stable Release flow is not an RC builder even when latest promotion
-is disabled. See [release and migration gates](console-release-migration.md).
+Before publishing the OtterIO removal release, include the explicit accelerated
+notice plus verified older-server/snapshot rollback decision.
+The [English announcement](https://github.com/soulteary/otterio/blob/main/docs/releases/console-migration-announcement.en.md)
+records that approved decision; its revision becomes effective at the first
+approved public Web-free release containing the notice. Manually publish OC first and then OtterIO with
+the same successful official main run and independently reviewed attestation
+hash. Recheck the unchanged accepted bytes; neither stage rebuilds or invokes
+latest promotion. Stable promotion is separately requested after publication.
+A stable draft is not an RC, and fixed images may already be public. See
+[release and migration gates](console-release-migration.md).
 
 ## 中文说明
 
