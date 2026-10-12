@@ -23,6 +23,7 @@ jobs:
       GOTOOLCHAIN: local
       CGO_ENABLED: "0"
       OTTERIO_CANDIDATE_SOURCE: c3b3665154264993fa06a28e95ab25fdd03d7c0c
+      OTTERIO_PREVIOUS_MANIFEST_SHA256: 2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3
       PYTHONDONTWRITEBYTECODE: "1"
     defaults:
       run:
@@ -98,6 +99,10 @@ jobs:
           gh release download RELEASE.2026-10-10T11-42-18Z --repo soulteary/oc \
             --pattern oc-RELEASE.2026-10-10T11-42-18Z-linux-amd64.tar.gz \
             --pattern checksums.txt --pattern release-manifest.json --dir "$previous/oc"
+          # The older server checksum file contains only its six programs.
+          # Bind its manifest to the independently recorded official asset digest.
+          manifest_digest="$(gh api repos/soulteary/otterio/releases/tags/RELEASE.2026-10-10T16-38-05Z --jq '.assets[] | select(.name == "release-manifest.json") | .digest')"
+          test "$manifest_digest" = "sha256:$OTTERIO_PREVIOUS_MANIFEST_SHA256"
           (cd "$previous/oc" && sha256sum -c checksums.txt --ignore-missing)
           (cd "$previous/otterio" && sha256sum -c otterio-RELEASE.2026-10-10T16-38-05Z-checksums.txt --ignore-missing)
           tar -xzf "$previous/oc/oc-RELEASE.2026-10-10T11-42-18Z-linux-amd64.tar.gz" -C "$previous/oc"
@@ -118,6 +123,7 @@ jobs:
             --previous-release RELEASE.2026-10-10T16-38-05Z \
             --previous-oc-release RELEASE.2026-10-10T11-42-18Z \
             --previous-manifest "$previous/otterio/release-manifest.json" \
+            --previous-manifest-sha256 "$OTTERIO_PREVIOUS_MANIFEST_SHA256" \
             --previous-checksums "$previous/otterio/otterio-RELEASE.2026-10-10T16-38-05Z-checksums.txt" \
             --previous-oc-manifest "$previous/oc/release-manifest.json" \
             --previous-oc-checksums "$previous/oc/checksums.txt" \

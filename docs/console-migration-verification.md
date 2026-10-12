@@ -9,9 +9,11 @@
 
 [跨版本升级报告](evidence/console-migration/upgrade-darwin-arm64.json) 的
 `passed` 为 true，`single-tls`、`dual-tls` 两项及进程清理均通过。报告生成
-时间为 2026-10-12 19:22 UTC（北京时间 2026-10-13 03:22），使用 darwin/arm64
+时间为 2026-10-12 19:38 UTC（北京时间 2026-10-13 03:38），使用 darwin/arm64
 实际程序和临时单节点四存储目录纠删码样本，不认证四物理盘部署，也没有使用
 操作者现有配置、账号或数据卷。
+当前主报告 SHA-256 为
+`4d948227dec0576b31af97875e821ddcd650667518ecbf11e510b63af4a03991`。
 
 旧程序是 OC `RELEASE.2026-10-10T11-42-18Z`（源码
 `ee1846d587a6548db4e595d653ca4f54baea2b1a`）和 OtterIO
@@ -20,6 +22,22 @@
 程序字节和官方 checksum/manifest 绑定，旧 OtterIO 程序绑定官方 checksum
 和 manifest；报告保留旧 OtterIO 实际 `embeddedModified: true`，没有把它
 改称干净源码构建。
+
+旧 OtterIO 正式 checksum 只包含六个程序，manifest 在其后生成，没有相应
+checksum 行。为修正 PR #46 的来源绑定建议，当前 runner 要求独立可信的
+`--previous-manifest-sha256`，在解析 manifest 或启动任何 profile 之前校验。
+基线 [官方资产 628471077 metadata](https://api.github.com/repos/soulteary/otterio/releases/assets/628471077)
+的 `release-manifest.json` asset digest 与原报告文件一致，为
+`sha256:2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3`。
+该值从独立官方来源取得，不通过本地文件给自己生成期望值。
+
+新完整报告已记录 `previousReleaseManifests.server.expectedManifestSHA256`
+与 `verification: matches-expected-sha256`，仅证明匹配传入可信值；runner
+不执行 GitHub API 验证，也不由此升级为正式发行认证。新脚本已重新运行完整
+单、双 TLS 升级验收并保留自己的摘要，两项及清理再次通过；
+[绑定加固前的报告](evidence/console-migration/upgrade-before-manifest-binding.json)
+原样保留，不补写它从未执行过的校验。三个候选程序字节和源码配对的十九项
+脚本摘要保持不变，已有本地八项配对报告没有因升级脚本变动被重写。
 
 候选程序来自干净源码 OC `26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27` 和
 OtterIO `c3b3665154264993fa06a28e95ab25fdd03d7c0c`；三程序的嵌入 revision、
@@ -46,7 +64,9 @@ relationship-iam、real-protocol 和两个真实 Keycloak/Chromium OIDC profile�
 27 个 OIDC 协议检查及 22 个实际 Chromium 检查。两个 OIDC 路径均清理通过，
 验证跨站回调、刷新后可用、固定截止、登出隔离；双入口另验证错误 Admin CA
 拒绝。九个原始子报告保留与 manifest 一致的摘要。两套报告使用相同候选
-程序字节；配对十项、升级九项 focused 回归通过。Linux amd64 新 CI 尚未运行。
+程序字节；配对十项、升级十五项 focused 回归通过。新增回归覆盖非法期望格式、
+错误 hash、相同 tag/source 下篡改字节及校验先于 profile 执行。
+Linux amd64 新 CI 结果仍需单独核对。
 
 ## 首次失败与修正过程
 
@@ -69,7 +89,7 @@ allow/deny 断言不会自动重试。修正后整条单、双 TLS 路径重新�
 记录，停止子进程后清理临时存储；SIGKILL 无法运行进程内清理逻辑。
 加固前的 [旧通过报告](evidence/console-migration/upgrade-before-cleanup-hardening.json)
 也原样保留，当前主报告是在首次信号发生于停止 writer 期间的清理修复后，
-重新跑完整两项得到的结果。
+以及独立旧 manifest 字节绑定修复后，重新跑完整两项得到的结果。
 
 ## 配方检查与剩余门槛
 

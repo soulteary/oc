@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "evidenceKind": "previous-release-to-candidate-upgrade",
-  "dateUTC": "2026-10-12T19:22:14.716329+00:00",
+  "dateUTC": "2026-10-12T19:38:38.732664+00:00",
   "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
   "releaseAssetCertification": false,
   "passed": true,
@@ -65,7 +65,7 @@
       ],
       "phase": "snapshot-restored-baseline",
       "cleanup": "passed",
-      "durationSeconds": 8.268
+      "durationSeconds": 6.831
     },
     {
       "profile": "dual-tls",
@@ -126,11 +126,11 @@
       ],
       "phase": "snapshot-restored-baseline",
       "cleanup": "passed",
-      "durationSeconds": 6.93
+      "durationSeconds": 6.68
     }
   ],
   "harnesses": {
-    "console_upgrade_acceptance.py": "12554c8e7bab932bda4654789af8b1fd874c3c6f3191dc90d397a12e138378b2",
+    "console_upgrade_acceptance.py": "5446debde387ae4bda763ac60d4c963c7cef9ddd7a3cf896f87aed39c934cf25",
     "test-console-integration.py": "eb1d2436efecf184dfeaea91d4519c2c3f2194bc0f161c05696f6094566c05ed",
     "local_http.py": "8d9ae2287186726711458bff030de76f2d805dfa1a0be32d5354c41f721fe24f",
     "console_acceptance_protocol.py": "2fad03751d8c3f9344bf28680b099c1661cb7296a2762fe5f4fd0777464a78e1"
@@ -140,6 +140,8 @@
       "tag": "RELEASE.2026-10-10T16-38-05Z",
       "source": "8cc518b31ac8b69c8f855e19b4bd027f44275c47",
       "manifestSHA256": "2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3",
+      "expectedManifestSHA256": "2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3",
+      "verification": "matches-expected-sha256",
       "verifiedAssetSHA256": "48b673ad0e03723eeeedb2ab5773569093b426d8fa04e132d17183ac7afb6f9c"
     },
     "oc": {

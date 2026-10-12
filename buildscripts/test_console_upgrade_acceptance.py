@@ -15,6 +15,106 @@ import console_upgrade_acceptance as upgrade
 
 
 class UpgradeEvidenceTests(unittest.TestCase):
+    def main_arguments(self, root, manifest, expected):
+        arguments = ['console_upgrade_acceptance.py']
+        for option in ('previous-server', 'previous-cli', 'previous-console', 'server', 'cli', 'console',
+                       'previous-checksums', 'previous-oc-manifest', 'previous-oc-checksums', 'previous-oc-archive'):
+            arguments += ['--' + option, str(root / option)]
+        arguments += ['--previous-manifest', str(manifest), '--previous-manifest-sha256', expected]
+        for option in ('previous-source', 'server-source', 'cli-source'):
+            arguments += ['--' + option, 'a' * 40]
+        arguments += ['--previous-release', 'release', '--previous-oc-release', 'oc-release',
+                      '--profiles', 'single-tls', '--output', str(root / 'report.json')]
+        return arguments
+
+    def test_manifest_sha256_accepts_exact_trusted_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / 'manifest.json'
+            manifest.write_bytes(b'official manifest bytes')
+            expected = upgrade.PROTOCOL.digest(manifest)
+            self.assertEqual(upgrade.manifest_sha256_bound(manifest, expected), expected)
+            self.assertEqual(upgrade.manifest_sha256_bound(manifest, expected.upper()), expected)
+
+    def test_manifest_sha256_rejects_invalid_expectation_before_reading_file(self):
+        with patch.object(upgrade.PROTOCOL, 'digest') as digest:
+            for expected in ('', 'a' * 63, 'a' * 65, 'g' * 64, 'sha256:' + 'a' * 64, 'a' * 64 + '\n', None):
+                with self.subTest(expected=expected), self.assertRaisesRegex(RuntimeError, 'invalid expected'):
+                    upgrade.manifest_sha256_bound(Path('must-not-be-read'), expected)
+            digest.assert_not_called()
+
+    def test_manifest_sha256_rejects_wrong_trusted_hash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / 'manifest.json'
+            manifest.write_bytes(b'official manifest bytes')
+            with self.assertRaisesRegex(RuntimeError, 'SHA-256 mismatch'):
+                upgrade.manifest_sha256_bound(manifest, '0' * 64)
+
+    def test_manifest_sha256_rejects_tamper_with_unchanged_tag_and_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / 'manifest.json'
+            data = {'schema_version': 1, 'tag': 'release', 'source_sha': 'a' * 40}
+            manifest.write_text(json.dumps(data))
+            expected = upgrade.PROTOCOL.digest(manifest)
+            manifest.write_text(json.dumps({**data, 'substituted': True}))
+            self.assertEqual(upgrade.manifest_bound(manifest, 'release', 'a' * 40)['source'], 'a' * 40)
+            with self.assertRaisesRegex(RuntimeError, 'SHA-256 mismatch'):
+                upgrade.manifest_sha256_bound(manifest, expected)
+
+    def test_main_rejects_bad_manifest_before_parsing_or_starting_profiles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / 'manifest.json'
+            data = {'schema_version': 1, 'tag': 'release', 'source_sha': 'a' * 40}
+            manifest.write_text(json.dumps(data))
+            trusted = upgrade.PROTOCOL.digest(manifest)
+            for case, expected in [('invalid', 'g' * 64), ('wrong', '0' * 64), ('tampered', trusted)]:
+                manifest.write_text(json.dumps({**data, 'substituted': True}) if case == 'tampered' else json.dumps(data))
+                with self.subTest(case=case), patch.object(sys, 'argv', self.main_arguments(root, manifest, expected)), \
+                     patch.object(upgrade.signal, 'signal'), patch.object(upgrade, 'manifest_bound') as parse_manifest, \
+                     patch.object(upgrade, 'run_profile') as run_profile, patch.object(upgrade, 'program_identity') as identity, \
+                     patch('sys.stdout', new_callable=io.StringIO):
+                    self.assertEqual(upgrade.main(), 1)
+                    parse_manifest.assert_not_called()
+                    run_profile.assert_not_called()
+                    identity.assert_not_called()
+                report = json.loads((root / 'report.json').read_text())
+                self.assertFalse(report['passed'])
+                self.assertEqual(report['profiles'], [])
+                self.assertEqual(report['preparationErrorClass'], 'RuntimeError')
+                self.assertIn('manifest', report['reason'])
+
+    def test_main_records_trusted_manifest_verification_before_profile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / 'manifest.json'
+            manifest.write_text(json.dumps({'schema_version': 1, 'tag': 'release', 'source_sha': 'a' * 40}))
+            (root / 'previous-oc-manifest').write_text(json.dumps({'schema_version': 1, 'release_tag': 'oc-release', 'source_commit': 'a' * 40}))
+            expected = upgrade.PROTOCOL.digest(manifest)
+            events = []
+            actual_sha256_bound, actual_manifest_bound = upgrade.manifest_sha256_bound, upgrade.manifest_bound
+            def check_sha256(*args):
+                result = actual_sha256_bound(*args)
+                events.append('SHA-256 verified')
+                return result
+            def parse_manifest(*args, **kwargs):
+                self.assertIn('SHA-256 verified', events)
+                events.append('manifest parsed')
+                return actual_manifest_bound(*args, **kwargs)
+            def profile(args, name):
+                self.assertEqual(events, ['SHA-256 verified', 'manifest parsed', 'manifest parsed'])
+                return {'profile': name, 'status': 'passed', 'cleanup': 'passed'}
+            with patch.object(sys, 'argv', self.main_arguments(root, manifest, expected)), \
+                 patch.object(upgrade.signal, 'signal'), patch.object(upgrade, 'manifest_sha256_bound', side_effect=check_sha256), \
+                 patch.object(upgrade, 'manifest_bound', side_effect=parse_manifest), \
+                 patch.object(upgrade, 'checksum_bound', return_value='b' * 64), patch.object(upgrade, 'archive_bound'), \
+                 patch.object(upgrade, 'program_identity', return_value={}), patch.object(upgrade, 'run_profile', side_effect=profile), \
+                 patch('sys.stdout', new_callable=io.StringIO):
+                self.assertEqual(upgrade.main(), 0)
+            server = json.loads((root / 'report.json').read_text())['previousReleaseManifests']['server']
+            self.assertEqual(server['expectedManifestSHA256'], expected)
+            self.assertEqual(server['manifestSHA256'], expected)
+            self.assertEqual(server['verification'], 'matches-expected-sha256')
+
     def test_checksum_requires_exact_unique_asset(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

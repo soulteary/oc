@@ -64,8 +64,26 @@ previous-release OC/Console/OtterIO programs, verifies official manifests,
 checksums and the OC archive's extracted executable bytes, then upgrades to the
 specified candidate programs and rolls back in disposable storage. It uses
 single and independent dual TLS/CA arrangements. Supply all six program paths,
-the previous source/release identities and official manifest/checksum files;
-run its `--help` for the exact arguments. For the stable baselines above:
+the previous source/release identities, official manifest/checksum files and an
+independently trusted previous OtterIO manifest SHA-256; run its `--help` for the
+exact arguments.
+
+The Oct 10 OtterIO checksum file covers six executables, not
+`release-manifest.json`: that manifest was generated after the binary checksums.
+Obtain its expected hash independently from the official release's
+[`release-manifest.json` asset 628471077 metadata](https://api.github.com/repos/soulteary/otterio/releases/assets/628471077),
+whose `digest` is
+`sha256:2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3`.
+Supply the 64 hex digits without the `sha256:` prefix; do not derive the trusted
+expectation by hashing the same unverified local manifest. This value belongs to
+this exact previous release and is not a default for arbitrary releases.
+
+The runner checks the expected digest before parsing manifests or starting any
+profile. `previousReleaseManifests.server` records `expectedManifestSHA256` and
+`verification: matches-expected-sha256`. This says the supplied bytes match the
+trusted expectation; the runner itself does not contact or authenticate the
+GitHub API. OC's previous manifest remains bound to its own release checksum.
+For the stable baselines above:
 
 ```sh
 python3 buildscripts/console_upgrade_acceptance.py \
@@ -79,6 +97,7 @@ python3 buildscripts/console_upgrade_acceptance.py \
   --previous-release RELEASE.2026-10-10T16-38-05Z \
   --previous-oc-release RELEASE.2026-10-10T11-42-18Z \
   --previous-manifest /absolute/path/previous-otterio-manifest.json \
+  --previous-manifest-sha256 2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3 \
   --previous-checksums /absolute/path/previous-otterio-checksums.txt \
   --previous-oc-manifest /absolute/path/previous-oc-manifest.json \
   --previous-oc-checksums /absolute/path/previous-oc-checksums.txt \
@@ -94,6 +113,13 @@ OC candidate source `26a0fa6c4d2f380ff9eba84c9dcb91a378b73c27` and OtterIO
 candidate source `c3b3665154264993fa06a28e95ab25fdd03d7c0c`, on disposable
 single-node erasure storage using four temporary storage directories. Its JSON records the exact executable
 hashes and harness versions. A new PR head must produce its own evidence.
+The manifest-bound rerun began at `2026-10-12T19:38:38.732664+00:00`; its report
+SHA-256 is `4d948227dec0576b31af97875e821ddcd650667518ecbf11e510b63af4a03991`.
+It records the independently supplied previous manifest expectation and
+`matches-expected-sha256`. The [earlier passing report](evidence/console-migration/upgrade-before-manifest-binding.json)
+remains unchanged with its original, weaker provenance checks. Fifteen focused
+upgrade regression tests pass; the three candidate program hashes and nineteen
+source-pair harness hashes are unchanged.
 
 The run preserves object bytes, historical versions, tags, versioning, group
 policy allow/deny behavior and CLI configuration. It actually returns to the
@@ -131,6 +157,13 @@ is disabled. See [release and migration gates](console-release-migration.md).
 `releaseAssetCertification` 明确为 false。已落盘的 Darwin arm64 完整报告
 八项通过；新 PR head 的 CI 和新 HTTPS 配方对应程序/镜像仍需独立核验，
 不预设新的已发布标签。
+
+旧 OtterIO checksum 仅包含六个程序，没有后生成的 manifest。当前升级 runner
+要求 `--previous-manifest-sha256`，期望值须独立取得；2026-10-10 正式资产的
+GitHub asset 628471077 的 `digest` 为上述 `sha256:2fe6…f2ba3`，传入完整 64 位 hex，
+不能由待验证本地文件给自己生成信任值。准备阶段先比对字节，再解析身份和
+启动 profile；报告记录 `expectedManifestSHA256` 与
+`verification: matches-expected-sha256`，不声称 runner 内执行了 API 验证。
 
 已落盘的 Darwin arm64 跨版本报告通过单 HTTPS 和独立双 HTTPS/CA 存储入口，
 使用两个项目的 2026-10-10 正式程序与报告所列候选程序，真实升级后再回退。

@@ -52,6 +52,17 @@ def checksum_bound(path, checksums):
     return matches[0]
 
 
+def manifest_sha256_bound(path, expected):
+    # Older OtterIO releases checksum only the executable assets. Obtain this
+    # expectation independently, for example from the official asset digest;
+    # hashing the supplied manifest to choose its own expectation proves nothing.
+    require(isinstance(expected, str) and re.fullmatch('[0-9a-fA-F]{64}', expected) is not None,
+            'invalid expected previous manifest SHA-256')
+    expected = expected.lower()
+    require(PROTOCOL.digest(path) == expected, 'previous manifest SHA-256 mismatch')
+    return expected
+
+
 def manifest_bound(path, tag, source=None, kind='server'):
     doc = json.loads(Path(path).read_text())
     tag_key, source_key = ('tag', 'source_sha') if kind == 'server' else ('release_tag', 'source_commit')
@@ -383,6 +394,8 @@ def main():
         parser.add_argument('--' + option, type=Path, required=True)
     for option in ('previous-source', 'server-source', 'cli-source', 'previous-release', 'previous-oc-release'):
         parser.add_argument('--' + option, required=True)
+    parser.add_argument('--previous-manifest-sha256', required=True,
+                        help='independently trusted 64-hex SHA-256 of the previous OtterIO manifest')
     parser.add_argument('--profiles', nargs='+', choices=('single-tls', 'dual-tls'), default=['single-tls', 'dual-tls'])
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
@@ -392,7 +405,10 @@ def main():
               'releaseAssetCertification': False, 'passed': False, 'profiles': [],
               'harnesses': {p.name: PROTOCOL.digest(p) for p in (Path(__file__), ROOT / 'buildscripts/test-console-integration.py', ROOT / 'buildscripts/local_http.py', ROOT / 'buildscripts/console_acceptance_protocol.py')}}
     try:
+        expected_manifest = manifest_sha256_bound(args.previous_manifest, args.previous_manifest_sha256)
         old_server = manifest_bound(args.previous_manifest, args.previous_release, args.previous_source)
+        require(old_server['manifestSHA256'] == expected_manifest, 'previous manifest changed after SHA-256 verification')
+        old_server.update(expectedManifestSHA256=expected_manifest, verification='matches-expected-sha256')
         old_oc = manifest_bound(args.previous_oc_manifest, args.previous_oc_release, kind='oc')
         old_server['verifiedAssetSHA256'] = checksum_bound(args.previous_server, args.previous_checksums)
         old_oc['verifiedArchiveSHA256'] = checksum_bound(args.previous_oc_archive, args.previous_oc_checksums)
