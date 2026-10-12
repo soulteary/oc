@@ -45,6 +45,30 @@ def require_service_account_inventory(client, user, access_key, present, public_
         raise RuntimeError('native service-account inventory did not confirm the expected child presence')
 
 
+def require_service_account_info(signed_request, admin, manager_access, manager_secret, context, access_key, present):
+    # Query the key directly: a parent-filtered list can hide detached children.
+    # The server encrypts successful info responses. Its explicit absence error
+    # must match status, code, message and route; authorization failure is 403
+    # even though this server can reuse the same code for that failure.
+    path = '/otterio/admin/v3/info-service-account'
+    status, payload, headers = signed_request(admin, 'GET', path, b'', manager_access,
+                                             manager_secret, context, query=urllib.parse.urlencode({'accessKey': access_key}))
+    if present:
+        if status != 200 or not payload or headers.get('Content-Type', '').split(';', 1)[0] != 'application/json':
+            raise RuntimeError('native direct service-account info did not confirm child existence')
+        return
+    if status != 404 or headers.get('Content-Type', '').split(';', 1)[0] != 'application/json':
+        raise RuntimeError('native direct service-account info did not return an explicit not-found result')
+    try:
+        result = json.loads(payload)
+    except (ValueError, UnicodeDecodeError):
+        raise RuntimeError('native direct service-account info returned malformed not-found evidence') from None
+    if (not isinstance(result, dict) or result.get('Code') != 'XOtterioInvalidIAMCredentials' or
+            result.get('Message') != 'The specified service account is not found (Specified service account does not exist)' or
+            result.get('Resource') != path):
+        raise RuntimeError('native direct service-account info did not identify the missing child')
+
+
 def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                   credentials, endpoint, admin, s3ca, adminca, bucket, viewer_access,
                   viewer_secret, root_access, root_secret, checks, signed_request):
@@ -222,6 +246,10 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 credentials.extend([service_key, service['credentials']['secretKey']])
                 public_access_keys.append(service_key)
                 require_service_account_inventory(manager, new_user, service_key, True, public_access_keys)
+                def service_info(present):
+                    require_service_account_info(signed_request, admin, manager_access, manager_secret,
+                                                 ssl.create_default_context(cafile=str(adminca)), service_key, present)
+                service_info(True)
                 def service_read(expected):
                     uri = '/' + urllib.parse.quote(bucket + '/plain.txt', safe='/-_.~')
                     status, _, _ = signed_request(endpoint, 'GET', uri, b'', service_key,
@@ -257,6 +285,7 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 deleted = native_iam_action(manager, delete_user, manager_headers, public_access_keys)
                 require_user_change(deleted, new_user, 'deleted', False, [new_user, service_key])
                 require_service_account_inventory(manager, new_user, service_key, False, public_access_keys)
+                service_info(False)
                 group = json.loads(cli('--json', 'admin', 'group', 'info', 'store', new_group))
                 assert group['groupName'] == new_group and new_user not in group.get('members', [])
                 service_read(403)
@@ -265,11 +294,12 @@ def verify_native(args, root, cli, browser, stop, certificate, free_port, env,
                 cli('admin', 'user', 'add', 'store', new_user, new_secret)
                 cli('admin', 'policy', 'set', 'store', 'readonly', 'user=' + new_user)
                 require_service_account_inventory(manager, new_user, service_key, False, public_access_keys)
+                service_info(False)
                 created_browser('/api/session', expected=401)
                 second_created('/api/session', expected=401)
                 created_browser('/api/login', 'POST', {'accessKey': new_user, 'secretKey': new_secret})
                 service_read(403)
-                checks.append('native user deletion rejects unauthorized operators, removes group membership and service children confirmed by manager inventory before/after deletion and parent recreation, retires target sessions and requires fresh login')
+                checks.append('native user deletion rejects unauthorized operators, removes group membership and service children confirmed by manager inventory and direct-key not-found before/after parent recreation, retires target sessions and requires fresh login')
                 cli('admin', 'user', 'remove', 'store', new_user)
                 cli('admin', 'group', 'remove', 'store', new_group)
                 self_disabled = native_iam_action(manager, {'action': 'user.disable', 'user': manager_access, 'confirmTarget': manager_access}, manager_headers, public_access_keys)

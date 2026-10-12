@@ -4,9 +4,10 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+import urllib.error
 from unittest.mock import Mock
 
-from console_native_acceptance import native_iam_action, require_service_account_inventory, require_user_change
+from console_native_acceptance import native_iam_action, require_service_account_info, require_service_account_inventory, require_user_change
 
 spec = importlib.util.spec_from_file_location('native_acceptance_scanner', Path(__file__).with_name('test-console-integration.py'))
 acceptance = importlib.util.module_from_spec(spec)
@@ -123,6 +124,52 @@ class NativeIAMAcceptanceTests(unittest.TestCase):
             client = Mock(return_value=(json.dumps(result).encode(), {}))
             with self.subTest(result=result), self.assertRaisesRegex(RuntimeError, 'inventory'):
                 require_service_account_inventory(client, 'public-target', 'public-child', False, ['public-target', 'public-child'])
+
+    def not_found(self):
+        return {'Code': 'XOtterioInvalidIAMCredentials', 'Message': 'The specified service account is not found (Specified service account does not exist)',
+                'Resource': '/otterio/admin/v3/info-service-account'}
+
+    def direct_info(self, request, present=False):
+        require_service_account_info(request, 'https://admin.example', 'manager-access', 'manager-secret',
+                                     'verified-admin-context', 'public-child', present)
+
+    def test_direct_info_uses_manager_and_child_key_without_parent_filter(self):
+        request = Mock(return_value=(200, b'encrypted-info', {'Content-Type': 'application/json'}))
+        self.direct_info(request, True)
+        request.assert_called_once_with('https://admin.example', 'GET', '/otterio/admin/v3/info-service-account', b'',
+                                        'manager-access', 'manager-secret', 'verified-admin-context', query='accessKey=public-child')
+
+    def test_direct_info_accepts_only_explicit_service_account_not_found(self):
+        request = Mock(return_value=(404, json.dumps(self.not_found()).encode(), {'Content-Type': 'application/json'}))
+        self.direct_info(request)
+
+    def test_direct_info_rejects_authorization_and_other_failures_as_absence(self):
+        payload = json.dumps(self.not_found()).encode()
+        responses = [(status, payload, {'Content-Type': 'application/json'}) for status in (200, 401, 403, 500)]
+        responses += [(404, b'<html>not found</html>', {'Content-Type': 'text/html'}),
+                      (404, b'not JSON', {'Content-Type': 'application/json'}),
+                      (404, b'[]', {'Content-Type': 'application/json'})]
+        for field, value in (('Code', 'AccessDenied'), ('Message', 'The account key is not eligible for this operation'),
+                             ('Resource', '/proxy/missing-route')):
+            result = self.not_found()
+            result[field] = value
+            responses.append((404, json.dumps(result).encode(), {'Content-Type': 'application/json'}))
+        for response in responses:
+            with self.subTest(response=response), self.assertRaisesRegex(RuntimeError, 'direct service-account info'):
+                self.direct_info(Mock(return_value=response))
+
+    def test_direct_info_does_not_swallow_transport_failure(self):
+        request = Mock(side_effect=urllib.error.URLError('synthetic connection failure'))
+        with self.assertRaises(urllib.error.URLError):
+            self.direct_info(request)
+
+    def test_direct_info_requires_successful_nonempty_creation_evidence(self):
+        for response in ((404, json.dumps(self.not_found()).encode(), {'Content-Type': 'application/json'}),
+                         (403, b'denied', {'Content-Type': 'application/json'}),
+                         (200, b'', {'Content-Type': 'application/json'}),
+                         (200, b'<html>proxy</html>', {'Content-Type': 'text/html'})):
+            with self.subTest(response=response), self.assertRaisesRegex(RuntimeError, 'child existence'):
+                self.direct_info(Mock(return_value=response), True)
 
 
 if __name__ == '__main__':
