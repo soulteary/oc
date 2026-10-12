@@ -16,10 +16,12 @@ against archives. Cross-compilation is not proof of native target execution.
 Verify the thirteen published assets and manifest/image identities before rollout.
 Older published artifacts remain unchanged.
 
-The existing Release workflow publishes stable even when latest promotion is
-disabled. A formal timestamp tag does not merely produce an RC or private
-candidate. Follow [release procedure](releasing.md); do not use release dispatch
-as a substitute for local/CI candidate preparation.
+The tag build now leaves a verified stable draft and never invokes publication
+or stable promotion. Fixed-version images may already be public; the draft is
+not an RC or a private-candidate guarantee. Manual publication consumes official
+packaged-pair acceptance and publishes unchanged bytes, while latest promotion
+remains a separate manual operation. Follow the [release procedure](releasing.md)
+and [packaged-pair gate](console-release-acceptance.md).
 
 ## Current deployment scope
 
@@ -75,10 +77,19 @@ The publicly documented OtterIO policy requires at least two notified release
 cycles, a separately announced default-off transition and a bounded fallback
 window before deleting old Web code. The recorded first notice does not complete
 those gates. The source removal has merged; merging code is not fulfillment of
-published notification promises. Before a formal removal release, either satisfy
-the remaining sequence or explicitly revise and announce that migration policy.
+published notification promises. The authorized accelerated decision replaces
+that sequence with explicit notice and verified older-server/snapshot rollback,
+effective at the first approved public Web-free release containing the notice.
 Do not silently remove the policy or describe unfinished windows as completed.
 See the [server migration record](https://github.com/soulteary/otterio/blob/main/docs/web-console-deprecation.md).
+
+The [English announcement](https://github.com/soulteary/otterio/blob/main/docs/releases/console-migration-announcement.en.md)
+records the selected early Web-free release policy using exact packaged acceptance,
+limited support and a retained-prior-program/snapshot restore boundary instead of
+waiting for the original sequence. The notice remains unissued and the revision
+is not effective until that approved release is actually published. Preparation
+and successful acceptance do not enact the policy revision or claim old windows
+complete.
 
 On an older server that still includes the UI, `OTTERIO_BROWSER=off` may opt out
 while preserving S3/Admin/STS; same-image restoration uses that version's
@@ -101,18 +112,26 @@ or references without explicit compatibility validation.
    clean synchronized main at the exact commit.
 2. Verify candidate-pair protocols and the promised upgrade/rollback path;
    preserve genuine failed runs rather than accepting partial/retried success.
-3. Publish the compatible OC release first and verify its actual archives,
-   checksums and immutable image contents.
-4. Validate the final OC/OtterIO program/image pair for the declared identity,
-   endpoint, CA and permission modes. Source acceptance does not certify assets.
-5. Satisfy or explicitly revise the public notification/transition/fallback policy.
-6. Publish OtterIO only after those decisions and formal artifact verification.
+3. Build verified stable drafts for both repositories; fixed-version image
+   publication does not make the GitHub drafts public or move latest.
+4. Run official main-branch packaged-pair acceptance for the exact assets/images
+   and declared identity, endpoint, CA, platform and upgrade scope. Independently
+   review its attestation hash; source/local reports do not authorize publication.
+5. Review the selected public notification/transition/fallback policy
+   and supported restore boundary, without marking the old sequence complete.
+6. Manually publish the unchanged accepted OC release, then OtterIO using the
+   same official run/hash. Check that both public releases match accepted bytes.
+7. If requested, separately promote the newest published stable digests to latest.
 
 The initial supported scope can be limited. Do not claim all gateways, proxies,
 federated/distributed topologies or platforms from one local run. S3, Admin, STS,
 health, metrics, node communication and shared authentication remain server
 features; terminal console printing and Admin log streams are separate from the
 removed embedded Web.
+
+The Chinese preparation summary below is retained unchanged from the earlier
+workflow. Its description of Release directly publishing stable is historical;
+the current English procedure separates draft, publication and promotion.
 
 ## 中文要点
 

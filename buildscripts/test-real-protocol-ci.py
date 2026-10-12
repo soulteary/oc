@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run disposable protocol acceptance and retain only structural CI evidence."""
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -80,7 +81,17 @@ def signal_owned_group(process, sig, phase):
         raise ProtocolProcessError(phase, process, error) from None
 
 
-def run(command, env, timeout):
+@contextmanager
+def protect_process_cleanup():
+    previous = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        yield
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+
+
+def run(command, env, timeout, cleanup_timeout=10):
     start = time.monotonic()
     # A separate process group contains wrapper-owned Go tests and fixture servers.
     try:
@@ -90,23 +101,27 @@ def run(command, env, timeout):
         return 127, '', round(time.monotonic() - start, 3)
     try:
         output, _ = process.communicate(timeout=timeout)
-        return process.returncode, output, round(time.monotonic() - start, 3)
+        code = process.returncode
     except subprocess.TimeoutExpired:
-        signal_owned_group(process, signal.SIGTERM, "timeout-terminate-group")
-        try:
-            process.communicate(timeout=10)
-        except subprocess.TimeoutExpired:
-            signal_owned_group(process, signal.SIGKILL, "timeout-kill-group")
-            process.communicate()
-        return 124, '', round(time.monotonic() - start, 3)
+        code, output = 124, ''
     finally:
-        # Also reap fixture descendants after a child exits unexpectedly.
-        try:
-            signal_owned_group(process, signal.SIGKILL, "final-descendant-reap")
-        except ProcessLookupError:
-            pass
-        if process.poll() is None:
-            process.wait(timeout=10)
+        # Detached nested fixtures need their wrapper's finally before force-kill.
+        # Parent callers reserve more grace than their children's bounded cleanup.
+        with protect_process_cleanup():
+            try:
+                signal_owned_group(process, signal.SIGTERM, "final-descendant-terminate")
+            except ProcessLookupError:
+                pass
+            try:
+                process.communicate(timeout=cleanup_timeout)
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                signal_owned_group(process, signal.SIGKILL, "final-descendant-reap")
+            except ProcessLookupError:
+                pass
+            process.communicate(timeout=10)
+    return code, output, round(time.monotonic() - start, 3)
 
 
 def main():

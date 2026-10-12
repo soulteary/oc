@@ -1,4 +1,4 @@
-name: Release
+name: Release draft
 
 on:
   push:
@@ -9,11 +9,6 @@ on:
         description: 'Existing RELEASE.YYYY-MM-DDTHH-MM-SSZ tag'
         required: true
         type: string
-      promote_latest:
-        description: 'Promote only if this is the newest published stable release'
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -24,11 +19,11 @@ concurrency:
 
 jobs:
   release:
-    name: Build and verify timestamp release and container images
+    name: Build and verify timestamp draft and fixed-version images
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # Share this lock with the entire promotion workflow. Release it before
-    # calling promotion so a newer publication cannot invalidate its plan.
+    # Draft preparation, publication and promotion share this lock. This job
+    # pushes immutable version images and leaves the verified release a draft.
     concurrency:
       group: oc-stable-promotion
       cancel-in-progress: false
@@ -177,7 +172,7 @@ jobs:
             --digest "$IMAGE_DIGEST" --dockerhub-published "$DOCKERHUB_PUBLISHED" \
             --dockerhub-user "$DOCKERHUB_USERNAME"
           (cd "$RUNNER_TEMP/oc-release" && sha256sum oc-* release-manifest.json > checksums.txt)
-      - name: Recheck the tag and checksums before publication
+      - name: Recheck the tag and checksums before draft upload
         run: |
           set -euo pipefail
           git fetch --no-tags --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
@@ -199,16 +194,4 @@ jobs:
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$verify_dir"
           diff <(find "$RUNNER_TEMP/oc-release" -maxdepth 1 -type f -printf '%f\n' | sort) <(find "$verify_dir" -maxdepth 1 -type f -printf '%f\n' | sort)
           for asset in "$RUNNER_TEMP/oc-release/"*; do cmp "$asset" "$verify_dir/$(basename "$asset")"; done
-          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
-
-  promote:
-    name: Promote the newest verified stable release
-    needs: release
-    if: github.event_name == 'push' || inputs.promote_latest
-    permissions:
-      contents: write
-      packages: write
-    uses: ./.github/workflows/promote-release.yml
-    with:
-      tag: ${{ inputs.tag || github.ref_name }}
-    secrets: inherit
+          printf 'Verified stable draft prepared for %s. Fixed-version registry images were pushed; public release and latest promotion require separate manual workflows.\n' "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
