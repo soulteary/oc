@@ -264,6 +264,13 @@ class OfficialFixture:
         for repository in stage.REPOSITORIES:
             tag = TAGS[repository]
             if path == f'repos/{repository}/releases/tags/{tag}':
+                if self.release_states[repository]['draft']:
+                    raise ValueError('published-by-tag endpoint cannot read a draft')
+                self.snapshot_reads[repository] += 1
+                return copy.deepcopy(self.release_states[repository])
+            if path == f'repos/{repository}/releases?per_page=100&page=1':
+                return [copy.deepcopy(self.release_states[repository])]
+            if path == f'repos/{repository}/releases/{self.release_states[repository]["id"]}':
                 self.snapshot_reads[repository] += 1
                 return copy.deepcopy(self.release_states[repository])
             if path == f'repos/{repository}/git/ref/tags/{tag}':
@@ -326,6 +333,116 @@ class ReleaseStageTests(unittest.TestCase):
         self.assertEqual(self.fixture.events[-1], ('command', self.fixture.edits[0]))
         self.assertGreaterEqual(self.fixture.snapshot_reads[OC], 2)
         self.assertGreaterEqual(self.fixture.snapshot_reads[OT], 2)
+
+    def test_draft_snapshot_uses_collection_and_id_before_downloading_assets(self):
+        with patch.object(stage, 'api', side_effect=self.fixture.api), \
+             patch.object(stage, 'command', side_effect=self.fixture.command):
+            result = stage.snapshot(OC, TAGS[OC], self.fixture.root / 'snapshot')
+        self.assertEqual(result, self.fixture.releases[OC])
+        listing = ('api', f'repos/{OC}/releases?per_page=100&page=1')
+        by_id = ('api', f'repos/{OC}/releases/101')
+        download = next(event for event in self.fixture.events if event[0] == 'command')
+        self.assertLess(self.fixture.events.index(listing), self.fixture.events.index(by_id))
+        self.assertLess(self.fixture.events.index(by_id), self.fixture.events.index(download))
+        self.assertNotIn(('api', f'repos/{OC}/releases/tags/{TAGS[OC]}'), self.fixture.events)
+
+    def test_draft_lookup_finds_an_exact_tag_on_the_second_page(self):
+        first = f'repos/{OC}/releases?per_page=100&page=1'
+        second = f'repos/{OC}/releases?per_page=100&page=2'
+        self.fixture.api_changes[first] = [{'id': index + 1000, 'tag_name': f'unrelated-{index}'} for index in range(100)]
+        self.fixture.api_changes[second] = [copy.deepcopy(self.fixture.release_states[OC])]
+        with patch.object(stage, 'api', side_effect=self.fixture.api):
+            result = stage.release_metadata(OC, TAGS[OC])
+        self.assertEqual(result, self.fixture.release_states[OC])
+        self.assertEqual(self.fixture.events, [('api', first), ('api', second), ('api', f'repos/{OC}/releases/101')])
+
+    def test_duplicate_exact_tags_are_rejected_within_or_across_pages(self):
+        target = self.fixture.release_states[OC]
+        duplicate = {**target, 'id': 303}
+        unrelated = [{'id': index + 1000, 'tag_name': f'unrelated-{index}'} for index in range(99)]
+        for pages in ([target, duplicate], [target, *unrelated]):
+            with self.subTest(second_page=len(pages) == 100):
+                self.fixture.events.clear()
+                self.fixture.api_changes[f'repos/{OC}/releases?per_page=100&page=1'] = pages
+                self.fixture.api_changes[f'repos/{OC}/releases?per_page=100&page=2'] = [duplicate]
+                with patch.object(stage, 'api', side_effect=self.fixture.api), \
+                     self.assertRaisesRegex(ValueError, 'expected one official release'):
+                    stage.release_metadata(OC, TAGS[OC])
+                self.assertFalse(any(path.endswith('/releases/101') for kind, path in self.fixture.events))
+
+    def test_missing_draft_and_invalid_numeric_id_fail_before_refetch(self):
+        for release in (None, *({**self.fixture.release_states[OC], 'id': value}
+                               for value in (None, True, 0, -1, '101'))):
+            with self.subTest(release_id=release and release['id']):
+                self.fixture.events.clear()
+                self.fixture.api_changes[f'repos/{OC}/releases?per_page=100&page=1'] = [] if release is None else [release]
+                with patch.object(stage, 'api', side_effect=self.fixture.api), self.assertRaises(ValueError):
+                    stage.release_metadata(OC, TAGS[OC])
+                self.assertEqual(len(self.fixture.events), 1)
+
+    def test_refetched_id_tag_and_publication_state_must_match_selection(self):
+        for field, value in (('id', 303), ('id', True), ('tag_name', TAGS[OT]),
+                             ('draft', False), ('draft', None), ('prerelease', True)):
+            with self.subTest(field=field, value=value):
+                self.fixture.api_changes[f'repos/{OC}/releases/101'] = {**self.fixture.release_states[OC], field: value}
+                with patch.object(stage, 'api', side_effect=self.fixture.api), \
+                     patch.object(stage, 'command') as command, \
+                     self.assertRaisesRegex(ValueError, 'release identity changed'):
+                    stage.snapshot(OC, TAGS[OC], self.fixture.root / 'snapshot')
+                command.assert_not_called()
+
+    def test_listed_release_must_already_have_the_requested_stable_state(self):
+        for field, value in (('draft', False), ('draft', None), ('prerelease', True)):
+            with self.subTest(field=field):
+                self.fixture.events.clear()
+                self.fixture.api_changes[f'repos/{OC}/releases?per_page=100&page=1'] = [
+                    {**self.fixture.release_states[OC], field: value}]
+                with patch.object(stage, 'api', side_effect=self.fixture.api), \
+                     self.assertRaisesRegex(ValueError, 'unexpected release publication state'):
+                    stage.release_metadata(OC, TAGS[OC])
+                self.assertEqual(len(self.fixture.events), 1)
+
+    def test_listing_auth_network_and_invalid_page_errors_fail_closed(self):
+        for response in (ValueError('authentication failed'), OSError('network unavailable'),
+                         {'releases': []}, [None], [{}] * 101):
+            with self.subTest(response=type(response).__name__):
+                with patch.object(stage, 'api', side_effect=response if isinstance(response, Exception) else None,
+                                  return_value=response), patch.object(stage, 'command') as command, \
+                     self.assertRaises((ValueError, OSError)):
+                    stage.snapshot(OC, TAGS[OC], self.fixture.root / 'snapshot')
+                command.assert_not_called()
+
+    def test_later_page_failure_cannot_accept_an_earlier_matching_draft(self):
+        first = f'repos/{OC}/releases?per_page=100&page=1'
+        second = f'repos/{OC}/releases?per_page=100&page=2'
+        self.fixture.api_changes[first] = [self.fixture.release_states[OC]] + [
+            {'id': index + 1000, 'tag_name': f'unrelated-{index}'} for index in range(99)]
+        def api(path):
+            if path == second:
+                raise OSError('second page unavailable')
+            return self.fixture.api(path)
+        with patch.object(stage, 'api', side_effect=api), self.assertRaisesRegex(OSError, 'second page'):
+            stage.release_metadata(OC, TAGS[OC])
+        self.assertNotIn(('api', f'repos/{OC}/releases/101'), self.fixture.events)
+
+    def test_published_partner_uses_public_tag_lookup_and_rejects_draft_fallback(self):
+        published_path = f'repos/{OC}/releases/tags/{TAGS[OC]}'
+        self.fixture.api_changes[published_path] = copy.deepcopy(self.fixture.release_states[OC])
+        with patch.object(stage, 'api', side_effect=self.fixture.api), \
+             self.assertRaisesRegex(ValueError, 'unexpected release publication state'):
+            stage.release_metadata(OC, TAGS[OC], draft=False)
+        self.fixture.api_changes[published_path]['draft'] = False
+        self.fixture.events.clear()
+        with patch.object(stage, 'api', side_effect=self.fixture.api):
+            result = stage.release_metadata(OC, TAGS[OC], draft=False)
+        self.assertFalse(result['draft'])
+        self.assertEqual(self.fixture.events, [('api', published_path)])
+
+    def test_optional_publication_state_still_rejects_change_during_lookup(self):
+        self.fixture.api_changes[f'repos/{OC}/releases/101'] = {**self.fixture.release_states[OC], 'draft': False}
+        with patch.object(stage, 'api', side_effect=self.fixture.api), \
+             self.assertRaisesRegex(ValueError, 'release identity changed'):
+            stage.release_metadata(OC, TAGS[OC], draft=None)
 
     def test_otterio_publication_requires_the_exact_accepted_oc_stable_first(self):
         self.reject(OT)
