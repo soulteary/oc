@@ -3,6 +3,12 @@ name: Prepare release tag
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: Prepare a release or inspect fixed draft metadata without writes
+        required: true
+        default: prepare
+        type: choice
+        options: [prepare, diagnose]
       tag:
         description: New immutable RELEASE.YYYY-MM-DDTHH-MM-SSZ tag
         required: true
@@ -17,6 +23,7 @@ concurrency:
 
 jobs:
   prepare:
+    if: ${{ inputs.mode == 'prepare' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -35,3 +42,85 @@ jobs:
           persist-credentials: false
       - name: Validate source, create an immutable tag and dispatch draft build
         run: python3 buildscripts/prepare-release-tag.py "$RELEASE_TAG"
+
+  diagnose:
+    if: ${{ inputs.mode == 'diagnose' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      WORKFLOW_READER_TOKEN: ${{ github.token }}
+      CONSOLE_READER_TOKEN: ${{ secrets.CONSOLE_RELEASE_TOKEN }}
+    steps:
+      - name: Inspect only fixed release identities without exposing credentials
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import concurrent.futures
+          import json
+          import os
+          import re
+          import subprocess
+          
+          RELEASES = (
+              ('soulteary/oc', 420956983, 'RELEASE.2026-10-22T16-25-21Z', 'a8107df09edc21dcd9adf8dbb92eed6ea25c2759'),
+              ('soulteary/otterio', 420886261, 'RELEASE.2026-10-22T15-10-13Z', '3bf697dfb25532213845fbb32ff8bb974a4de59b'),
+          )
+          
+          def get(path, token):
+              env = {key: value for key, value in os.environ.items() if key not in (
+                  'GH_TOKEN', 'GITHUB_TOKEN', 'CONSOLE_RELEASE_TOKEN',
+                  'WORKFLOW_READER_TOKEN', 'CONSOLE_READER_TOKEN')}
+              env['GH_TOKEN'] = token
+              try:
+                  result = subprocess.run(['gh', 'api', '--include', '-H', 'Cache-Control: no-cache', path],
+                                          env=env, capture_output=True, text=True, timeout=45)
+              except subprocess.TimeoutExpired:
+                  return {'status': 0, 'timeout': True}, None
+              header, _, body = result.stdout.partition('\n\n')
+              statuses = re.findall(r'^HTTP/\S+\s+(\d+)', header, re.MULTILINE)
+              metadata = {'status': int(statuses[-1]) if statuses else 0, 'exitCode': result.returncode}
+              try:
+                  payload = json.loads(body)
+              except ValueError:
+                  payload = None
+              metadata['jsonValid'] = payload is not None
+              return metadata, payload
+          
+          def identity(payload, expected):
+              _, release_id, tag, source = expected
+              return {
+                  'idMatches': isinstance(payload, dict) and payload.get('id') == release_id,
+                  'tagMatches': isinstance(payload, dict) and payload.get('tag_name') == tag,
+                  'sourceMatches': isinstance(payload, dict) and payload.get('target_commitish') == source,
+                  'stableDraft': isinstance(payload, dict) and payload.get('draft') is True and payload.get('prerelease') is False,
+                  'assetCount': len(payload.get('assets', [])) if isinstance(payload, dict) else None,
+              }
+          
+          def diagnose(label, variable):
+              token = os.environ.get(variable, '')
+              print(json.dumps({'reader': label, 'tokenPresent': bool(token)}), flush=True)
+              if not token:
+                  return
+              metadata, actor = get('user', token)
+              print(json.dumps({'reader': label, 'query': 'actor', **metadata,
+                                'actor': actor.get('login') if isinstance(actor, dict) else None}), flush=True)
+              for expected in RELEASES:
+                  repository, release_id, tag, _ = expected
+                  metadata, collection = get(f'repos/{repository}/releases?per_page=100', token)
+                  matches = [item for item in collection if isinstance(item, dict) and item.get('tag_name') == tag] if isinstance(collection, list) else []
+                  print(json.dumps({'reader': label, 'repository': repository, 'query': 'collection', **metadata,
+                                    'count': len(collection) if isinstance(collection, list) else None,
+                                    'tagMatches': len(matches),
+                                    'expectedIdentity': identity(matches[0], expected) if len(matches) == 1 else None}), flush=True)
+                  metadata, release = get(f'repos/{repository}/releases/{release_id}', token)
+                  print(json.dumps({'reader': label, 'repository': repository, 'query': 'knownDraftId', **metadata,
+                                    **identity(release, expected)}), flush=True)
+          
+          with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+              futures = [pool.submit(diagnose, 'workflow', 'WORKFLOW_READER_TOKEN'),
+                         pool.submit(diagnose, 'console', 'CONSOLE_READER_TOKEN')]
+              for future in futures:
+                  future.result()
+          PY
