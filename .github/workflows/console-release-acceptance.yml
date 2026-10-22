@@ -54,6 +54,9 @@ jobs:
           spec.loader.exec_module(stage)
           stage.tag_valid(os.environ['OC_TAG'])
           stage.tag_valid(os.environ['OTTERIO_TAG'])
+          # Fail before browser/image setup if either official draft is invisible.
+          stage.release_metadata('soulteary/oc', os.environ['OC_TAG'])
+          stage.release_metadata('soulteary/otterio', os.environ['OTTERIO_TAG'])
           PY
       - uses: actions/setup-go@v7.0.0
         with:
