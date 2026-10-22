@@ -219,3 +219,15 @@ No automated self-update channel is enabled.
 gh workflow run promote-release.yml --repo soulteary/oc --ref main \
   -f tag="$OC_TAG"
 ```
+
+## Prepare an immutable release tag from Actions
+
+After the exact main commit passes its required checks, run **Prepare release tag**
+on `main` with a new UTC `RELEASE.YYYY-MM-DDTHH-MM-SSZ` tag. The workflow refuses
+existing tags, a changed main branch, dirty source, or incomplete CI. It creates
+the tag once and explicitly dispatches the existing draft builder from that tag
+because token-created tag pushes do not trigger Actions. This prepares a draft
+only; packaged-pair acceptance, publication, and latest promotion remain separate.
+
+If dispatch fails after tag creation, retain the tag and manually run the existing
+Release workflow for that exact tag. Never delete or move the tag to retry.

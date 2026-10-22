@@ -7,7 +7,7 @@
 **OtterIO 与 S3 命令行客户端** — _复制、同步、管理。_
 
 [![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.27.2%2B-00ADD8.svg?logo=go&logoColor=white)](./go.mod)
+[![Go](https://img.shields.io/badge/Go-1.27.3%2B-00ADD8.svg?logo=go&logoColor=white)](./go.mod)
 [![Go 检查](https://github.com/soulteary/oc/actions/workflows/go.yml/badge.svg)](https://github.com/soulteary/oc/actions/workflows/go.yml)
 [![发布](https://github.com/soulteary/oc/actions/workflows/release.yml/badge.svg)](https://github.com/soulteary/oc/actions/workflows/release.yml)
 
@@ -111,7 +111,7 @@ oc --json doctor store
 
 ## 从源码构建
 
-准备 `go.mod` 声明的 Go 版本（目前为 `1.27.2`）、Git 和 Make：
+准备 `go.mod` 声明的 Go 版本（目前为 `1.27.3`）、Git 和 Make：
 
 ```sh
 git clone https://github.com/soulteary/oc.git
