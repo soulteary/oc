@@ -282,10 +282,21 @@ class ProcessCleanupTests(unittest.TestCase):
             except ProcessLookupError:
                 return
             state = Path('/proc') / str(pid) / 'stat'
-            if state.is_file() and state.read_text().split(') ', 1)[1].startswith('Z '):
+            try:
+                if state.is_file() and state.read_text().split(') ', 1)[1].startswith('Z '):
+                    return
+            except (FileNotFoundError, ProcessLookupError):
+                # Linux can reap the child between the probe and /proc read.
                 return
             time.sleep(0.02)
         self.fail('owned child remains running')
+
+    def test_stopped_child_can_disappear_during_proc_state_read(self):
+        for error in (FileNotFoundError, ProcessLookupError):
+            with self.subTest(error=error.__name__), \
+                 patch('os.kill'), patch.object(Path, 'is_file', return_value=True), \
+                 patch.object(Path, 'read_text', side_effect=error):
+                self.assert_stopped(12345)
 
     def test_subprocess_credentials_are_not_inherited_and_input_env_is_unchanged(self):
         env = dict(os.environ, GH_TOKEN='secret-one', GITHUB_TOKEN='secret-two', CONSOLE_RELEASE_TOKEN='secret-three', FIXTURE_SAFE='kept')

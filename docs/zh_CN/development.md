@@ -253,7 +253,7 @@ python3 buildscripts/test-lifecycle-transition-integration.py \
 
 ## 理解 CI 的覆盖范围
 
-Go 工作流在 Linux、macOS、Windows 上运行单元、竞态、控制台前端和辅助程序测试；Linux 另有 lint、交叉编译，Linux/macOS 运行 vet。Linux/macOS 服务端矩阵分别启用和关闭 cgo，对未应用补丁的当前 pin 分别运行核心与 CLI、控制台浏览/对象写入、受保护设置/自身密钥轮换、存储功能/版本复制验收。当前功能场景使用 `--features --features-iam-create-unsupported --version-copy`：存储功能必须通过，缺失的 IAM 条件创建协议必须明确拒绝，且不能创建目标。报告记录完整 IAM 修改及条件绑定尚未验收，不表示已经完整替代旧 Web。历史降级、基础设置/对象、base + versions + IAM 五功能、base + storage + hardening 运行时和完整组合 fixture 仍独立保留；两个生命周期组合调用独立归档端 harness 并分别保存报告。上传步骤在失败后仍执行，保留此前已经生成的报告。
+Go 工作流在 Linux、macOS、Windows 上运行单元、竞态、控制台前端和辅助程序测试；Linux 另有 lint、交叉编译，Linux/macOS 运行 vet。Linux/macOS 服务端矩阵分别启用和关闭 cgo，对未应用补丁的当前 pin 分别运行核心与 CLI、控制台浏览/对象写入、受保护设置/自身密钥轮换、存储功能/版本复制验收。当前功能场景使用 `--features --version-copy`：存储功能和当前 pin 服务端的 IAM 条件创建均必须通过，包括精确能力响应、用户及组的并发创建恰有一个成功者、密钥和成员不被覆盖，以及旧绑定版本拒绝。固定历史 fixture 仍保留不支持协议的显式拒绝检查；这不表示已经完整替代旧 Web。历史降级、基础设置/对象、base + versions + IAM 五功能、base + storage + hardening 运行时和完整组合 fixture 仍独立保留；两个生命周期组合调用独立归档端 harness 并分别保存报告。上传步骤在失败后仍执行，保留此前已经生成的报告。
 
 独立的 [CLI 兼容工作流](../../.github/workflows/cli-compat.yml)在 Linux、macOS、Windows 上分别构建固定基线与候选程序，比较命令契约。Go 工作流还检查发行边界、编译依赖清单和可达漏洞。[CodeQL](../../.github/workflows/codeql.yml)另行构建 Go 程序进行分析。
 
