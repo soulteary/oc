@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "goToolchain": "1.27.2",
+  "goToolchain": "1.27.3",
   "otterioSDK": "v0.0.0-20261009091443-bcc238bc4c2c",
   "otterioSource": "bcc238bc4c2cc3a21aae05b23321bfdb1b4aad05",
   "storageSDK": {
