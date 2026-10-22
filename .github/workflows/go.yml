@@ -241,11 +241,11 @@ jobs:
             --server "$RUNNER_TEMP/otterio" --settings \
             --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
             --output "$RUNNER_TEMP/console-current-settings-integration.json"
-      - name: Verify current storage features and the missing IAM create-only boundary
+      - name: Verify current storage features and conditional IAM creation
         run: |
           python3 buildscripts/test-console-integration.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
-            --server "$RUNNER_TEMP/otterio" --features --features-iam-create-unsupported --version-copy \
+            --server "$RUNNER_TEMP/otterio" --features --version-copy \
             --server-source "$(python3 -c 'import json; print(json.load(open("docs/compatibility.json"))["otterioSource"])')" \
             --output "$RUNNER_TEMP/console-current-features-integration.json"
       - name: Prepare the fixed legacy console protocol fixture

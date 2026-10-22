@@ -52,7 +52,7 @@ digest or completed migration window is declared here.
 
 `oc` and `oc-console` remain packaged together in eleven platform archives and
 Linux amd64/arm64 release images; the image entrypoint remains `oc`. Go source
-builds require 1.27.2. SDK/Admin dependencies remain independently pinned in
+builds require 1.27.3. SDK/Admin dependencies remain independently pinned in
 `compatibility.json` and `go.mod`; they do not identify a remote server. Existing
 CLI configuration and supported `OC_*` / `MC_*` precedence remain. Older
 published artifacts do not acquire these source features automatically.
