@@ -10,6 +10,7 @@ from check_budgets import budgets
 REVIEWED_STORAGE_SDK_SOURCES = {
     'v7.3.1': 'c11549d350d8d1f7474bc26037616e912f344c15',
     'v7.3.2': 'afb5be789cad5dda6c5daeffb227e5ea1724888c',
+    'v7.3.3': '70b819202824a55ca4bf8a3e0652f2e5f648ef73',
 }
 
 root = Path(__file__).resolve().parents[1]

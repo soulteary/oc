@@ -7,7 +7,7 @@ digest or completed migration window is declared here.
 
 ## Changes
 
-- Require Go 1.27.3 across the main and auxiliary modules and build images; refresh compatible dependencies and checksums.
+- Require Go 1.27.3 across build images and checks; refresh compatible dependencies, OtterIO SDK v7.3.3, OtterIO Kits, and the coordinated OtterIO server source.
 - Add a manually triggered immutable-tag preparation workflow that verifies the exact main commit before dispatching the existing draft builder. Publication and packaged-pair acceptance remain separate.
 
 - Add independent native IAM browser login over direct HTTPS. Sessions use each
