@@ -7,7 +7,7 @@
 **OtterIO & S3 Command-Line Client** — _Copy. Sync. Manage._
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.27.2%2B-00ADD8.svg?logo=go&logoColor=white)](./go.mod)
+[![Go](https://img.shields.io/badge/Go-1.27.3%2B-00ADD8.svg?logo=go&logoColor=white)](./go.mod)
 [![Go checks](https://github.com/soulteary/oc/actions/workflows/go.yml/badge.svg)](https://github.com/soulteary/oc/actions/workflows/go.yml)
 [![Release](https://github.com/soulteary/oc/actions/workflows/release.yml/badge.svg)](https://github.com/soulteary/oc/actions/workflows/release.yml)
 
@@ -113,7 +113,7 @@ The [documentation index](docs/README.md) also links the dated implementation an
 
 ## Build from source
 
-Use the Go version declared in `go.mod` (currently `1.27.2`), Git and Make:
+Use the Go version declared in `go.mod` (currently `1.27.3`), Git and Make:
 
 ```sh
 git clone https://github.com/soulteary/oc.git

@@ -156,7 +156,7 @@ def release_metadata(repository, tag, draft=True):
             if len(rows) < 100:
                 break
             page += 1
-        require(len(matches) == 1, 'expected one official release for tag')
+        require(len(matches) == 1, 'expected one official release for tag; verify that the stable draft exists and CONSOLE_RELEASE_TOKEN can read draft metadata in both repositories')
         selected = matches[0]
         release_id = selected.get('id')
         require(type(release_id) is int and release_id > 0, 'invalid official release ID')

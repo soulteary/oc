@@ -312,7 +312,9 @@ class ProcessCleanupTests(unittest.TestCase):
                              f'Path({str(pid)!r}).write_text(str(os.getpid()))\nwhile True: time.sleep(1)\n')
             command = [sys.executable, '-c', f'import subprocess,time; subprocess.Popen([{sys.executable!r},{str(child)!r}]); time.sleep(60)']
             with patch.object(acceptance, 'PROCESS_CLEANUP_TIMEOUT', 0.2):
-                code, output = acceptance.run_isolated(command, dict(os.environ), 0.3)
+                # Allow the Python wrapper and child to start on a loaded runner;
+                # the child still ignores TERM and must be killed before return.
+                code, output = acceptance.run_isolated(command, dict(os.environ), 5)
             self.assertEqual((code, output), (124, ''))
             self.assertTrue(pid.exists())
             self.assert_stopped(int(pid.read_text()))
