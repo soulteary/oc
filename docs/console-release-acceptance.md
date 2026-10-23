@@ -67,17 +67,38 @@ hashes are validated again by publication. A local report instead identifies
 `local-packaged-candidate-pair`, remains `publishable: false`, and records images
 as not certified even if its packaged functional and upgrade checks pass.
 
-Drafts in another repository require authenticated read access. Configure the
-`CONSOLE_RELEASE_TOKEN` repository secret with **Contents: read** on both
-repositories for draft asset/metadata access and **Actions: read** on both
-repositories for official run/artifact reads. The actor/token must be able to
-read both drafts. The default workflow token is scoped to its own repository
-and must not be assumed to read a partner draft. The
-publisher uses that secret only for read operations; it uses its own
-`GITHUB_TOKEN` for the final mutation of its own release. The read token does not
-need Contents write. This guide does not assert that the cross-repository secret
-or package access is configured.
-Keep token values in Actions secrets and out of release notes, reports and logs.
+Draft access must be verified with the actual `CONSOLE_RELEASE_TOKEN` secret
+on **both** repositories before dispatch. The REST endpoints list **Contents:
+read**, and official run/artifact reads need **Actions: read**, on exactly
+`soulteary/oc` and `soulteary/otterio`. These endpoint permissions alone do not
+establish draft visibility: [GitHub's release API documentation](https://docs.github.com/en/rest/releases/releases#list-releases)
+separately requires push access for draft listings. A successful `/user` request
+or public-release listing is not a draft-access test. A maintainer must choose a
+credential authorized to read both drafts and verify both collection lookup and
+the selected numeric release ID return the expected stable draft and assets.
+Do not assume that enlarging a scope is required or sufficient; inspect the
+credential's repository selection, permissions and draft access first.
+
+The October 22 diagnostic run [39817718011](https://github.com/soulteary/oc/actions/runs/39817718011)
+authenticated the configured reader as `soulteary`, but requests for OC draft ID
+`420956983` and OtterIO draft ID `420886261` both returned HTTP 403; neither target
+tag appeared in the reader's collections. That is an access failure, not proof
+that the draft tag or assets are missing. Keep both drafts and immutable assets
+unchanged while repairing access. On October 23, after replacing the configured
+reader, attempt 2 of the same diagnostic returned HTTP 200 for both fixed IDs,
+with matching tag/source identities, stable-draft state and 13 OC / 8 OtterIO
+assets. This resolves that credential preflight failure. The subsequent official
+[acceptance run 39877163013](https://github.com/soulteary/oc/actions/runs/39877163013)
+selects OC `RELEASE.2026-10-22T16-25-21Z` and OtterIO
+`RELEASE.2026-10-22T15-10-13Z`; successful draft reads alone do not certify its
+packaged functional, upgrade/rollback or image-runtime checks.
+
+The acceptance workflow requires the cross-repository secret explicitly; its
+own repository token is not a fallback. Its workflow permissions remain read
+only. The publisher uses the secret only for read operations and its own
+`GITHUB_TOKEN` for the final mutation of its own release. Keep token values in
+Actions secrets and out of release notes, reports and logs. This guide does not
+assert that the cross-repository secret or package access is configured.
 
 ## What the acceptance must bind
 

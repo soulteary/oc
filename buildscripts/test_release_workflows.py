@@ -75,6 +75,9 @@ def acceptance_boundary_errors(text):
         errors.append('acceptance cannot gain write permissions')
     if set(mapping_keys(section(text, 'jobs'), 2)) != {'packaged-pair'}:
         errors.append('acceptance must have only its verification job')
+    environment = section(section(section(text, 'jobs'), 'packaged-pair', 2), 'env', 4)
+    if '      GH_TOKEN: ${{ secrets.CONSOLE_RELEASE_TOKEN }}' not in environment:
+        errors.append('acceptance must require its explicit cross-repository draft reader')
     job_steps = steps(text, 'packaged-pair')
     gate = 'test "$GITHUB_REF" = refs/heads/main'
     if not job_steps or step_run(job_steps[0]) != gate:
@@ -114,6 +117,8 @@ def acceptance_boundary_errors(text):
                 value in validators[0][1] for value in ("stage.tag_valid(os.environ['OC_TAG'])",
                     "stage.tag_valid(os.environ['OTTERIO_TAG'])", "'buildscripts/release-stage.py'")):
         errors.append('both tags must be validated by the trusted helper before packaged acceptance')
+    if len(validators) != 1 or "stage.require(bool(os.environ.get('GH_TOKEN'))," not in validators[0][1]:
+        errors.append('acceptance must reject a missing draft reader before draft lookups')
     old = [step_run(step) for step in job_steps if 'gh release download RELEASE.2026-10-10T16-38-05Z' in step_run(step)]
     expected = '2fe6f658e2c0b757ff44962041ff3575adab1620109b40f848654530697f2ba3'
     if len(old) != 1 or not all(value in old[0] for value in (
@@ -343,6 +348,16 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
                    '          path: otterio-candidate\n          persist-credentials: false\n')
         self.workflows[name] = original.replace('      - uses: actions/setup-go@', partner + '      - uses: actions/setup-go@', 1)
         self.assertIn('acceptance must check out only its exact trusted OC workflow source', boundary_errors(self.workflows))
+
+    def test_acceptance_rejects_reader_fallback_or_missing_reader_check(self):
+        name = 'console-release-acceptance.yml'
+        original = self.workflows[name]
+        self.reject_change(name, 'GH_TOKEN: ${{ secrets.CONSOLE_RELEASE_TOKEN }}',
+                           'GH_TOKEN: ${{ secrets.CONSOLE_RELEASE_TOKEN || github.token }}',
+                           'explicit cross-repository draft reader')
+        self.workflows[name] = original
+        self.reject_change(name, "stage.require(bool(os.environ.get('GH_TOKEN')),",
+                           'stage.require(True,', 'missing draft reader')
 
     def test_acceptance_permissions_remain_read_only(self):
         name = 'console-release-acceptance.yml'

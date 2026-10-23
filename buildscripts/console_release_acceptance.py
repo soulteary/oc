@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import shlex
 import signal
@@ -131,6 +132,32 @@ def cleanup_containers(names):
     return {'status': 'failed' if errors else 'passed', 'containers': len(names), 'errors': errors}
 
 
+def platform_image(release, target):
+    """Select a child pinned by the accepted index, without local index aliases."""
+    primary = release['images'][0]
+    index_ref = primary['repository'] + '@' + primary['digest']
+    index = json.loads(STAGE.command(['docker', 'buildx', 'imagetools', 'inspect',
+                                     index_ref, '--format', '{{json .Manifest}}']))
+    STAGE.require(index.get('digest') == primary['digest'] and index.get('schemaVersion') == 2 and
+                  index.get('mediaType') in ('application/vnd.oci.image.index.v1+json',
+                                            'application/vnd.docker.distribution.manifest.list.v2+json'),
+                  'accepted image index identity mismatch')
+    os_name, arch = target.split('/')
+    rows = index.get('manifests')
+    STAGE.require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows),
+                  'invalid accepted image index')
+    selected = [row for row in rows if isinstance(row.get('platform'), dict) and
+                row['platform'].get('os') == os_name and row['platform'].get('architecture') == arch]
+    STAGE.require(len(selected) == 1, 'accepted image index must identify exactly one target platform')
+    descriptor = selected[0]
+    digest = descriptor.get('digest')
+    STAGE.require(isinstance(digest, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', digest) and
+                  descriptor.get('mediaType') in ('application/vnd.oci.image.manifest.v1+json',
+                                                 'application/vnd.docker.distribution.manifest.v2+json'),
+                  'invalid accepted platform manifest')
+    return primary['repository'] + '@' + digest
+
+
 def image_acceptance(releases, assets, output):
     """Execute both architectures by digest and compare actual container bytes."""
     report = {'schemaVersion': 1, 'mode': 'registry-digest', 'passed': False, 'checks': [],
@@ -143,7 +170,6 @@ def image_acceptance(releases, assets, output):
         report['harnesses'] = {name: STAGE.sha256(ROOT / name) for name in IMAGE_PROBE_HARNESS_PATHS}
         for repository, release in releases.items():
             STAGE.verify_images(release)
-            image = release['images'][0]['repository'] + '@' + release['images'][0]['digest']
             for arch in ('amd64', 'arm64'):
                 target = 'linux/' + arch
                 row = {'repository': repository, 'platform': target, 'digest': release['images'][0]['digest'],
@@ -156,6 +182,10 @@ def image_acceptance(releases, assets, output):
                 with tempfile.TemporaryDirectory(prefix='packaged-image-check-') as temporary:
                     directory = Path(temporary)
                     try:
+                        # Classic Docker stores cannot bind one index digest to two platforms.
+                        # The accepted index selects this immutable child; all runtime checks remain.
+                        image = platform_image(release, target)
+                        row['platformManifestDigest'] = image.rsplit('@', 1)[1]
                         docker_command(['pull', '--platform', target, image])
                         container = prefix + '-extract'
                         owned.append(container)
