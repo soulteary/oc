@@ -140,9 +140,11 @@ After both repositories have verified drafts, dispatch the official
 on `main` for the actual pair. Review its successful run, accepted asset/program
 and image identities, runtime scope and attestation bytes. Local source reports
 and local packaged runs cannot replace that official workflow evidence.
-Cross-repository draft reads require `CONSOLE_RELEASE_TOKEN` with Contents read
-and Actions read on both repositories; the default repository token is not
-assumed to read a partner draft. The publisher uses that token only for reads
+Cross-repository reads require `CONSOLE_RELEASE_TOKEN` with Contents read
+and Actions read on both repositories, plus verified access to both actual
+drafts. GitHub restricts draft listings to callers with push access; endpoint
+read permissions or public-release visibility alone do not establish that access.
+The default repository token is not a cross-repository fallback. The publisher uses that token only for reads
 and its own `GITHUB_TOKEN` for the final release mutation. See the [packaged-pair acceptance guide](console-release-acceptance.md)
 for exact access and scope boundaries.
 
