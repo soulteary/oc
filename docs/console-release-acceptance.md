@@ -84,9 +84,14 @@ authenticated the configured reader as `soulteary`, but requests for OC draft ID
 `420956983` and OtterIO draft ID `420886261` both returned HTTP 403; neither target
 tag appeared in the reader's collections. That is an access failure, not proof
 that the draft tag or assets are missing. Keep both drafts and immutable assets
-unchanged while the maintainer repairs access. Re-run official acceptance for
-OC `RELEASE.2026-10-22T16-25-21Z` and OtterIO
-`RELEASE.2026-10-22T15-10-13Z` only after those draft reads succeed.
+unchanged while repairing access. On October 23, after replacing the configured
+reader, attempt 2 of the same diagnostic returned HTTP 200 for both fixed IDs,
+with matching tag/source identities, stable-draft state and 13 OC / 8 OtterIO
+assets. This resolves that credential preflight failure. The subsequent official
+[acceptance run 39877163013](https://github.com/soulteary/oc/actions/runs/39877163013)
+selects OC `RELEASE.2026-10-22T16-25-21Z` and OtterIO
+`RELEASE.2026-10-22T15-10-13Z`; successful draft reads alone do not certify its
+packaged functional, upgrade/rollback or image-runtime checks.
 
 The acceptance workflow requires the cross-repository secret explicitly; its
 own repository token is not a fallback. Its workflow permissions remain read
