@@ -4,34 +4,70 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: New immutable RELEASE.YYYY-MM-DDTHH-MM-SSZ tag
+        description: 'Unused; this branch only diagnoses fixed immutable image pulls'
         required: true
         type: string
 
 permissions:
   contents: read
-
-concurrency:
-  group: prepare-release-tag
-  cancel-in-progress: false
+  packages: read
 
 jobs:
-  prepare:
+  diagnose-image-pull:
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      actions: write
-    env:
-      PYTHONDONTWRITEBYTECODE: "1"
-      GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ inputs.tag }}
+    timeout-minutes: 15
     steps:
-      - name: Require the trusted main workflow
-        run: test "$GITHUB_REF" = refs/heads/main
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
+          ref: c202199281d7cc1c37ee9f4fe2b5596c03831588
+          path: oc
           persist-credentials: false
-      - name: Validate source, create an immutable tag and dispatch draft build
-        run: python3 buildscripts/prepare-release-tag.py "$RELEASE_TAG"
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Inspect fixed-image pulls without changing release state
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, re, shutil, subprocess, sys
+          from pathlib import Path
+          image = 'ghcr.io/soulteary/oc@sha256:374dd9c1ed0ac18885e426409120f5583528c6b2693128e3e8340f14fee24f86'
+          sys.path.insert(0, str(Path('oc/buildscripts').resolve()))
+          import console_release_acceptance as acceptance
+          release = {'images': [{'repository': 'ghcr.io/soulteary/oc', 'digest': image.rsplit('@', 1)[1]}]}
+          rows = []
+          def disk():
+              return dict(zip(('total', 'used', 'free'), shutil.disk_usage('/var/lib/docker')))
+          def safe(text):
+              for name, value in os.environ.items():
+                  if value and len(value) >= 8 and re.search('TOKEN|PASSWORD|SECRET|ACCESS_KEY', name):
+                      text = text.replace(value, '<redacted>')
+              return re.sub(r'https?://\S+', '<redacted-url>', text)[-6000:]
+          for platform in ('linux/amd64', 'linux/arm64'):
+              row = {'acceptedIndex': image, 'platform': platform, 'before': disk()}
+              selected = acceptance.platform_image(release, platform)
+              row['selectedImage'] = selected
+              try:
+                  result = subprocess.run(['docker', 'pull', '--platform', platform, selected],
+                                          capture_output=True, text=True, timeout=300)
+                  row.update(exitCode=result.returncode, output=safe(result.stdout + result.stderr))
+              except subprocess.TimeoutExpired:
+                  row.update(exitCode=None, timedOut=True)
+              row['after'] = disk()
+              rows.append(row)
+              print(json.dumps(row), flush=True)
+          destination = Path(os.environ['RUNNER_TEMP']) / 'fixed-image-pull-diagnostic.json'
+          destination.write_text(json.dumps({'schemaVersion': 1, 'checks': rows}, indent=2) + '\n')
+          if any(row.get('exitCode') != 0 for row in rows):
+              raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: fixed-image-pull-diagnostic
+          path: ${{ runner.temp }}/fixed-image-pull-diagnostic.json
+          if-no-files-found: error
+          retention-days: 90
