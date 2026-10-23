@@ -42,14 +42,7 @@ for profile in ['single-http', 'dual-http', 'dual-tls']:
             phase = 'server-startup'
             try:
                 server = subprocess.Popen(command, env=env, stdout=log, stderr=log)
-                for _ in range(300):
-                    try:
-                        with h.local_urlopen(endpoint + '/otterio/health/ready', timeout=1, context=ctx):
-                            break
-                    except Exception:
-                        time.sleep(0.1)
-                else:
-                    raise RuntimeError('readiness')
+                h.wait_for_writable_server(server, endpoint, context=ctx)
                 cfg = root / 'config'
                 cfg.mkdir()
                 (cfg / 'config.json').write_text(json.dumps({'version': '10', 'aliases': {'rangefixture': {'url': endpoint, 'adminURL': admin, 'adminCAFile': str(adminca) if tls else '', 'accessKey': access, 'secretKey': secret, 'api': 'S3v4', 'path': 'on'}}}))

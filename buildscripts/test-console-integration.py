@@ -36,6 +36,30 @@ def free_port():
         return sock.getsockname()[1]
 
 
+def wait_for_writable_server(server, endpoint, context=None, timeout=30):
+    """Wait for initialized IAM and write quorum, without retrying fixture writes."""
+    deadline = time.monotonic() + timeout
+    while True:
+        if server.poll() is not None:
+            raise RuntimeError('fixture server exited before write readiness')
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError('fixture server did not become writable before deadline')
+        try:
+            with local_urlopen(endpoint + '/otterio/health/cluster',
+                               timeout=min(1, remaining), context=context) as reply:
+                if (reply.status == 200 and reply.headers.get('X-OtterIO-Server-Status') != 'offline'
+                        and time.monotonic() < deadline):
+                    return
+        except urllib.error.HTTPError as error:
+            error.close()
+            if error.code != 503:
+                raise RuntimeError('fixture write-readiness HTTP status ' + str(error.code)) from None
+        except (urllib.error.URLError, OSError):
+            pass
+        time.sleep(min(0.1, max(0, deadline - time.monotonic())))
+
+
 def certificate(directory):
     directory.mkdir(parents=True)
     subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
