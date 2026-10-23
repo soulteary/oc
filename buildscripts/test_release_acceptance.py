@@ -417,10 +417,16 @@ class FakeDocker:
         self.fixture, self.failure, self.probe_code = fixture, failure, probe_code
         self.active, self.created, self.removed, self.mounted = {}, [], [], []
         self.probe_calls = []
+        self.pulled = {}
 
     def command(self, arguments, timeout=300):
         verb = arguments[0]
-        if verb == 'pull': return ''
+        if verb == 'pull':
+            target, image = arguments[arguments.index('--platform') + 1], arguments[-1]
+            if image in self.pulled and self.pulled[image] != target:
+                raise ValueError('cannot overwrite digest')
+            self.pulled[image] = target
+            return ''
         if verb == 'create':
             name = arguments[arguments.index('--name') + 1]
             self.active[name] = arguments[-1]
@@ -475,6 +481,38 @@ class FakeDocker:
         return self.probe_code, ''
 
 
+class PlatformImageTests(unittest.TestCase):
+    def setUp(self):
+        self.release = {'images': [{'repository': 'ghcr.io/soulteary/oc', 'digest': 'sha256:' + 'f' * 64}]}
+        self.index = {'schemaVersion': 2, 'mediaType': 'application/vnd.oci.image.index.v1+json',
+                      'digest': 'sha256:' + 'f' * 64,
+                      'manifests': [{'mediaType': 'application/vnd.oci.image.manifest.v1+json',
+                                     'digest': 'sha256:' + letter * 64,
+                                     'platform': {'os': 'linux', 'architecture': arch}}
+                                    for arch, letter in [('amd64', 'a'), ('arm64', 'b')]]}
+
+    def resolve(self, target='linux/arm64'):
+        with patch.object(acceptance.STAGE, 'command', return_value=json.dumps(self.index)) as command:
+            result = acceptance.platform_image(self.release, target)
+        self.assertEqual(command.call_args.args[0][4], 'ghcr.io/soulteary/oc@sha256:' + 'f' * 64)
+        return result
+
+    def test_platforms_use_distinct_children_of_the_exact_accepted_index(self):
+        self.assertEqual(self.resolve('linux/amd64'), 'ghcr.io/soulteary/oc@sha256:' + 'a' * 64)
+        self.assertEqual(self.resolve(), 'ghcr.io/soulteary/oc@sha256:' + 'b' * 64)
+
+    def test_changed_index_identity_and_ambiguous_or_missing_platform_fail_closed(self):
+        original = copy.deepcopy(self.index)
+        for mutate in (lambda: self.index.update(digest='sha256:' + '0' * 64),
+                       lambda: self.index.update(manifests=self.index['manifests'][:1]),
+                       lambda: self.index['manifests'].append(copy.deepcopy(self.index['manifests'][1])),
+                       lambda: self.index['manifests'][1].update(digest='mutable-tag'),
+                       lambda: self.index['manifests'][1].update(mediaType='application/vnd.oci.image.index.v1+json')):
+            self.index = copy.deepcopy(original)
+            mutate()
+            with self.assertRaises(ValueError): self.resolve()
+
+
 class ImageCleanupTests(unittest.TestCase):
     def check(self, root, failure=None, probe_code=0, probe=None):
         fixture_root = root / 'fixture'
@@ -482,6 +520,8 @@ class ImageCleanupTests(unittest.TestCase):
         fixture = OfficialFixture(fixture_root)
         docker = FakeDocker(fixture, failure, probe_code)
         with patch.object(acceptance.STAGE, 'verify_images'), \
+             patch.object(acceptance, 'platform_image', side_effect=lambda release, target:
+                          release['images'][0]['repository'] + '@sha256:' + ('a' if target.endswith('amd64') else 'b') * 64), \
              patch.object(acceptance.platform, 'system', return_value='Linux'), \
              patch.object(acceptance.platform, 'machine', return_value='x86_64'), \
              patch.object(acceptance, 'docker_command', side_effect=docker.command), \
@@ -498,9 +538,12 @@ class ImageCleanupTests(unittest.TestCase):
             self.assertEqual(len(docker.created), len(set(docker.created)))
             self.assertEqual(report['runnerPlatform'], 'linux/amd64')
             self.assertEqual(len(report['checks']), 4)
+            self.assertEqual(len(docker.pulled), 4, 'each repository/platform needs a distinct immutable child')
             for row in report['checks']:
                 self.assertEqual(row['executionMode'], 'native' if row['platform'] == 'linux/amd64' else 'qemu-binfmt-emulated')
                 self.assertFalse(row['nativeHardwareQualification'])
+                self.assertEqual(row['platformManifestDigest'], 'sha256:' +
+                                 ('a' if row['platform'].endswith('amd64') else 'b') * 64)
                 self.assertEqual(row['cleanup']['status'], 'passed')
                 self.assertEqual(row['cleanup']['errors'], [])
             self.assertTrue(any(name.endswith('-server') for name in docker.removed))
