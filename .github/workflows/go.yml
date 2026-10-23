@@ -210,6 +210,7 @@ jobs:
         run: |
           go mod verify
           python3 -m unittest discover -s buildscripts -p test_real_protocol_ci.py -v
+          python3 -m unittest discover -s buildscripts -p test_range_readiness.py -v
           python3 buildscripts/test-real-protocol-ci.py \
             --cli "$RUNNER_TEMP/oc" --console "$RUNNER_TEMP/oc-console" \
             --server "$RUNNER_TEMP/otterio" \
