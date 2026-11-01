@@ -10,7 +10,7 @@
   },
   "otterioKits": {
     "github.com/soulteary/otterio-kits/crc64nvme": "v1.1.4",
-    "github.com/soulteary/otterio-kits/md5-simd": "v1.2.1"
+    "github.com/soulteary/otterio-kits/md5-simd": "v1.2.2"
   },
   "cliFramework": {
     "module": "github.com/urfave/cli/v3",
