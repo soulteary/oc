@@ -42,3 +42,30 @@ func TestFindWatchContextTermination(t *testing.T) {
 		}
 	}
 }
+
+// Closing both streams can win the select before an already-finished context.
+// Repeat that ready-channel race while retaining the deadline/cancellation split.
+func TestFindWatchClosedChannelsContextTermination(t *testing.T) {
+	for _, deadline := range []bool{false, true} {
+		for attempt := 0; attempt < 20; attempt++ {
+			watch := &WatchObject{EventInfoChan: make(chan []EventInfo), ErrorChan: make(chan *probe.Error)}
+			close(watch.EventInfoChan)
+			close(watch.ErrorChan)
+			ctx, cancel := context.WithCancel(context.Background())
+			if deadline {
+				cancel()
+				ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			} else {
+				cancel()
+			}
+			err := watchFind(ctx, &findContext{watch: true, clnt: endedWatchClient{watch: watch}})
+			cancel()
+			if deadline && !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("closed streams deadline returned %v", err)
+			}
+			if !deadline && err != nil {
+				t.Fatalf("closed streams user cancellation returned %v", err)
+			}
+		}
+	}
+}
