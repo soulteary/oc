@@ -193,8 +193,11 @@ func watchFind(ctxCtx context.Context, ctx *findContext) error {
 			}
 		}
 	}
-	if ctxCtx.Err() != nil {
-		return ctxCtx.Err()
+	if err := ctxCtx.Err(); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
+		return err
 	}
 	errorIf(probe.NewError(errWatchStreamClosed), "Unable to watch for events.")
 	return exitStatus(globalErrorExitStatus)

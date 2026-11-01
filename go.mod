@@ -68,7 +68,7 @@ require (
 	github.com/secure-io/sio-go v0.3.1 // indirect
 	github.com/shoenig/go-m1cpu v0.2.4 // indirect
 	github.com/soulteary/otterio-kits/crc64nvme v1.1.4 // indirect
-	github.com/soulteary/otterio-kits/md5-simd v1.2.1 // indirect
+	github.com/soulteary/otterio-kits/md5-simd v1.2.2 // indirect
 	github.com/tinylib/msgp v1.6.5 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
