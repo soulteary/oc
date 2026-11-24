@@ -6,7 +6,7 @@ This guide is for changing OC and reproducing its checks. For installing a publi
 
 ## Toolchain and source layout
 
-Use the Go version declared in [go.mod](../go.mod), currently `1.27.3`. The [compatibility manifest](compatibility.json) records the same toolchain, the independent S3 SDK and kits, and the separate server/admin source pin. CI and the Makefile use `GOTOOLCHAIN=local`, so an older installed toolchain will fail instead of downloading a newer one automatically. Install the required version before running checks.
+Use the Go version declared in [go.mod](../go.mod), currently `1.27.4`. The [compatibility manifest](compatibility.json) records the same toolchain, the independent S3 SDK and kits, and the separate server/admin source pin. CI and the Makefile use `GOTOOLCHAIN=local`, so an older installed toolchain will fail instead of downloading a newer one automatically. Install the required version before running checks.
 
 You also need Git and Python 3.11 or newer (the fixtures use `hashlib.file_digest`). Console frontend behavior checks require Node.js; building and running `oc-console` does not. The examples below use a POSIX shell on Linux or macOS. Makefile and cross-compilation targets need Bash; the Make dependency check also uses Perl, and the server integration fixture needs OpenSSL with `req -addext` support. Race tests and `CGO_ENABLED=1` runs require the platform's C compiler. Windows build/test commands are recorded in the [Go workflow](../.github/workflows/go.yml); use an `oc.exe` output when building natively there.
 
@@ -73,7 +73,7 @@ Format changed Go files with `gofmt -w PATH/TO/CHANGED.go` and review the diff. 
 go test -race --timeout 20m ./...
 ```
 
-CI uses golangci-lint `v2.14.0` with [.golangci.yml](../.golangci.yml). With that version installed, run `golangci-lint run --timeout=5m`. `make getdeps` installs tools and may fetch packages; it is not necessary for the plain Go/Python checks above. The Python release tests use temporary fixtures and do not publish tags, releases or registry images.
+CI uses golangci-lint `v2.15.0` with [.golangci.yml](../.golangci.yml). With that version installed, run `golangci-lint run --timeout=5m`. `make getdeps` installs tools and may fetch packages; it is not necessary for the plain Go/Python checks above. The Python release tests use temporary fixtures and do not publish tags, releases or registry images.
 
 `make test`, `make check` and `make verify` also invoke the inherited `functional-tests.sh`. That script defaults to the upstream public `play.min.io` server when `SERVER_ENDPOINT` is unset and performs object/bucket writes and deletes. Use the direct checks above and the temporary local integration fixture below for ordinary development. Run the legacy suite only against an explicitly configured disposable target after reviewing its environment and cleanup requirements; do not point it at a production deployment. `make crosscompile` checks the eleven targets in the compatibility manifest; it does not run the resulting binaries.
 

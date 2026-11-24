@@ -11,6 +11,7 @@ REVIEWED_STORAGE_SDK_SOURCES = {
     'v7.3.1': 'c11549d350d8d1f7474bc26037616e912f344c15',
     'v7.3.2': 'afb5be789cad5dda6c5daeffb227e5ea1724888c',
     'v7.3.3': '70b819202824a55ca4bf8a3e0652f2e5f648ef73',
+    'v7.3.4': 'd3b12ac844759f41f5dc091dfdb141c3ce9f297e',
 }
 
 root = Path(__file__).resolve().parents[1]

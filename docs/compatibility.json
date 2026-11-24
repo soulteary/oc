@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "goToolchain": "1.27.3",
-  "otterioSDK": "v0.0.0-20261022143657-3bf697dfb255",
-  "otterioSource": "3bf697dfb25532213845fbb32ff8bb974a4de59b",
+  "goToolchain": "1.27.4",
+  "otterioSDK": "v0.0.0-20261101162506-e9c0318fda00",
+  "otterioSource": "e9c0318fda0083caa3904573e44fad148e574517",
   "storageSDK": {
     "module": "github.com/soulteary/otterio-sdk/v7",
-    "version": "v7.3.3",
-    "source": "70b819202824a55ca4bf8a3e0652f2e5f648ef73"
+    "version": "v7.3.4",
+    "source": "d3b12ac844759f41f5dc091dfdb141c3ce9f297e"
   },
   "otterioKits": {
-    "github.com/soulteary/otterio-kits/crc64nvme": "v1.1.4",
-    "github.com/soulteary/otterio-kits/md5-simd": "v1.2.2"
+    "github.com/soulteary/otterio-kits/crc64nvme": "v1.1.5",
+    "github.com/soulteary/otterio-kits/md5-simd": "v1.2.3"
   },
   "cliFramework": {
     "module": "github.com/urfave/cli/v3",

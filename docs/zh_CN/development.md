@@ -6,7 +6,7 @@
 
 ## 工具链与代码布局
 
-Go 版本以 [go.mod](../../go.mod) 为准，当前为 `1.27.3`。[兼容清单](../compatibility.json)记录相同工具链、独立 S3 SDK 与 kits，以及单独的服务端/管理包源码 pin。CI 和 Makefile 使用 `GOTOOLCHAIN=local`，本机版本过旧时会失败，不会自动下载更新版本；运行检查前先安装要求的工具链。
+Go 版本以 [go.mod](../../go.mod) 为准，当前为 `1.27.4`。[兼容清单](../compatibility.json)记录相同工具链、独立 S3 SDK 与 kits，以及单独的服务端/管理包源码 pin。CI 和 Makefile 使用 `GOTOOLCHAIN=local`，本机版本过旧时会失败，不会自动下载更新版本；运行检查前先安装要求的工具链。
 
 此外需要 Git 和 Python 3.11 或更新版本（测试实例使用 `hashlib.file_digest`）。控制台前端行为测试需要 Node.js，但构建和运行 `oc-console` 不需要。下面的命令使用 Linux 或 macOS 上的 POSIX shell；Makefile 和交叉编译脚本需要 Bash，Make 的依赖检查还使用 Perl。服务端集成测试需要支持 `req -addext` 的 OpenSSL，竞态测试和 `CGO_ENABLED=1` 需要对应平台的 C 编译器。Windows 的原生构建和测试命令见 [Go 工作流](../../.github/workflows/go.yml)，输出文件应使用 `oc.exe`。
 
@@ -73,7 +73,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s buildscripts -p 'test_
 go test -race --timeout 20m ./...
 ```
 
-CI 使用 golangci-lint `v2.14.0` 和 [.golangci.yml](../../.golangci.yml)。安装相同版本后，可运行 `golangci-lint run --timeout=5m`。`make getdeps` 会安装工具，也可能下载依赖；上面的 Go/Python 检查不要求先运行它。Python 发行测试使用临时样本，不会发布标签、GitHub Release 或镜像。
+CI 使用 golangci-lint `v2.15.0` 和 [.golangci.yml](../../.golangci.yml)。安装相同版本后，可运行 `golangci-lint run --timeout=5m`。`make getdeps` 会安装工具，也可能下载依赖；上面的 Go/Python 检查不要求先运行它。Python 发行测试使用临时样本，不会发布标签、GitHub Release 或镜像。
 
 `make test`、`make check` 和 `make verify` 还会调用继承的 `functional-tests.sh`。没有设置 `SERVER_ENDPOINT` 时，这个脚本默认连接上游公共服务器 `play.min.io`，并执行对象和桶的写入、删除。日常开发使用上面的直接检查和下面的本地临时集成环境。只有检查过脚本的环境变量及清理要求，并显式配置一次性测试目标后，才运行旧套件；不要指向生产部署。`make crosscompile` 检查兼容清单中的 11 个编译目标，不会运行生成的程序。
 
