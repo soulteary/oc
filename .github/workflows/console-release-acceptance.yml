@@ -76,7 +76,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Install the pinned real browser
         run: |
-          npm install --prefix "$RUNNER_TEMP/release-browser" --no-audit --no-fund --save-exact playwright@1.64.0
+          npm install --prefix "$RUNNER_TEMP/release-browser" --no-audit --no-fund --save-exact playwright@1.65.1
           "$RUNNER_TEMP/release-browser/node_modules/.bin/playwright" install --with-deps chromium
           echo "OC_BROWSER_NODE=$(command -v node)" >> "$GITHUB_ENV"
           echo "OC_BROWSER_PLAYWRIGHT_MODULE=$RUNNER_TEMP/release-browser/node_modules/playwright" >> "$GITHUB_ENV"
