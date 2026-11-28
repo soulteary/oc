@@ -146,7 +146,11 @@ func (c *Client) Upload(ctx context.Context, bucket, key string, body io.Reader,
 			return result, err
 		}
 	}
-	putOpts := minio.PutObjectOptions{ContentType: "application/octet-stream", DisableContentSha256: true}
+	initOpts := minio.PutObjectOptions{ContentType: "application/octet-stream", DisableContentSha256: true}
+	// Initiation only creates an upload session. The destination condition belongs
+	// to the committing request (single PUT or CompleteMultipartUpload), and older
+	// SDK releases do not remove it from NewMultipartUpload automatically.
+	putOpts := initOpts
 	if !opts.Overwrite {
 		putOpts.SetMatchETagExcept("*")
 	}
@@ -181,7 +185,7 @@ func (c *Client) Upload(ctx context.Context, bucket, key string, body io.Reader,
 		return consoleapi.UploadResult{ETag: info.ETag, Size: size}, nil
 	}
 	initCtx, cancelInit := context.WithTimeout(ctx, c.metadataTimeout)
-	uploadID, initErr := core.NewMultipartUpload(initCtx, bucket, key, putOpts)
+	uploadID, initErr := core.NewMultipartUpload(initCtx, bucket, key, initOpts)
 	cancelInit()
 	if initErr != nil {
 		return result, normalizeError(initErr)
