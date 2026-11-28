@@ -381,6 +381,8 @@ func TestRenameCopiesConditionallyBeforeDeletingAndPreservesSourceOnFailure(t *t
 				case "GET":
 					fmt.Fprint(w, `<ListBucketResult><Name>exact-bucket</Name><Contents><Key>old.txt</Key><Size>3</Size><ETag>"etag"</ETag></Contents></ListBucketResult>`)
 				case "HEAD":
+					w.Header().Set(conditionalCopyHeader, "v1")
+					w.Header().Set(conditionalDeleteHeader, "v1")
 					if strings.HasSuffix(r.URL.Path, "/new.txt") {
 						w.Header().Set("X-Otterio-Conditional-Writes", "v1")
 						w.WriteHeader(404)
@@ -402,6 +404,9 @@ func TestRenameCopiesConditionallyBeforeDeletingAndPreservesSourceOnFailure(t *t
 					fmt.Fprint(w, `<CopyObjectResult><ETag>"etag"</ETag><LastModified>2026-10-08T00:00:00Z</LastModified></CopyObjectResult>`)
 				case "DELETE":
 					operations = append(operations, "delete")
+					if r.Header.Get("If-Match") != `"etag"` || !strings.Contains(r.URL.Query().Get("X-Amz-SignedHeaders"), "if-match") {
+						t.Error("source deletion lost its signed ETag condition")
+					}
 					w.WriteHeader(204)
 				default:
 					t.Error(r.Method)
