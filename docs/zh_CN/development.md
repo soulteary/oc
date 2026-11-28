@@ -118,6 +118,29 @@ python3 buildscripts/test-core-integration.py \
 
 服务端回归测试的具体命令，以及 Linux/macOS 的 cgo 矩阵，见 [Go 工作流](../../.github/workflows/go.yml)。[兼容说明](compatibility.md)介绍检查能证明的范围和尚未验证的部分。固定源码的通过结果不证明其他 OtterIO 版本已经兼容。`otterio-*-compat.patch` 只保留为历史 fixture；下面的可选控制台补丁仍用于当前集成检查。
 
+## 验证条件上传与重命名
+
+[条件对象操作 fixture](../../buildscripts/test-conditional-object-mutations.py) 在临时文件系统后端和本地四盘纠删码后端上运行十四项真实 HTTP 场景，覆盖大于 16 MiB 的上传、分片源对象、元数据与标签，以及复制目标或源对象被并发修改的情况。最后一步删除源对象之前发生竞争时，服务器必须实际返回 HTTP `412`，并同时保留更新后的源对象和已经复制的目标对象。
+
+服务端源码需要包含 [OtterIO #55](https://github.com/soulteary/otterio/pull/55) 的条件复制、条件删除能力；OC 源码需要同时包含条件重命名客户端修改和 [OC #58](https://github.com/soulteary/oc/pull/58) 的分片初始化修复。常规 CI 集成任务使用的历史服务端/admin pin 尚未提供这些新能力；这项检查显式指定待验证服务器，不修改原有 pin。
+
+```sh
+CONDITIONAL_TESTS="$(mktemp -d)"
+CONDITIONAL_OTTERIO_SOURCE=/path/to/otterio
+(
+  cd "$CONDITIONAL_OTTERIO_SOURCE"
+  GOTOOLCHAIN=local go build -mod=readonly -o "$CONDITIONAL_TESTS/otterio" .
+)
+python3 buildscripts/test-conditional-object-mutations.py \
+  --server "$CONDITIONAL_TESTS/otterio" \
+  --server-source "$CONDITIONAL_OTTERIO_SOURCE" \
+  --race --output-dir "$CONDITIONAL_TESTS/results"
+```
+
+运行器默认使用当前 OC 仓库；`--oc` 可以指定另一个工作树，`--go` 可以指定编译器以替代 `PATH` 中的 `go`。Go overlay 只向 `internal/storageclient` 添加测试 fixture。两个服务器进程都使用新建的 localhost 地址、随机凭据和临时数据目录，每个后端结束后回收进程与数据。`report.json` 和 `tests.jsonl` 保存在 `--output-dir`；省略时会新建临时目录并显示路径。报告记录声明的 SDK 依赖、源码身份、二进制摘要和客户端 race 设置。若服务器构建需要环境专用 overlay，通过 `--server-overlay` 记录，并在报告结果时说明这项限制。
+
+这些场景使用未开启版本控制的存储桶和普通未加密对象，补充权限、加密、版本控制回归以及发布产物验收，不替代这些检查。
+
 ## 复现可选控制台协议环境
 
 历史协议 fixture 使用 `6f6d0835ddff68020f1491c403b958fade22841f`，尚未包含 P3。`compatibility.json` 中的当前服务端 pin 已包含 P3，并单独验收；下面的导出补丁只应用于历史 fixture，不能再应用到当前 pin。`requiredServerPatches: []` 描述当前未应用补丁的核心基线。

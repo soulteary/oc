@@ -118,6 +118,29 @@ This is a longer check with local disk and memory requirements. A failure report
 
 The exact server regression tests and the Linux/macOS cgo matrix live in the [Go workflow](../.github/workflows/go.yml). [Compatibility](compatibility.md) describes what these checks establish and what remains unverified. Passing tests for one fixed source do not certify another OtterIO version. The `otterio-*-compat.patch` files are historical fixtures; the optional console patch below is still used by current integration checks.
 
+## Verify conditional uploads and rename
+
+The focused [conditional mutation fixture](../buildscripts/test-conditional-object-mutations.py) runs fourteen real HTTP scenarios across temporary filesystem and local four-disk erasure servers. It covers uploads larger than 16 MiB, multipart source objects, metadata and tags, and concurrent changes to the copy destination or source. The final source-delete race must produce an actual HTTP `412` while retaining both the updated source and the copied destination.
+
+Use a server checkout containing [OtterIO #55](https://github.com/soulteary/otterio/pull/55), which adds the conditional-copy and conditional-delete capabilities. The OC checkout must contain both the conditional-rename client change and the multipart initiation fix in [OC #58](https://github.com/soulteary/oc/pull/58). The historical server/admin pin used by the ordinary CI integration job does not provide these new capabilities; this fixture is an explicit candidate-server check and does not change that pin.
+
+```sh
+CONDITIONAL_TESTS="$(mktemp -d)"
+CONDITIONAL_OTTERIO_SOURCE=/path/to/otterio
+(
+  cd "$CONDITIONAL_OTTERIO_SOURCE"
+  GOTOOLCHAIN=local go build -mod=readonly -o "$CONDITIONAL_TESTS/otterio" .
+)
+python3 buildscripts/test-conditional-object-mutations.py \
+  --server "$CONDITIONAL_TESTS/otterio" \
+  --server-source "$CONDITIONAL_OTTERIO_SOURCE" \
+  --race --output-dir "$CONDITIONAL_TESTS/results"
+```
+
+The runner uses this OC checkout by default; `--oc` selects another worktree and `--go` selects a compiler instead of `go` on `PATH`. A Go overlay adds only the test fixture to `internal/storageclient`. Both server processes use fresh localhost addresses, random credentials and temporary storage, with cleanup after each backend. The runner retains `report.json` and `tests.jsonl` in `--output-dir`, or in a new temporary directory when the option is omitted. The report records the declared SDK dependency, source identities, binary digest and client race setting. If a server build needs an environment-specific overlay, record it with `--server-overlay` and include that limitation when reporting results.
+
+These scenarios exercise unversioned buckets and ordinary unencrypted objects. They supplement the permission, encryption and versioning regressions and the packaged release acceptance; they do not replace those checks.
+
 ## Reproduce the optional console protocol fixture
 
 The historical protocol fixture uses `6f6d0835ddff68020f1491c403b958fade22841f`, without P3. The current server pin in `compatibility.json` already includes P3 and is tested separately; do not reapply these exported patches to it. `requiredServerPatches: []` describes the unpatched current core baseline.
