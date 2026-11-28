@@ -8,11 +8,13 @@ OC 的兼容承诺限于已有通过记录的版本、部署和操作。API 能�
 
 当前 Go 工具链、独立 S3 SDK、OtterIO kits、服务端 / 管理模块及完整源码 SHA 记录在 [compatibility.json](../compatibility.json)。OC 的 module 名保持 `github.com/soulteary/mc`。
 
-S3 操作使用独立发布的 `github.com/soulteary/otterio-sdk/v7 v7.3.1`，发布源码为 `c11549d350d8d1f7474bc26037616e912f344c15`，并采用已发布的 kits `crc64nvme v1.1.2`、`md5-simd v1.1.3`。清单中的 `storageSDK` 与 `otterioKits` 分别记录这些依赖。旧字段 `otterioSDK` 继续记录服务端 / 管理模块版本，保留已有验收及发布身份读取器的兼容性；该字段不是独立 S3 SDK 的版本。
+S3 操作使用独立发布的 `github.com/soulteary/otterio-sdk/v7 v7.3.4`，发布源码为 `d3b12ac844759f41f5dc091dfdb141c3ce9f297e`，并采用已发布的 kits `crc64nvme v1.1.5`、`md5-simd v1.2.3`。清单中的 `storageSDK` 与 `otterioKits` 分别记录这些依赖。旧字段 `otterioSDK` 继续记录服务端 / 管理模块版本，保留已有验收及发布身份读取器的兼容性；该字段不是独立 S3 SDK 的版本。
 
 发布边界检查将 SDK 版本和完整源码 SHA，与 `buildscripts/verify-release-boundaries.py` 中独立固定、已经审查的标签与源码映射比较。SHA 长度正确并不能证明发布身份。升级 SDK 时，必须先核实已发布标签的源码，再与依赖及兼容清单一起更新该映射；检查本身不访问网络。
 
-服务端 / 管理包与核心集成服务端使用同一固定远程 OtterIO 源码 `6f6d0835ddff68020f1491c403b958fade22841f`，不使用本地替换或兼容补丁。其源码树与原先的 `fed9cc3` pin 一致；此次更新记录正式合并的 main 来源。管理查询桥接、运行时关闭、HTTP API、账户信息和条件写修复已包含在该源码中。`otterio-*-compat.patch` 与旧核心报告保留为历史证据，不再作为当前环境搭建步骤；独立的可选控制台协议环境见下文。任一依赖更新后都必须重跑验收矩阵，见[开发指南](development.md)和 [CLI 迁移说明](../cli-migration.md)。
+服务端 / 管理包与核心集成服务端使用 `github.com/soulteary/otterio v0.0.0-20261101162506-e9c0318fda00`，对应固定远程源码 `e9c0318fda0083caa3904573e44fad148e574517`，不使用本地替换或兼容补丁。管理查询桥接、运行时关闭、HTTP API、账户信息和仅允许新建对象的条件写修复已包含在该源码中。`otterio-*-compat.patch` 与旧核心报告保留为历史证据，不再作为当前环境搭建步骤；独立的可选控制台协议环境见下文。任一依赖更新后都必须重跑验收矩阵，见[开发指南](development.md)和 [CLI 迁移说明](../cli-migration.md)。
+
+该服务端 / 管理模块固定版本标识编译依赖和核心测试基线。实际部署的 OtterIO 服务端单独选择，通过[发布产物配对验收](../console-release-acceptance.md)与 OC 对应。Console 重命名需要 [OtterIO #55](https://github.com/soulteary/otterio/pull/55) 提供的独立条件复制、条件删除能力；固定服务端基线不提供这些能力。服务端缺少任一能力时，OC 会在复制或删除对象前拒绝操作。[重命名语义](console.md#重命名)说明部分完成结果与 ETag 的限制。[条件写入验收](development.md#验证条件上传与重命名)使用包含这些能力的服务端，保留 S3 SDK `v7.3.4`；它不改变历史核心基线，也不替代发布产物验收。
 
 ## 测试工具覆盖的部署
 
@@ -32,7 +34,7 @@ S3 操作使用独立发布的 `github.com/soulteary/otterio-sdk/v7 v7.3.1`，�
 
 ## 可选控制台协议与生命周期环境
 
-未补丁固定 pin 继续作为核心与旧协议安全降级基线。OtterIO 当前源码 HEAD 已包含 P3，但 OC 没有悄悄更新依赖 pin；导出补丁只应用于固定 pin 的可写副本。
+核心集成任务使用上述未加补丁的 `e9c0318fda0083caa3904573e44fad148e574517` 固定版本。独立的旧协议安全降级和可选控制台协议环境使用历史源码 `6f6d0835ddff68020f1491c403b958fade22841f`。导出补丁只按文档中的组合应用于该历史源码的可写副本；当前核心固定版本已包含 P3，不应重复应用这些补丁。
 
 `console-server-base.patch` 独立提供保护性设置与自身改密。其条件生命周期仅支持前缀到期和非当前到期，拒绝转换、标签过滤及到期删除标记规则；已有配置仍可完整读取，普通无条件 S3 行为保留。base 后必须叠加 `lifecycle-storage.patch` 和 `lifecycle-storage-hardening.patch`，才构成当前生命周期部署来源。hardening保留HEAD80已合入的12个storage-class snapshot、覆盖quorum和tier元数据保护源码/测试文件；当前源码未启用独立IAM补丁，不能声称与固定pin core组合全等。
 
