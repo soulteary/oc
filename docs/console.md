@@ -119,6 +119,16 @@ The browser sends the raw file through OC. Browser progress at 100% means sendin
 
 Cancellation, page departure, logout and shutdown stop pending transfer work and attempt owned multipart cleanup. They cannot undo an already committed object. A lost commit response is reported as unconfirmed; failed cleanup is reported explicitly. Check the object and unfinished upload before retrying. Final commits and deletes are not automatically retried.
 
+## Rename semantics
+
+Rename copies an object to a new key in the same bucket, then deletes the source. It supports objects up to 5 GiB and requires Signature V4. The destination HEAD must advertise `X-Otterio-Conditional-Copy: v1`; the source HEAD must advertise `X-Otterio-Conditional-Delete: v1`. The older create-only upload capability does not grant either operation. Servers without these independent capabilities are rejected before copying or deleting anything.
+
+The copy sends `If-None-Match: *` for the destination and `X-Amz-Copy-Source-If-Match` for the selected source ETag. Source deletion sends a separately signed `If-Match` with that same ETag. The server checks each condition under the corresponding object commit lock. An object created at the destination concurrently is not overwritten; a source with a different ETag at deletion is not removed. ETags are content validators, not unique revision identifiers: changes that retain the same ETag are not distinguished.
+
+The two requests do not form an atomic rename. A changed source, deletion failure or lost response leaves the new object in place and reports a partial or unconfirmed result. Check both names before trying again. OC does not roll back the destination or retry either mutation unconditionally. No source version ID, permanent version purge or retention bypass is requested; normal current-version deletion semantics still apply.
+
+These capabilities require a server version that implements them; the historical server/admin module pin does not by itself provide them. The initial server implementation is limited to local FS and local single-pool erasure without caching or federation. Unsupported object or bucket configurations can still reject the conditional operation; a rejection after copying is reported as a partial rename.
+
 ## Deletion and task semantics
 
 Delete an exact entered key, selected loaded objects, or a nonempty slash-terminated prefix. Prefix planning lists a fixed snapshot using the selected identity, capped at 1000 objects. Listing failure, malformed pagination or overflow results in no deletion. Exact-key deletion does not require listing permission.

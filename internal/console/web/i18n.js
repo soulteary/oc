@@ -53,6 +53,9 @@
 ["Choose a different valid object name.", "请选择另一个有效的对象名称。"],
 ["Rename supports objects up to 5 GiB.", "重命名支持最大 5 GiB 的对象。"],
 ["The new object was copied, but the source changed or could not be checked. Both names may exist; refresh before retrying.", "新对象已复制，但原对象发生变化或无法检查。两个名称可能同时存在，请刷新后再操作。"],
+["The new object was copied, but the source changed or disappeared before deletion. Refresh both names before retrying.", "新对象已复制，但原对象在删除前发生变化或已不存在。请刷新两个名称后再操作。"],
+["The source changed or an object appeared at the new name. Refresh both names before retrying.", "原对象发生变化，或新名称已被其他对象占用。请刷新两个名称后再操作。"],
+["This storage server cannot safely rename objects. Conditional copy and conditional delete support with Signature V4 are required.", "此存储服务暂不支持安全重命名，需要支持 Signature V4 条件复制和条件删除。"],
 ["The new object was copied, but source deletion was not confirmed. Check both names before retrying.", "新对象已复制，但未确认原对象删除成功。请检查两个名称后再操作。"],
   [
     "Local console",
